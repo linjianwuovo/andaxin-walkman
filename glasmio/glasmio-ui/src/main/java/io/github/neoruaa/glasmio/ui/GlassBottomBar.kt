@@ -348,6 +348,7 @@ fun <T> GlasmioNavigationBar(
             externalSelectionProgress?.value?.coerceIn(0f, 1f) ?: 0f
         }
         val externalSelectionRest: () -> Float = { 1f - externalSelectionFraction() }
+        val currentExternalSelectionFraction = rememberUpdatedState(externalSelectionFraction)
         val externalSelectionDiameterPx = expandedHeightPx
         val externalSelectionCenterPx = if (isLtr) {
             fullWidthPx + externalSelectionTrailingOffsetPx
@@ -470,7 +471,9 @@ fun <T> GlasmioNavigationBar(
                         return@DampedDragAnimation
                     }
                     val target = targetValue.fastRoundToInt().fastCoerceIn(0, tabItems.lastIndex)
-                    if (target != selectedIndexState.value) {
+                    // 选中跑到栏外那枚圆钮上时，selectedIndex 仍停在上次那一格：只比
+                    // target != selectedIndex 会把「点回原来那一格」整下吞掉，页面和圆钮都回不来。
+                    if (target != selectedIndexState.value || currentExternalSelectionFraction.value() > 0.5f) {
                         stableOnSelected(tabItemsState.value[target].key)
                     }
                     animateToValue(target.toFloat())
@@ -958,13 +961,14 @@ fun <T> GlasmioNavigationBar(
                         horizontalInsetPx = paddingPx,
                         expandedTabWidthPx = expandedTabWidthPx,
                         selectedContentLateScale = selectedContentLateScaleProvider,
-                        labelAlpha = { tabContentAlpha() * externalSelectionRest() },
+                        // 选中格的内容留在原地。外滑的只是那枚水滴：若把这里的 alpha 也乘
+                        // externalSelectionRest，图标和文字会一起淡到 0，而占位格又被 hideSelectedItem
+                        // 藏着，屏幕上就只剩一格空白，点下去也认不出是「首页」。
+                        labelAlpha = tabContentAlpha,
                         selectedIconColorFilter = selectedIconColorFilterState,
                         contentColor = colors.content,
                         panelScale = selectedTabPanelScale,
-                        iconAlpha = {
-                            (if (compactItem != null) tabContentAlpha() else 1f) * externalSelectionRest()
-                        },
+                        iconAlpha = { if (compactItem != null) tabContentAlpha() else 1f },
                         onIconBoundsChanged = onItemIconBoundsChanged?.let { callback ->
                             { bounds -> callback(selectedItem.key, bounds) }
                         },
@@ -981,7 +985,7 @@ fun <T> GlasmioNavigationBar(
                         expandedTabWidthPx = expandedTabWidthPx,
                         selectedContentLateScale = selectedContentLateScaleProvider,
                         labelAlpha = { 0f },
-                        iconAlpha = { compactState.value * externalSelectionRest() },
+                        iconAlpha = { compactState.value },
                         selectedIconColorFilter = null,
                         contentColor = colors.content,
                         panelScale = selectedTabPanelScale,
@@ -1037,7 +1041,7 @@ fun <T> GlasmioNavigationBar(
                             horizontalInsetPx = paddingPx,
                             expandedTabWidthPx = expandedTabWidthPx,
                             selectedContentLateScale = selectedContentLateScaleProvider,
-                            labelAlpha = { tabContentAlpha() * externalSelectionRest() },
+                            labelAlpha = tabContentAlpha,
                             selectedIconColorFilter = hiddenSelectedIconColorFilterState,
                             contentColor = colors.content,
                             selectedContentSource = true,
