@@ -414,6 +414,9 @@ fun <T> GlasmioTabBar(
                     child.place((constraints.maxWidth - width) / 2, (constraints.maxHeight - height) / 2)
                 }
             }.testTag("LandscapeNavigationLiftedLens")
+                // 透镜的效应画布会被 padding 撑大（nativeControlLens 里 72dp），不裁就会在胶囊外面
+                // 画出一整块硬边底色。裁回胶囊，取样范围不变。
+                .clip(Capsule())
                 .drawPlainBackdrop(
                     backdrop = if (appearance.usesBackdrop) indicatorBackdrop else emptyBackdrop(),
                     shape = { Capsule() }, effects = {

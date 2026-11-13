@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -267,49 +268,55 @@ private fun LauncherIconSection() {
         now = LauncherIcons.currentOrNull(ctx)
     }
 
-    Sheet {
-        LauncherIcons.ALL.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(Gap.lg)) {
-                row.forEach { ic ->
-                    val on = now?.key == ic.key
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.pressClick(shrink = false) {
-                            if (on) return@pressClick
-                            LauncherIcons.apply(ctx, ic).fold(
-                                onSuccess = {
-                                    now = ic
-                                    why = "已换上「${ic.label}」，系统那边回读过确实是开着的。桌面那枚一般马上变；" +
-                                        "多出来那枚旧的是桌面缓存，重启桌面就没了。"
+    // 列数和上面那格入口一样按宽度算（3..6，一格约 180dp）：写死三列的话平板上一排图标
+        // 全挤在左边、右边空半屏。每列给 weight(1f) 等宽，最后一行不满时补空位对齐。
+        BoxWithConstraints {
+            val columns = (maxWidth / 180.dp).toInt().coerceIn(3, 6)
+            Sheet {
+                LauncherIcons.ALL.chunked(columns).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(Gap.lg)) {
+                        row.forEach { ic ->
+                            val on = now?.key == ic.key
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f).pressClick(shrink = false) {
+                                    if (on) return@pressClick
+                                    LauncherIcons.apply(ctx, ic).fold(
+                                        onSuccess = {
+                                            now = ic
+                                            why = "已换上「${ic.label}」，系统那边回读过确实是开着的。桌面那枚一般马上变；" +
+                                                "多出来那枚旧的是桌面缓存，重启桌面就没了。"
+                                        },
+                                        onFailure = { why = "没换成：${it.message ?: it.javaClass.simpleName}" },
+                                    )
                                 },
-                                onFailure = { why = "没换成：${it.message ?: it.javaClass.simpleName}" },
-                            )
-                        },
-                    ) {
-                        IconPreview(ic, on)
-                        Spacer(Modifier.height(Gap.xs))
-                        Text(
-                            ic.label,
-                            fontSize = Type.tiny,
-                            color = if (on) ink.strong else ink.faint,
-                            fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
-                        )
+                            ) {
+                                IconPreview(ic, on)
+                                Spacer(Modifier.height(Gap.xs))
+                                Text(
+                                    ic.label,
+                                    fontSize = Type.tiny,
+                                    color = if (on) ink.strong else ink.faint,
+                                    fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
+                                )
+                            }
+                        }
+                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                     }
+                    Spacer(Modifier.height(Gap.md))
                 }
-            }
-            Spacer(Modifier.height(Gap.md))
+            Text(
+                text = why ?: if (now == null)
+                    "桌面上现在一条入口都没有（以前选中过的那枚图标后来被下架了，这种只剩这一种走法）：" +
+                        "点上面任意一枚就补回来。"
+                else
+                    "换的是桌面那枚和最近任务里那枚。MIUI 这类桌面换完会多留一枚旧的" +
+                        "（旧那枚的名字可能还是以前那个），系统里其实只有一条入口 —— 重启桌面或重启手机就干净了。",
+                fontSize = Type.micro,
+                color = if (why == null) ink.faint else ink.muted,
+                lineHeight = Type.metaLine,
+            )
         }
-        Text(
-            text = why ?: if (now == null)
-                "桌面上现在一条入口都没有（以前选中过的那枚图标后来被下架了，这种只剩这一种走法）：" +
-                    "点上面任意一枚就补回来。"
-            else
-                "换的是桌面那枚和最近任务里那枚。MIUI 这类桌面换完会多留一枚旧的" +
-                    "（旧那枚的名字可能还是以前那个），系统里其实只有一条入口 —— 重启桌面或重启手机就干净了。",
-            fontSize = Type.micro,
-            color = if (why == null) ink.faint else ink.muted,
-            lineHeight = Type.metaLine,
-        )
     }
 }
 

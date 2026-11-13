@@ -14,9 +14,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -113,6 +117,20 @@ import io.github.neoruaa.glasmio.glass.rememberSharedGlassBackdrop as glasmioRem
 import io.github.neoruaa.glasmio.glass.trackBackdropPosition as glasmioTrackBackdropPosition
 import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop as glasmioLayerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberCanvasBackdrop
+import io.github.neoruaa.glasmio.core.IosTypography
+import io.github.neoruaa.glasmio.icons.SfSymbol
+import io.github.neoruaa.glasmio.scaffold.GlasmioAdaptiveNavigationDefaults
+import io.github.neoruaa.glasmio.scaffold.GlasmioAdaptiveNavigationScaffold
+import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationLayout
+import io.github.neoruaa.glasmio.scaffold.glasmioAdaptiveContent
+import io.github.neoruaa.glasmio.scaffold.glasmioNavigationLayout
+import io.github.neoruaa.glasmio.scaffold.rememberGlasmioAdaptiveNavigationState
+import io.github.neoruaa.glasmio.ui.GlasmioIconButton
+import io.github.neoruaa.glasmio.ui.GlasmioSidebarRow
+import io.github.neoruaa.glasmio.ui.GlasmioSidebarToggleIcon
+import io.github.neoruaa.glasmio.ui.GlasmioSidebarToolbar
+import io.github.neoruaa.glasmio.ui.GlasmioTabBar
+import io.github.neoruaa.glasmio.ui.GlasmioTabItem
 
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -645,130 +663,262 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     }
     val headerSpecs = remember(labels) { labels.map { GlasmioHeaderSpec(title = it) } }
 
+    // 大屏（横屏）的导航形态对齐音乐屏：顶栏一条标签栏 + 左侧可展开的侧栏。
+    // 竖屏（BottomBar）仍走原来那条底栏，一条线没改。
+    val adaptiveNavigation = rememberGlasmioAdaptiveNavigationState()
+    val navigationLayout = glasmioNavigationLayout()
+    val wideLayout = navigationLayout == GlasmioNavigationLayout.TopTabs
+    val activeShelf = if (meSelected) Shelf.Me else barKey
+    // 顶栏里库只画 label、不画 symbol，但侧栏那几行要用 symbol，所以两处共用这一份。
+    // 库里 GlasmioTabBar 会在末尾强制追加一格放大镜，T 只能取 Any（Shelf 与 String 混在一条上）。
+    val shelfTabs = remember(labels) {
+        listOf(
+            GlasmioTabItem<Any>(Shelf.Home, labels[Shelf.Home.ordinal], SfSymbol.HouseFilled),
+            GlasmioTabItem<Any>(Shelf.Timetable, labels[Shelf.Timetable.ordinal], SfSymbol.ClockFilled),
+            GlasmioTabItem<Any>(Shelf.Message, labels[Shelf.Message.ordinal], SfSymbol.Ellipsis),
+            GlasmioTabItem<Any>(Shelf.Notice, labels[Shelf.Notice.ordinal], SfSymbol.InfoCircle),
+            GlasmioTabItem<Any>(Shelf.Me, labels[Shelf.Me.ordinal], SfSymbol.PersonFilled),
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        GlasmioNavigationScaffold(
-            motion = headerMotion,
-            header = { entryKey -> headerSpecs[(entryKey as Shelf).ordinal] },
-            modifier = Modifier.fillMaxSize().nestedScroll(navScroll.nestedScrollConnection),
+        GlasmioAdaptiveNavigationScaffold(
+            state = adaptiveNavigation,
+            layout = navigationLayout,
+            // 竖屏不给侧栏：底栏那套已经是导航，侧栏的入口只有横屏顶栏最左那颗。
+            sidebarEnabled = wideLayout,
+            // 侧栏底下的那块背景不要「从内容左缘拉出来延伸」：那套延伸是为播放器
+            // 那种整屏渐变压的，铺在这五屏上会变成一条被拉糊的彩色带。关掉它，
+            // 侧栏玻璃就老实去高斯模糊它自己盖住的那块内容。
+            extendContentUnderSidebar = false,
             contentBackdrop = pageBackdrop,
-        ) {
-            // 五个 tab 的内容也在这层里，里面同样有玻璃件（首页那排按钮等）。
-            // 采样层内自采样会递归把 RenderThread 栈打穿，统一关掉（见 NoSamplingBackdrop）。
-            NoSamplingBackdrop {
-                // 除了 scaffold 内部那层（glasmio 的 pageBackdrop），这里再录一层给底栏用。
-                // 录制层上只挂 layerBackdrop + trackBackdropPosition，绝不加 Offscreen 合成。
-                Box(
+            sidebar = {
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        // 同一次录制，再报给 glasmio 那条 shared backdrop（底栏用）。
-                        // 录制层上依旧只挂录制修饰符，绝不加 Offscreen 合成。
-                        .glasmioLayerBackdrop(shelfSource)
-                        .glasmioTrackBackdropPosition(shelfSource),
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
                 ) {
-                HorizontalPager(
-                    state = pager,
-                    beyondViewportPageCount = 1,
-                    modifier = Modifier.fillMaxSize().statusBarsPadding(),
-                ) { index ->
-                    // 每一格都挂上「我是哪一格」，屏内的滚动视口才报得到 navScroll 手上。
-                    val shelf = Shelf.entries[index]
-                    ShelfPageEntry(key = shelf, headers = shelfHeaders) {
-                        when (shelf) {
-                            Shelf.Home -> HomeScreen(open = open)
-                            Shelf.Timetable -> TimetableScreen()
-                            Shelf.Message -> MessageScreen()
-                            Shelf.Notice -> NoticeScreen(open = open)
-                            Shelf.Me -> MeScreen(open = open)
-                        }
-                    }
-                }
-                }
-            }
-        }
-
-        // 底栏与它上面那条播放条一起收进一个底部 Column：
-        // 播放条只在首页出现（"移植到主界面"），没歌时它自己整条不渲染。
-        Column(
-            modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
-        ) {
-            // 播放条还是音乐模块那套 Kyant0 玻璃（MiniPlayerBar 读的是它自己那份 CompositionLocal，
-            // 默认值就是 error(...)），所以 provider 只包住它这一块，不和底栏混用。
-            // 封面叠上来时把首页那条胶囊让给 overlay 里的同一个（位置/材质同源），
-            // 否则两枚胶囊会在同一处重叠一帧。
-            // 每一格都挂：用户要求课程表/消息/公告/我的都有这条胶囊，上游也是全局一层。
-            if (!coverOpen) {
-                androidx.compose.runtime.CompositionLocalProvider(
-                    // 播放条那一块仍是音乐模块那份 Kyant 玻璃，配色也取它自己那套
-                    // （与本屏底栏的 glasmio 配色互不影响）。
-                    LocalGlasmioGlassColors provides glasmioDefaultGlassColors(
-                        isDark = dark,
-                        accent = MaterialTheme.colorScheme.primary,
-                    ),
-                    LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
-                        liquidGlassEnabled = true,
-                        reduceTransparency = false,
-                    ),
-                    LocalGlasmioGlassBackdrop provides shelfBackdrop,
-                    LocalGlasmioBlurBackdrop provides shelfBackdrop,
-                ) {
-                    com.andaxin.feature.music.MusicBar(
-                        state = musicBarState,
-                        // 封面不开新页面：Navigation 的转场会把上一页拆掉，涨封面的过程中
-                        // 底下露出的是 NavHost 的纯色底，看起来就是"先进音乐界面再弹封面"。
-                        // 这里改成叠一层 overlay，首页始终在组合里，胶囊从原位涨起来。
-                        open = { coverOpen = true },
-                        // 与底栏共用同一个手势进度：下滑收球时音乐条同步收成胶囊
-                        // （MeiloXNavigationScrollState 的 animateFloatAsState 已经带弹簧，这里不再插值）。
-                        compactProgress = navScroll.compactProgress,
-                        // 收进同一行：照 MeiloX 的 miniPlayerVerticalOffset
-                        // （MusicScreen.kt:1144-1175，(NavigationBarHeight-16dp)*progress），
-                        // progress=1 时胶囊正好落进两球那一行。
-                        // 这里必须乘连续值：早前 roundToInt() 把 progress 压成 0/1 两档，
-                        // 竖向位移只会在过半那一刻整段跳一下，横向却跟着手指连续变 —— 就是"不跟手"。
-                        modifier = Modifier.offset {
-                            IntOffset(0, ((NavigationBarHeight - 16.dp).toPx() * navScroll.compactProgress.value).roundToInt())
+                    GlasmioSidebarToolbar(
+                        leading = {
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(R.string.app_name),
+                                style = IosTypography.headline,
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                            )
+                        },
+                        trailing = {
+                            GlasmioIconButton(onClick = { adaptiveNavigation.sidebarExpanded = false }) {
+                                GlasmioSidebarToggleIcon()
+                            }
                         },
                     )
+                    Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                        shelfTabs.forEach { item ->
+                            val shelf = item.key as Shelf
+                            GlasmioSidebarRow(
+                                title = item.label,
+                                symbol = item.symbol,
+                                selected = activeShelf == shelf,
+                                onClick = {
+                                    // 与底栏同一条路：先把高亮挪过去，再让 pager 滚。
+                                    if (shelf != Shelf.Me) {
+                                        barKey = shelf
+                                        meSelected = false
+                                    } else {
+                                        meSelected = true
+                                    }
+                                    scope.launch {
+                                        pager.animateScrollToPage(shelf.ordinal)
+                                        adaptiveNavigation.sidebarExpanded = false
+                                    }
+                                },
+                            )
+                        }
+                        // 五格之外再来一行：横屏顶栏末端那颗放大镜走的也是这里。
+                        GlasmioSidebarRow(
+                            title = "更多功能",
+                            symbol = SfSymbol.Ellipsis,
+                            selected = false,
+                            onClick = {
+                                adaptiveNavigation.sidebarExpanded = false
+                                open(Route.MORE)
+                            },
+                        )
+                    }
+                }
+            },
+        ) {
+            GlasmioNavigationScaffold(
+                motion = headerMotion,
+                header = { entryKey -> headerSpecs[(entryKey as Shelf).ordinal] },
+                modifier = Modifier.fillMaxSize().nestedScroll(navScroll.nestedScrollConnection),
+                contentBackdrop = pageBackdrop,
+                // 横屏才给顶栏。库会在这条末尾强制追加一格放大镜，宿主没有搜索页，
+                // 就接「更多功能」页（他定的，别改成打开搜索）。
+                topBar = if (wideLayout) {
+                    { availableWidth ->
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            LocalGlasmioGlassColors provides glassColors,
+                        ) {
+                            GlasmioTabBar(
+                                items = shelfTabs,
+                                selectedKey = activeShelf,
+                                onSelected = { key ->
+                                    if (key is Shelf) {
+                                        // 同底栏：先把高亮挪过去再翻页，水滴才跟手。
+                                        if (key != Shelf.Me) {
+                                            barKey = key
+                                            meSelected = false
+                                        } else {
+                                            meSelected = true
+                                        }
+                                        scope.launch { pager.animateScrollToPage(key.ordinal) }
+                                    }
+                                },
+                                onSearchClick = { open(Route.MORE) },
+                                searchKey = Route.MORE,
+                                searchLabel = "更多功能",
+                                onSidebarToggle = adaptiveNavigation::toggleSidebar,
+                                sidebarToggleLabel =
+                                    if (adaptiveNavigation.sidebarExpanded) "收起侧栏" else "展开侧栏",
+                                modifier = Modifier.widthIn(max = minOf(560.dp, availableWidth)),
+                            )
+                        }
+                    }
+                } else {
+                    null
+                },
+            ) {
+                // 五个 tab 的内容也在这层里，里面同样有玻璃件（首页那排按钮等）。
+                // 采样层内自采样会递归把 RenderThread 栈打穿，统一关掉（见 NoSamplingBackdrop）。
+                NoSamplingBackdrop {
+                    // 除了 scaffold 内部那层（glasmio 的 pageBackdrop），这里再录一层给底栏用。
+                    // 录制层上只挂 layerBackdrop + trackBackdropPosition，绝不加 Offscreen 合成。
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            // 同一次录制，再报给 glasmio 那条 shared backdrop（底栏用）。
+                            // 录制层上依旧只挂录制修饰符，绝不加 Offscreen 合成。
+                            .glasmioLayerBackdrop(shelfSource)
+                            .glasmioTrackBackdropPosition(shelfSource),
+                    ) {
+                        HorizontalPager(
+                            state = pager,
+                            beyondViewportPageCount = 1,
+                            // 横屏那条顶栏是浮层、不吃布局高度，内容得自己让出 62dp。
+                            modifier = Modifier.fillMaxSize().statusBarsPadding().then(
+                                if (wideLayout) {
+                                    Modifier.padding(top = GlasmioAdaptiveNavigationDefaults.TopBarHeight)
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                    ) { index ->
+                        // 每一格都挂上「我是哪一格」，屏内的滚动视口才报得到 navScroll 手上。
+                        val shelf = Shelf.entries[index]
+                        ShelfPageEntry(key = shelf, headers = shelfHeaders) {
+                            when (shelf) {
+                                Shelf.Home -> HomeScreen(open = open)
+                                Shelf.Timetable -> TimetableScreen()
+                                Shelf.Message -> MessageScreen()
+                                Shelf.Notice -> NoticeScreen(open = open)
+                                Shelf.Me -> MeScreen(open = open)
+                            }
+                        }
+                    }
+                    }
                 }
             }
 
-            // 底栏：以 MeiloX main 源码为准（m03315）—— 直接调 glasmio 的
-            // GlasmioNavigationBarWithTrailingItem，与上游 MainActivity_main.kt:1665-1704 同一份实现。
-            // 早先那版调的是 music 模块里 1.55.1 的 kyant 版 GlassBottomBar，几何/手感都不是同一条链。
-            androidx.compose.runtime.CompositionLocalProvider(
-                LocalGlasmioGlassColors provides glassColors,
-                LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
-                    liquidGlassEnabled = true,
-                    reduceTransparency = false,
-                ),
-                LocalGlasmioGlassBackdrop provides shelfBackdrop,
-                LocalGlasmioBlurBackdrop provides shelfBackdrop,
+            // 底栏与它上面那条播放条一起收进一个底部 Column：
+            // 播放条只在首页出现（"移植到主界面"），没歌时它自己整条不渲染。
+            // glasmioAdaptiveContent()：侧栏滑出来时这一列跟着让位，不被侧栏压住。
+            Column(
+                modifier = Modifier.fillMaxWidth().glasmioAdaptiveContent().align(Alignment.BottomCenter),
             ) {
-                ShelfBottomBar(
-                    selected = selectedKey,
-                    labels = labels,
-                    // 先把高亮挪过去再让 pager 滚：库里的水滴是拿 selectedKey 的变化驱动
-                    // dragAnimation.animateToValue 的（GlassBottomBar.kt:464-470），等 settledPage
-                    // 回来才改 key，就等于整段翻页期间水滴一动不动，松手后才补一段 —— 用户说的"有延迟"。
-                    // 上游 MainActivity_main.kt:1455-1466 也是 onSelected 里先 setLastSelectedTab，
-                    // selectedIndex 立刻跟着 currentRoute 变，翻页动画与水滴同时起步。
-                    onSelected = { shelf ->
-                        // 「我的」不传进 items（库会 indexOfFirst 兜成 0 再把水滴甩回首页），
-                        // 但也得让水滴立刻起步：只翻 meSelected，等 settledPage 回来才动就慢半拍。
-                        if (shelf != Shelf.Me) {
-                            barKey = shelf
-                            meSelected = false
-                        } else {
-                            meSelected = true
-                        }
-                        scope.launch { pager.animateScrollToPage(shelf.ordinal) }
-                    },
-                    trailingSelected = meSelected,
-                    backdrop = shelfBackdrop,
-                    compactProgress = navScroll.compactProgress,
-                    scrollHint = navScroll.scrollHintProgress,
-                    onExpand = navScroll::expand,
-                )
+                // 播放条还是音乐模块那套 Kyant0 玻璃（MiniPlayerBar 读的是它自己那份 CompositionLocal，
+                // 默认值就是 error(...)），所以 provider 只包住它这一块，不和底栏混用。
+                // 封面叠上来时把首页那条胶囊让给 overlay 里的同一个（位置/材质同源），
+                // 否则两枚胶囊会在同一处重叠一帧。
+                // 每一格都挂：用户要求课程表/消息/公告/我的都有这条胶囊，上游也是全局一层。
+                if (!coverOpen) {
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        // 播放条那一块仍是音乐模块那份 Kyant 玻璃，配色也取它自己那套
+                        // （与本屏底栏的 glasmio 配色互不影响）。
+                        LocalGlasmioGlassColors provides glasmioDefaultGlassColors(
+                            isDark = dark,
+                            accent = MaterialTheme.colorScheme.primary,
+                        ),
+                        LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
+                            liquidGlassEnabled = true,
+                            reduceTransparency = false,
+                        ),
+                        LocalGlasmioGlassBackdrop provides shelfBackdrop,
+                        LocalGlasmioBlurBackdrop provides shelfBackdrop,
+                    ) {
+                        com.andaxin.feature.music.MusicBar(
+                            state = musicBarState,
+                            // 封面不开新页面：Navigation 的转场会把上一页拆掉，涨封面的过程中
+                            // 底下露出的是 NavHost 的纯色底，看起来就是"先进音乐界面再弹封面"。
+                            // 这里改成叠一层 overlay，首页始终在组合里，胶囊从原位涨起来。
+                            open = { coverOpen = true },
+                            // 与底栏共用同一个手势进度：下滑收球时音乐条同步收成胶囊
+                            // （MeiloXNavigationScrollState 的 animateFloatAsState 已经带弹簧，这里不再插值）。
+                            compactProgress = navScroll.compactProgress,
+                            // 收进同一行：照 MeiloX 的 miniPlayerVerticalOffset
+                            // （MusicScreen.kt:1144-1175，(NavigationBarHeight-16dp)*progress），
+                            // progress=1 时胶囊正好落进两球那一行。
+                            // 这里必须乘连续值：早前 roundToInt() 把 progress 压成 0/1 两档，
+                            // 竖向位移只会在过半那一刻整段跳一下，横向却跟着手指连续变 —— 就是"不跟手"。
+                            modifier = Modifier.offset {
+                                IntOffset(0, ((NavigationBarHeight - 16.dp).toPx() * navScroll.compactProgress.value).roundToInt())
+                            },
+                        )
+                    }
+                }
+                // 横屏没有底栏：顶栏那条标签栏就是导航，底栏再留一条会把内容挤没。
+                if (!wideLayout) {
+                    // 底栏：以 MeiloX main 源码为准（m03315）—— 直接调 glasmio 的
+                    // GlasmioNavigationBarWithTrailingItem，与上游 MainActivity_main.kt:1665-1704 同一份实现。
+                    // 早先那版调的是 music 模块里 1.55.1 的 kyant 版 GlassBottomBar，几何/手感都不是同一条链。
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        LocalGlasmioGlassColors provides glassColors,
+                        LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
+                            liquidGlassEnabled = true,
+                            reduceTransparency = false,
+                        ),
+                        LocalGlasmioGlassBackdrop provides shelfBackdrop,
+                        LocalGlasmioBlurBackdrop provides shelfBackdrop,
+                    ) {
+                        ShelfBottomBar(
+                            selected = selectedKey,
+                            labels = labels,
+                            // 先把高亮挪过去再让 pager 滚：库里的水滴是拿 selectedKey 的变化驱动
+                            // dragAnimation.animateToValue 的（GlassBottomBar.kt:464-470），等 settledPage
+                            // 回来才改 key，就等于整段翻页期间水滴一动不动，松手后才补一段 —— 用户说的"有延迟"。
+                            // 上游 MainActivity_main.kt:1455-1466 也是 onSelected 里先 setLastSelectedTab，
+                            // selectedIndex 立刻跟着 currentRoute 变，翻页动画与水滴同时起步。
+                            onSelected = { shelf ->
+                                // 「我的」不传进 items（库会 indexOfFirst 兜成 0 再把水滴甩回首页），
+                                // 但也得让水滴立刻起步：只翻 meSelected，等 settledPage 回来才动就慢半拍。
+                                if (shelf != Shelf.Me) {
+                                    barKey = shelf
+                                    meSelected = false
+                                } else {
+                                    meSelected = true
+                                }
+                                scope.launch { pager.animateScrollToPage(shelf.ordinal) }
+                            },
+                            trailingSelected = meSelected,
+                            backdrop = shelfBackdrop,
+                            compactProgress = navScroll.compactProgress,
+                            scrollHint = navScroll.scrollHintProgress,
+                            onExpand = navScroll::expand,
+                        )
+                    }
+                }
             }
         }
 
@@ -784,4 +934,3 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
         }
     }
 }
-
