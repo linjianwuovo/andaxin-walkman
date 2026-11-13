@@ -16,7 +16,7 @@ import org.json.JSONObject
  * 回的是它的 apk，对我们只剩"官方升到哪儿了、协议可能变了"那一点用处，不是给我们自己检查更新。
  *
  * 【渠道 · 10-23 深夜现打定死】读的是 GitHub 的 release 订阅 `releases.atom`，不是 API：
- * `GET https://github.com/linjianwuovo/andaxin/releases.atom` 回 10 条 `<entry>`，
+ * `GET https://github.com/linjianwuovo/andaxin-walkman/releases.atom` 回 10 条 `<entry>`，
  * `title` **是 release 的名字、不是 tag** —— tag 只能从 `<link rel="alternate">` 那条页面
  * 地址末尾取（10-25 凌晨踩过这个雷：拿 title 当 tag 拼出来的下载链和页面链都指向不存在的
  * 路径，一个下不动、一个 GitHub 回 404）。`updated` 是发布时间。
@@ -26,7 +26,7 @@ import org.json.JSONObject
  *
  * 代价说清楚：atom 里没有附件大小、没有 md5、没有正文 —— 这三样界面上就不显示，
  * 不拿"估计 24 MB"这种话糊人。附件直链按我们自己的命名规则拼
- * （`andaxin-<版本>-release.apk` / `andaxin-<版本>-beta.apk`，发版脚本就是这么命名的），
+ * （`app-stable-release.apk` / `app-beta-release.apk`，AGP 按 flavor 与 buildType 拼出来的默认名），
  * 同时把 release 页那条链接也给出去，不赌一条。
  */
 
@@ -93,8 +93,7 @@ class UpdateFeed {
                 version = version,
                 tag = tag,
                 date = ENTRY_DATE.find(entry.value)?.groupValues?.get(1)?.substringBefore('T').orEmpty(),
-                apkUrl = "$BASE/releases/download/$tag/" +
-                    if (isBeta) "andaxin-$version-beta.apk" else "andaxin-$version-release.apk",
+                apkUrl = "$BASE/releases/download/$tag/" + apkName(isBeta),
                 pageUrl = page,
             )
             if (best == null || compareVersion(r.version, best!!.version) > 0) best = r
@@ -118,8 +117,13 @@ class UpdateFeed {
     private fun now(): String = SimpleDateFormat("MM-dd HH:mm", Locale.US).format(Date())
 
     companion object {
-        /** 仓的首页。检测更新拼直链用它，关于页那一行「GitHub 仓库」点的也是它。 */
-        const val BASE = "https://github.com/linjianwuovo/andaxin"
+        /**
+         * 仓的首页。检测更新拼直链用它，关于页那一行「GitHub 仓库」点的也是它。
+         * 是随身听这个仓（andaxin-walkman），不是早先那个校方壳 `andaxin` ——
+         * 那个仓 0.9.1-0.9.20 的 release 已经删了，但 releases.atom 头条还挂着 v0.9.20，
+         * 指过去只会让「检测更新」报一个下不动的版本。
+         */
+        const val BASE = "https://github.com/linjianwuovo/andaxin-walkman"
         const val ATOM = "$BASE/releases.atom"
 
         /** GitHub 不看 UA，但我们也不冒充学校的壳（那条 `okhttp/4.9.3` 是给校方那几发用的）。 */
@@ -127,6 +131,14 @@ class UpdateFeed {
         val ENTRIES = Regex("<entry>(.*?)</entry>", RegexOption.DOT_MATCHES_ALL)
         val ENTRY_LINK = Regex("<link[^>]*rel=\"alternate\"[^>]*href=\"([^\"]+)\"")
         val ENTRY_DATE = Regex("<updated>(.*?)</updated>")
+
+        /**
+         * 附件名就是 AGP 给 flavor 打出来的默认名：`app-<flavor>-<buildType>.apk`。
+         * 本仓只有 stable 这一条包（app/src/beta 不存在时 beta flavor 根本不建），
+         * 所以正式版固定 `app-stable-release.apk`。别再照老仓那套
+         * `andaxin-<版本>-release.apk` 拼，那个路径在随身听仓里是 404。
+         */
+        fun apkName(beta: Boolean): String = if (beta) "app-beta-release.apk" else "app-stable-release.apk"
     }
 }
 
