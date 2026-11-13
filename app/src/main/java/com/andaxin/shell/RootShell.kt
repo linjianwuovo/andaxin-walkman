@@ -48,6 +48,7 @@ import com.andaxin.core.settings.Appearance
 import com.andaxin.core.settings.DayNight
 import com.andaxin.core.settings.spec
 import com.andaxin.feature.about.AboutScreen
+import com.andaxin.feature.about.LicenseScreen
 import com.andaxin.feature.aiclass.CourseDetailScreen
 import com.andaxin.feature.aiclass.RecordPlayScreen
 import com.andaxin.feature.aiclass.ScanScreen
@@ -149,6 +150,8 @@ object Route {
     const val SHELF = "shelf"
     const val THEME = "theme"
     const val ABOUT = "about"
+    /** 开源许可：GPLv3 §5(d) 要求界面上能看到版权、无担保、许可全文（从「关于」进来）。 */
+    const val LICENSES = "licenses"
     /** 个人信息：头像、学籍资料、退出登录（从「我的」头像点进来）。 */
     const val PROFILE = "profile"
     const val SPORT = "sport"
@@ -323,6 +326,7 @@ fun RootShell() {
         page(Route.ABOUT) {
             AboutScreen(onBack = { nav.popBackStack() }, open = openPage)
         }
+        page(Route.LICENSES) { LicenseScreen(onBack = { nav.popBackStack() }) }
         page(Route.PROFILE) { ProfileScreen(onBack = { nav.popBackStack() }) }
         page(Route.SPORT) { SportStartScreen(open = openPage, onBack = { nav.popBackStack() }) }
         page(Route.SPORT_RUN) { SportRunScreen(onBack = { nav.popBackStack() }) }

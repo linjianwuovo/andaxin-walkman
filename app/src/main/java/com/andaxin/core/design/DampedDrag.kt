@@ -11,8 +11,10 @@
 //      `positionChange()` → `position - previousPosition`（这个扩展在当前 Compose 版本里解析不到），
 //      其余阻尼参数一个没动。
 //
-// 为什么要搬它：SukiSU Ultra 那套底栏（水滴滑块 + 抬手才换页 + 整条栏橡皮条）用的就是它，
-// 而 SukiSU 自己是 GPL-3.0，不能往这个净室仓里抄；Miuix 是 Apache-2.0，可以。
+// 为什么要搬它：SukiSU Ultra 那套底栏（水滴滑块 + 抬手才换页 + 整条栏橡皮条）用的就是它。
+// 当时本仓还是 Apache-2.0，从 GPL-3.0 的 SukiSU 里抄会把整仓拖成 GPL，所以不抄它，
+// 改取 Miuix 这份 Apache-2.0 的上游副本 —— 同源，但来路干净。
+// （整仓现在已按 GPLv3 分发，见 NOTICE；这句不改写当时的理由，只补一句现在是什么。）
 //
 // 它给的东西：value（连续浮点的页索引，带阻尼弹簧）、velocity、pressProgress（按下去的进度）、
 // scaleX/scaleY 各自一根不同阻尼的弹簧 —— 按压时横纵不同步地涨，就是那个"水球被捏一下"的味道。

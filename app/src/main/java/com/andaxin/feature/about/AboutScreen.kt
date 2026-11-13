@@ -25,6 +25,7 @@ import com.andaxin.data.capture.UpdateFeed
 import com.andaxin.feature.brief.ScaffoldPage
 import com.andaxin.feature.web.encodeUrl
 import com.andaxin.shell.Hairline
+import com.andaxin.shell.Route
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.pressClick
@@ -111,6 +112,16 @@ fun AboutScreen(
                     if (row.external) openOutside(context, row.url, open) else open("web/" + encodeUrl(row.url))
                 })
             }
+        }
+
+        Spacer(Modifier.height(Gap.lg))
+        /*
+         * 开源许可那一格。GPLv3 §5(d) 要求交互界面里能方便地看到版权、无担保和许可全文，
+         * 所以它不是藏在"关于"里的彩蛋：跟 GitHub、爱发电并排，点一下就是一屏。
+         * 放自己一张卡，是因为它跟上面那两行"去处"不是一类东西 —— 那两行去的是别人的站。
+         */
+        Sheet {
+            RowLine("开源许可", sub = "GNU GPL v3 全文 · 第三方组件", onClick = { open(Route.LICENSES) })
         }
 
         Spacer(Modifier.height(Gap.lg))

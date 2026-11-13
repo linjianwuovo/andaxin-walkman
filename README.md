@@ -77,4 +77,13 @@ AI 课堂那一屏例外：它只问真接口，没登录就直接说拿不到�
 
 ## 许可
 
-Apache-2.0，全文见 [LICENSE](LICENSE)。第三方组件的许可、机制参考的来源、以及和轻小信那条线（MIT）的关系，逐条列在 [NOTICE](NOTICE)。
+GNU GPL v3，全文见 [LICENSE](LICENSE)。
+
+这一条是硬的：本仓含有 MeiloX 1.55.1（GPLv3）的派生代码，所以**整个仓**按 GPLv3 分发，而不是原来那套 Apache-2.0。你拿这份源码去改、去发，条件都写在 LICENSE 里；其中一条是：分发二进制的时候，必须把对应源码按同样的许可一起给出去。
+
+- 源码就是本仓，发布哪个 tag 的 APK，对应的源码就是那个 tag：https://github.com/linjianwuovo/andaxin-walkman
+- 这是 MeiloX 的修改版本，改了哪些、从哪个提交开始改的：见 [NOTICE](NOTICE) 第一节（GPLv3 §5(a) 要求的那份声明）
+- 第三方组件的许可、机制参考的来源、以及和轻小信那条线（MIT）的关系：逐条列在 [NOTICE](NOTICE)
+- 应用内也能看：我的 → 关于安大信 → 开源许可
+
+> 仓里还有一小撮不是我的东西（网易云音乐的专有运行时、SF Pro 与 MiSans 字体、PV Tool 的模板），它们**不在** GPLv3 的授权范围内，[NOTICE](NOTICE) 第七节如实列了清单。要商用或另作他用，这几样得自己解决。
