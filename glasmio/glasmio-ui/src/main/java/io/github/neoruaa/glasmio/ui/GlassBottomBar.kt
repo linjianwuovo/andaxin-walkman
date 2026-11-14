@@ -594,6 +594,7 @@ fun <T> GlasmioNavigationBar(
             selectionPressProgressState,
             colors.accent,
             colors.content,
+            externalSelectionProgress,
         ) {
             derivedStateOf {
                 val compactTint = androidx.compose.ui.graphics.lerp(
@@ -601,12 +602,16 @@ fun <T> GlasmioNavigationBar(
                     colors.content,
                     compactState.value,
                 )
+                val pressedTint = androidx.compose.ui.graphics.lerp(
+                    compactTint,
+                    colors.content,
+                    selectionPressProgressState.value,
+                )
+                // 水滴滑出胶囊、落到圆钮上之后，原选中格不该再顶着 accent：
+                // 颜色滤片按外滑进度插值回 content，它就长得和未选中的格子一样。
+                val external = externalSelectionProgress?.value?.coerceIn(0f, 1f) ?: 0f
                 ColorFilter.tint(
-                    androidx.compose.ui.graphics.lerp(
-                        compactTint,
-                        colors.content,
-                        selectionPressProgressState.value,
-                    ),
+                    androidx.compose.ui.graphics.lerp(pressedTint, colors.content, external),
                 )
             }
         }
