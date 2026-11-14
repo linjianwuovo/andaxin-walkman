@@ -729,10 +729,9 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                                     } else {
                                         meSelected = true
                                     }
-                                    scope.launch {
-                                        pager.animateScrollToPage(shelf.ordinal)
-                                        adaptiveNavigation.sidebarExpanded = false
-                                    }
+                                    // 侧栏选中后不收：横屏这块是常驻导航，挤着内容摆在那儿，
+                                    // 每点一下都收回去等于每次都要重新点开（他 11-14 提的）。
+                                    scope.launch { pager.animateScrollToPage(shelf.ordinal) }
                                 },
                             )
                         }
@@ -741,10 +740,7 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                             title = "更多功能",
                             symbol = SfSymbol.Ellipsis,
                             selected = false,
-                            onClick = {
-                                adaptiveNavigation.sidebarExpanded = false
-                                open(Route.MORE)
-                            },
+                            onClick = { open(Route.MORE) },
                         )
                     }
                 }
@@ -808,7 +804,10 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                             state = pager,
                             beyondViewportPageCount = 1,
                             // 横屏那条顶栏是浮层、不吃布局高度，内容得自己让出 62dp。
-                            modifier = Modifier.fillMaxSize().statusBarsPadding().then(
+                            // glasmioAdaptiveContent()：侧栏展开时这一列跟着让位（窗口 inset 由
+                            // scaffold 按侧栏展开进度给），内容被挤窄而不是被侧栏盖住。
+                            modifier = Modifier.fillMaxSize().glasmioAdaptiveContent()
+                                .statusBarsPadding().then(
                                 if (wideLayout) {
                                     Modifier.padding(top = GlasmioAdaptiveNavigationDefaults.TopBarHeight)
                                 } else {
