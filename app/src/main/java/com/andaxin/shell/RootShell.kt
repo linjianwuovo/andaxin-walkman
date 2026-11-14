@@ -43,6 +43,7 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.andaxin.R
 import com.andaxin.app.LocalAppGraph
@@ -121,6 +122,7 @@ import io.github.neoruaa.glasmio.core.IosTypography
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import io.github.neoruaa.glasmio.scaffold.GlasmioAdaptiveNavigationDefaults
 import io.github.neoruaa.glasmio.scaffold.GlasmioAdaptiveNavigationScaffold
+import io.github.neoruaa.glasmio.scaffold.GlasmioAdaptiveNavigationState
 import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationLayout
 import io.github.neoruaa.glasmio.scaffold.glasmioAdaptiveContent
 import io.github.neoruaa.glasmio.scaffold.glasmioNavigationLayout
@@ -288,11 +290,53 @@ private fun NavGraphBuilder.page(
         content = { entry ->
             val scope = this
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                with(scope) { content(entry) }
+                // 横屏侧栏展开时整页往右让出那一列（库按展开进度发窗口 inset，被 windowInsetsPadding
+                // 吃掉之后里层不会再加一次）。背景仍铺满整窗，让位的只有内容。
+                Box(Modifier.fillMaxSize().glasmioAdaptiveContent()) {
+                    with(scope) { content(entry) }
+                }
             }
         },
     )
 }
+
+/**
+ * 书架那一屏的选中态。
+ *
+ * 以前它住在 ShelfHost 里；横屏侧栏从 11-14 起搬到 RootShell（要包住整个 NavHost），
+ * 侧栏和顶栏都要读它，只能提到这一层。
+ *
+ * 底栏的高亮不能直接吃 pager 的页号：currentPage 在动画途中逐格报，底栏把每次 selectedKey
+ * 变化当成"用户换格"回发 onSelected，两股动画互相拽，点圆钮最后会停回首页 —— 只吃落定页。
+ * 「我的」不在底栏的 items 里，喂进去库会 indexOfFirst 兜成 0（GlassBottomBar.kt:170）
+ * 再回发一次 onSelected(Home)，所以 barKey 只记"最后一个属于底栏的格"；停在「我的」时
+ * 由 meSelected 让水滴从那格滑到右侧圆钮上。
+ */
+private class ShelfSelection {
+    var barKey by mutableStateOf(Shelf.Home)
+    var meSelected by mutableStateOf(false)
+
+    val active: Shelf get() = if (meSelected) Shelf.Me else barKey
+
+    /** 点下去先把高亮挪过去再翻页：等落定页回来才改，整段动画期间水滴一动不动。 */
+    fun select(shelf: Shelf) {
+        if (shelf == Shelf.Me) {
+            meSelected = true
+        } else {
+            barKey = shelf
+            meSelected = false
+        }
+    }
+
+    /** pager 落定后回写（与 MeiloX 一样只认落定页）。 */
+    fun settle(shelf: Shelf) {
+        meSelected = shelf == Shelf.Me
+        if (shelf != Shelf.Me) barKey = shelf
+    }
+}
+
+/** 横屏侧栏宽度。库默认 320dp 在 2560 宽的板上占掉近两成，太宽（他 11-14 提的）。 */
+private val SidebarWidth = 240.dp
 
 @Composable
 fun RootShell() {
@@ -300,6 +344,52 @@ fun RootShell() {
     val appearance by graph.appearance.state
         .collectAsStateWithLifecycle(initialValue = Appearance())
     val nav = rememberNavController()
+
+    /*
+     * 横屏那块侧栏从 11-14 起包住整个 NavHost —— 以前它只在书架那一屏里面，
+     * 所以「公告」点进文章、点「更多功能」都是整屏推进去、侧栏整个消失（他提的）。
+     * 侧栏和顶栏都要读「现在选的是哪一格」，选中态跟着提到这一层。
+     */
+    val adaptiveNavigation = rememberGlasmioAdaptiveNavigationState()
+    val navigationLayout = glasmioNavigationLayout()
+    val wideLayout = navigationLayout == GlasmioNavigationLayout.TopTabs
+    val shelfNav = remember { ShelfSelection() }
+    // 顶栏里库只画 label、不画 symbol，但侧栏那几行要用 symbol，两处共用这一份。
+    // 库里 GlasmioTabBar 会在末尾强制追加一格放大镜，T 只能取 Any（Shelf 与 String 混在一条上）。
+    val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
+    val shelfTabs = remember(labels) {
+        listOf(
+            GlasmioTabItem<Any>(Shelf.Home, labels[Shelf.Home.ordinal], SfSymbol.HouseFilled),
+            GlasmioTabItem<Any>(Shelf.Timetable, labels[Shelf.Timetable.ordinal], SfSymbol.ClockFilled),
+            GlasmioTabItem<Any>(Shelf.Message, labels[Shelf.Message.ordinal], SfSymbol.Ellipsis),
+            GlasmioTabItem<Any>(Shelf.Notice, labels[Shelf.Notice.ordinal], SfSymbol.InfoCircle),
+            GlasmioTabItem<Any>(Shelf.Me, labels[Shelf.Me.ordinal], SfSymbol.PersonFilled),
+        )
+    }
+    /*
+     * 引导页/登录页头上不该有那排格子，所以侧栏还要等会话到位；
+     * 音乐屏自带一套侧栏（music/src/main/java/com/ljyh/mei/MusicScreen.kt:1068），这一层让开，
+     * 不然进去会并排两层。
+     */
+    val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
+    val backEntry by nav.currentBackStackEntryAsState()
+    val route = backEntry?.destination?.route
+    val sidebarEnabled = wideLayout &&
+        session.onboarded && (session.loggedIn || session.browsing) &&
+        route?.startsWith(Route.MUSIC) != true
+    /*
+     * 二级页头上没有那排格子，侧栏就是唯一的导航 —— 一进去就得摆着（他 11-14 提的：
+     * 点进文章之后左边整个没了）。只在「从书架踏进二级页」这一刻展开一次：
+     * 二级页之间来回不再重复拉，用户自己在二级页里收起了就让它收着。
+     */
+    var lastRoute by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(route) {
+        val from = lastRoute
+        lastRoute = route
+        val entering = route != null && route != Route.SHELF &&
+            (from == null || from == Route.SHELF)
+        if (sidebarEnabled && entering) adaptiveNavigation.sidebarExpanded = true
+    }
 
     /*
      * 点通知要求落到某一格（10-25 他"消息tab里的通知也要通知"那条的落点）。
@@ -320,156 +410,231 @@ fun RootShell() {
         }
     }
 
-    // 底栏和整屏共用同一份 Appearance：明暗在最外层（MainActivity）决定
-    NavHost(
-        navController = nav,
-        startDestination = Route.SHELF,
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+    GlasmioAdaptiveNavigationScaffold(
+        state = adaptiveNavigation,
+        layout = navigationLayout,
+        // 引导页/登录页不该有侧栏，音乐屏自带一层（MusicScreen.kt:1068），这里都让开。
+        sidebarEnabled = sidebarEnabled,
+        // 库默认 320dp 在 2560 宽的板上占掉近两成，太宽（他 11-14 提的）。
+        sidebarWidth = SidebarWidth,
+        // 侧栏底下的那块背景不要「从内容左缘拉出来延伸」：那套延伸是为播放器
+        // 那种整屏渐变压的，铺在这些屏上会变成一条被拉糊的彩色带。关掉它，
+        // 侧栏玻璃就老实去高斯模糊它自己盖住的那块内容。
+        extendContentUnderSidebar = false,
+        sidebar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
+            ) {
+                GlasmioSidebarToolbar(
+                    leading = {
+                        Text(
+                            text = androidx.compose.ui.res.stringResource(R.string.app_name),
+                            style = IosTypography.headline,
+                            modifier = Modifier.padding(horizontal = 10.dp),
+                        )
+                    },
+                    trailing = {
+                        GlasmioIconButton(onClick = { adaptiveNavigation.sidebarExpanded = false }) {
+                            GlasmioSidebarToggleIcon()
+                        }
+                    },
+                )
+                Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    shelfTabs.forEach { item ->
+                        val shelf = item.key as Shelf
+                        GlasmioSidebarRow(
+                            title = item.label,
+                            symbol = item.symbol,
+                            // 站在「更多功能」那一页时，下面这几格都不该亮着。
+                            selected = route != Route.MORE && shelfNav.active == shelf,
+                            onClick = {
+                                // 与底栏同一条路：先把高亮挪过去，再回书架那一屏滚到这一格。
+                                shelfNav.select(shelf)
+                                // 侧栏选中后不收：横屏这块是常驻导航，挤着内容摆在那儿，
+                                // 每点一下都收回去等于每次都要重新点开（他 11-14 提的）。
+                                // 侧栏住在 NavHost 外面、拿不到 pager：借 tabJump 那条老路回去 ——
+                                // 上面那个 LaunchedEffect 把二级页一路退回书架屏，
+                                // ShelfHost 的 LaunchedEffect(jump) 再把格子滚到位（滚完自己清成 -1）。
+                                graph.tabJump.value = shelf.ordinal
+                            },
+                        )
+                    }
+                    // 五格之外再来一行：横屏顶栏末端那颗放大镜走的也是这里。
+                    GlasmioSidebarRow(
+                        title = "更多功能",
+                        symbol = SfSymbol.Ellipsis,
+                        selected = route == Route.MORE,
+                        onClick = { if (route != Route.MORE) openPage(Route.MORE) },
+                    )
+                }
+            }
+        },
     ) {
-        page(Route.SHELF) { Gate(appearance, open = openPage) }
-        // 音乐屏是 MeiloX 那套 Compose 直接搬进来的一页（MusicScreen），不再另起 Activity。
-        page(
-            Route.MUSIC + "?${Route.MUSIC_PLAYER_ARG}={${Route.MUSIC_PLAYER_ARG}}",
-            // 默认值必须声明：没它，「我的」页那条 nav.navigate("music") 匹配不上带 query 的路由，
-            // 运行时会抛 destination not found；有了默认值，裸 "music" 也落同一页、按普通入口收 mini player。
-            arguments = listOf(androidx.navigation.navArgument(Route.MUSIC_PLAYER_ARG) { defaultValue = "" }),
-        ) { entry ->
-            com.ljyh.mei.MusicScreen(
-                openInPlayer = entry.arguments?.getString(Route.MUSIC_PLAYER_ARG) == "1",
-            )
-        }
-        page(Route.THEME) { ThemeScreen(onBack = { nav.popBackStack() }) }
-        page(Route.ABOUT) {
-            AboutScreen(onBack = { nav.popBackStack() }, open = openPage)
-        }
-        page(Route.LICENSES) { LicenseScreen(onBack = { nav.popBackStack() }) }
-        page(Route.PROFILE) { ProfileScreen(onBack = { nav.popBackStack() }) }
-        page(Route.SPORT) { SportStartScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(Route.SPORT_RUN) { SportRunScreen(onBack = { nav.popBackStack() }) }
-        page(Route.SPORT_RECORDS) {
-            SportRecordsScreen(open = openPage, onBack = { nav.popBackStack() })
-        }
-        page(Route.SPORT_MAINTAIN) { SportMaintainScreen(onBack = { nav.popBackStack() }) }
-        // 只有高级模式里的「新建路线」会导航到这里；普通界面没有入口
-        // 画模拟线那一屏只有 beta 那份注册得进来：正式版 debug 是 null，这条路由压根没挂
-        graph.debug?.let { panel ->
-            page(Route.SPORT_PLANNER) { panel.planner.invoke { nav.popBackStack() } }
-        }
-        page(
-            Route.SPORT_DETAIL,
-            arguments = listOf(idPattern()),
-        ) { entry ->
-            SportDetailScreen(recordId = entry.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
-        }
+        // 底栏和整屏共用同一份 Appearance：明暗在最外层（MainActivity）决定
+        NavHost(
+            navController = nav,
+            startDestination = Route.SHELF,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
+            page(Route.SHELF) {
+                Gate(
+                    appearance = appearance,
+                    open = openPage,
+                    wideLayout = wideLayout,
+                    adaptiveNavigation = adaptiveNavigation,
+                    shelfNav = shelfNav,
+                    shelfTabs = shelfTabs,
+                )
+            }
+            // 音乐屏是 MeiloX 那套 Compose 直接搬进来的一页（MusicScreen），不再另起 Activity。
+            page(
+                Route.MUSIC + "?${Route.MUSIC_PLAYER_ARG}={${Route.MUSIC_PLAYER_ARG}}",
+                // 默认值必须声明：没它，「我的」页那条 nav.navigate("music") 匹配不上带 query 的路由，
+                // 运行时会抛 destination not found；有了默认值，裸 "music" 也落同一页、按普通入口收 mini player。
+                arguments = listOf(androidx.navigation.navArgument(Route.MUSIC_PLAYER_ARG) { defaultValue = "" }),
+            ) { entry ->
+                com.ljyh.mei.MusicScreen(
+                    openInPlayer = entry.arguments?.getString(Route.MUSIC_PLAYER_ARG) == "1",
+                )
+            }
+            page(Route.THEME) { ThemeScreen(onBack = { nav.popBackStack() }) }
+            page(Route.ABOUT) {
+                AboutScreen(onBack = { nav.popBackStack() }, open = openPage)
+            }
+            page(Route.LICENSES) { LicenseScreen(onBack = { nav.popBackStack() }) }
+            page(Route.PROFILE) { ProfileScreen(onBack = { nav.popBackStack() }) }
+            page(Route.SPORT) { SportStartScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(Route.SPORT_RUN) { SportRunScreen(onBack = { nav.popBackStack() }) }
+            page(Route.SPORT_RECORDS) {
+                SportRecordsScreen(open = openPage, onBack = { nav.popBackStack() })
+            }
+            page(Route.SPORT_MAINTAIN) { SportMaintainScreen(onBack = { nav.popBackStack() }) }
+            // 只有高级模式里的「新建路线」会导航到这里；普通界面没有入口
+            // 画模拟线那一屏只有 beta 那份注册得进来：正式版 debug 是 null，这条路由压根没挂
+            graph.debug?.let { panel ->
+                page(Route.SPORT_PLANNER) { panel.planner.invoke { nav.popBackStack() } }
+            }
+            page(
+                Route.SPORT_DETAIL,
+                arguments = listOf(idPattern()),
+            ) { entry ->
+                SportDetailScreen(recordId = entry.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
+            }
 
-        page(Route.MORE) { MoreScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(Route.NOTIFY) { NotifyScreen(onBack = { nav.popBackStack() }) }
-        page(Route.CARD) { CampusCardScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(Route.CARD_FLOWS) { CardFlowsScreen(onBack = { nav.popBackStack() }) }
-        page(Route.LOGIN) { LoginScreen(onDone = { nav.popBackStack() }, onBack = { nav.popBackStack() }) }
+            page(Route.MORE) { MoreScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(Route.NOTIFY) { NotifyScreen(onBack = { nav.popBackStack() }) }
+            page(Route.CARD) { CampusCardScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(Route.CARD_FLOWS) { CardFlowsScreen(onBack = { nav.popBackStack() }) }
+            page(Route.LOGIN) { LoginScreen(onDone = { nav.popBackStack() }, onBack = { nav.popBackStack() }) }
 
-        page(Route.DORM) { DormBoardScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(Route.DORM_TASK, arguments = listOf(idPattern())) { e ->
-            DormTaskScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
-        }
-        page(Route.DORM_DETAIL, arguments = listOf(idPattern())) { e ->
-            DormDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
-        }
-        page(Route.EXAM) { ExamListScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(Route.EXAM_DETAIL, arguments = listOf(idPattern())) { e ->
-            ExamDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
-        }
-        page(Route.CREDIT) { CreditListScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(Route.CREDIT_DETAIL, arguments = listOf(idPattern())) { e ->
-            CreditDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
-        }
-        page(Route.DEKT) { com.andaxin.feature.modules.SecondClassScreen(onBack = { nav.popBackStack() }) }
-        page(Route.LABOR) { LaborListScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(Route.LABOR_DETAIL, arguments = listOf(idPattern())) { e ->
-            LaborDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
-        }
-        page(Route.HOLIDAY) { HolidayListScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(Route.HOLIDAY_DETAIL, arguments = listOf(idPattern())) { e ->
-            HolidayDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
-        }
-        page(Route.HOLIDAY_FORM) { HolidayFormScreen(onBack = { nav.popBackStack() }) }
-        page(Route.REPAIR) { RepairListScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(Route.REPAIR_DETAIL, arguments = listOf(idPattern())) { e ->
-            RepairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
-        }
-        page(Route.REPAIR_FORM) { RepairFormScreen(onBack = { nav.popBackStack() }) }
-        page(Route.AFFAIR) { AffairTabsScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(Route.AFFAIR_TAB, arguments = listOf(tabPattern())) { e ->
-            AffairTabsScreen(
-                startTab = e.arguments?.getString(TAB_ARG)?.toIntOrNull() ?: 0,
-                open = openPage,
-                onBack = { nav.popBackStack() },
-            )
-        }
-        page(Route.AFFAIR_DETAIL, arguments = listOf(idPattern())) { e ->
-            AffairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
-        }
-        page(Route.AFFAIR_FORM) { AffairFormScreen(onBack = { nav.popBackStack() }) }
-        page(Route.NOTICE_DETAIL, arguments = listOf(idPattern())) { e ->
-            NoticeDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
-        }
-        page(Route.AICLASS) { AiClassListScreen(open = openPage, onBack = { nav.popBackStack() }) }
-        page(
-            Route.AICLASS_SIGN_QR,
-            arguments = listOf(androidx.navigation.navArgument("u") { defaultValue = "" }),
-        ) { e ->
-            QrSignScreen(
-                url = e.arguments?.getString("u").orEmpty(),
-                onBack = { nav.popBackStack() },
-            )
-        }
-        page(
-            Route.AICLASS_PAPER,
-            arguments = listOf(
-                androidx.navigation.navArgument("r") { defaultValue = "" },
-                androidx.navigation.navArgument("c") { defaultValue = "" },
-                androidx.navigation.navArgument("t") { defaultValue = "" },
-                androidx.navigation.navArgument("title") { defaultValue = "" },
-            ),
-        ) { e ->
-            CoursewareScreen(
-                resourceId = e.arguments?.getString("r").orEmpty(),
-                coursewareId = e.arguments?.getString("c").orEmpty(),
-                teachClassId = e.arguments?.getString("t").orEmpty(),
-                title = e.arguments?.getString("title").orEmpty(),
-                onBack = { nav.popBackStack() },
-            )
-        }
-        page(Route.AICLASS_SCAN) {
-            ScanScreen(
-                onBack = { nav.popBackStack() },
-                onSignUrl = { url ->
-                    nav.navigate("aiclass/signqr/" + android.net.Uri.encode(url))
-                },
-            )
-        }
-        page(Route.AICLASS_DETAIL, arguments = listOf(idPattern())) { e ->
-            CourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), open = openPage) { nav.popBackStack() }
-        }
-        page(Route.AICLASS_PLAY, arguments = listOf(idPattern())) { e ->
-            RecordPlayScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
-        }
-        page(Route.OPEN_COURSE) {
-            OpenCourseListScreen(open = openPage, onBack = { nav.popBackStack() })
-        }
-        page(Route.OPEN_COURSE_DETAIL, arguments = listOf(idPattern())) { e ->
-            OpenCourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
-        }
-        page(Route.GROUP) { GroupScreen(onBack = { nav.popBackStack() }) }
-        page(
-            Route.WEB,
-            arguments = listOf(androidx.navigation.navArgument("u") { defaultValue = "" }),
-        ) { e ->
-            WebScreen(e.arguments?.getString("u").orEmpty(), "", onBack = { nav.popBackStack() })
+            page(Route.DORM) { DormBoardScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(Route.DORM_TASK, arguments = listOf(idPattern())) { e ->
+                DormTaskScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            }
+            page(Route.DORM_DETAIL, arguments = listOf(idPattern())) { e ->
+                DormDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            }
+            page(Route.EXAM) { ExamListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(Route.EXAM_DETAIL, arguments = listOf(idPattern())) { e ->
+                ExamDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            }
+            page(Route.CREDIT) { CreditListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(Route.CREDIT_DETAIL, arguments = listOf(idPattern())) { e ->
+                CreditDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            }
+            page(Route.DEKT) { com.andaxin.feature.modules.SecondClassScreen(onBack = { nav.popBackStack() }) }
+            page(Route.LABOR) { LaborListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(Route.LABOR_DETAIL, arguments = listOf(idPattern())) { e ->
+                LaborDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            }
+            page(Route.HOLIDAY) { HolidayListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(Route.HOLIDAY_DETAIL, arguments = listOf(idPattern())) { e ->
+                HolidayDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            }
+            page(Route.HOLIDAY_FORM) { HolidayFormScreen(onBack = { nav.popBackStack() }) }
+            page(Route.REPAIR) { RepairListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(Route.REPAIR_DETAIL, arguments = listOf(idPattern())) { e ->
+                RepairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            }
+            page(Route.REPAIR_FORM) { RepairFormScreen(onBack = { nav.popBackStack() }) }
+            page(Route.AFFAIR) { AffairTabsScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(Route.AFFAIR_TAB, arguments = listOf(tabPattern())) { e ->
+                AffairTabsScreen(
+                    startTab = e.arguments?.getString(TAB_ARG)?.toIntOrNull() ?: 0,
+                    open = openPage,
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            page(Route.AFFAIR_DETAIL, arguments = listOf(idPattern())) { e ->
+                AffairDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            }
+            page(Route.AFFAIR_FORM) { AffairFormScreen(onBack = { nav.popBackStack() }) }
+            page(Route.NOTICE_DETAIL, arguments = listOf(idPattern())) { e ->
+                NoticeDetailScreen(e.arguments?.getString(ID_ARG).orEmpty()) { nav.popBackStack() }
+            }
+            page(Route.AICLASS) { AiClassListScreen(open = openPage, onBack = { nav.popBackStack() }) }
+            page(
+                Route.AICLASS_SIGN_QR,
+                arguments = listOf(androidx.navigation.navArgument("u") { defaultValue = "" }),
+            ) { e ->
+                QrSignScreen(
+                    url = e.arguments?.getString("u").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            page(
+                Route.AICLASS_PAPER,
+                arguments = listOf(
+                    androidx.navigation.navArgument("r") { defaultValue = "" },
+                    androidx.navigation.navArgument("c") { defaultValue = "" },
+                    androidx.navigation.navArgument("t") { defaultValue = "" },
+                    androidx.navigation.navArgument("title") { defaultValue = "" },
+                ),
+            ) { e ->
+                CoursewareScreen(
+                    resourceId = e.arguments?.getString("r").orEmpty(),
+                    coursewareId = e.arguments?.getString("c").orEmpty(),
+                    teachClassId = e.arguments?.getString("t").orEmpty(),
+                    title = e.arguments?.getString("title").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            page(Route.AICLASS_SCAN) {
+                ScanScreen(
+                    onBack = { nav.popBackStack() },
+                    onSignUrl = { url ->
+                        nav.navigate("aiclass/signqr/" + android.net.Uri.encode(url))
+                    },
+                )
+            }
+            page(Route.AICLASS_DETAIL, arguments = listOf(idPattern())) { e ->
+                CourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), open = openPage) { nav.popBackStack() }
+            }
+            page(Route.AICLASS_PLAY, arguments = listOf(idPattern())) { e ->
+                RecordPlayScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
+            }
+            page(Route.OPEN_COURSE) {
+                OpenCourseListScreen(open = openPage, onBack = { nav.popBackStack() })
+            }
+            page(Route.OPEN_COURSE_DETAIL, arguments = listOf(idPattern())) { e ->
+                OpenCourseDetailScreen(e.arguments?.getString(ID_ARG).orEmpty(), onBack = { nav.popBackStack() })
+            }
+            page(Route.GROUP) { GroupScreen(onBack = { nav.popBackStack() }) }
+            page(
+                Route.WEB,
+                arguments = listOf(androidx.navigation.navArgument("u") { defaultValue = "" }),
+            ) { e ->
+                WebScreen(e.arguments?.getString("u").orEmpty(), "", onBack = { nav.popBackStack() })
+            }
         }
     }
+
 }
 
 /**
@@ -477,7 +642,14 @@ fun RootShell() {
  * 改 startDestination 会让 NavHost 在标志位翻转时整个重建，页面栈直接丢。
  */
 @Composable
-private fun Gate(appearance: Appearance, open: (String) -> Unit) {
+private fun Gate(
+    appearance: Appearance,
+    open: (String) -> Unit,
+    wideLayout: Boolean,
+    adaptiveNavigation: GlasmioAdaptiveNavigationState,
+    shelfNav: ShelfSelection,
+    shelfTabs: List<GlasmioTabItem<Any>>,
+) {
     val graph = LocalAppGraph.current
     val session by graph.session.state.collectAsStateWithLifecycle(com.andaxin.core.store.Session())
     val scope = rememberCoroutineScope()
@@ -542,12 +714,19 @@ private fun Gate(appearance: Appearance, open: (String) -> Unit) {
             onDone = { open(Route.SHELF) },
             onBack = { scope.launch { graph.session.browseWithoutLogin() } },
         )
-        else -> ShelfHost(appearance, open)
+        else -> ShelfHost(appearance, open, wideLayout, adaptiveNavigation, shelfNav, shelfTabs)
     }
 }
 
 @Composable
-private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
+private fun ShelfHost(
+    appearance: Appearance,
+    open: (String) -> Unit,
+    wideLayout: Boolean,
+    adaptiveNavigation: GlasmioAdaptiveNavigationState,
+    shelfNav: ShelfSelection,
+    shelfTabs: List<GlasmioTabItem<Any>>,
+) {
     val pager = rememberPagerState(initialPage = Shelf.Home.ordinal) { Shelf.entries.size }
     val scope = rememberCoroutineScope()
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
@@ -559,14 +738,11 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     // 再回发一次 onSelected(Home)。MeiloX 的做法是保留 lastSelectedTab（MainActivity.kt:1042-1044
     // 的第一顺位匹配不到时退回它），所以 selectedKey 同样只记"最后一个属于底栏的格"；
     // 停在「我的」时由 meSelected 让水滴从那格滑到右侧圆钮上，回来时再滑回这一格。
-    var barKey by remember { mutableStateOf(Shelf.Home) }
-    var meSelected by remember { mutableStateOf(false) }
+    // 选中态住在 RootShell（横屏侧栏在那一层，要跟着高亮），这里只负责"落定后回写"。
     LaunchedEffect(pager.settledPage) {
-        val settled = Shelf.entries[pager.settledPage]
-        meSelected = settled == Shelf.Me
-        if (settled != Shelf.Me) barKey = settled
+        shelfNav.settle(Shelf.entries[pager.settledPage])
     }
-    val selectedKey = barKey
+    val selectedKey = shelfNav.barKey
     val dark = when (appearance.dayNight) {
         DayNight.System -> isSystemInDarkTheme()
         DayNight.Light -> false
@@ -663,89 +839,7 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
     }
     val headerSpecs = remember(labels) { labels.map { GlasmioHeaderSpec(title = it) } }
 
-    // 大屏（横屏）的导航形态对齐音乐屏：顶栏一条标签栏 + 左侧可展开的侧栏。
-    // 竖屏（BottomBar）仍走原来那条底栏，一条线没改。
-    val adaptiveNavigation = rememberGlasmioAdaptiveNavigationState()
-    val navigationLayout = glasmioNavigationLayout()
-    val wideLayout = navigationLayout == GlasmioNavigationLayout.TopTabs
-    val activeShelf = if (meSelected) Shelf.Me else barKey
-    // 顶栏里库只画 label、不画 symbol，但侧栏那几行要用 symbol，所以两处共用这一份。
-    // 库里 GlasmioTabBar 会在末尾强制追加一格放大镜，T 只能取 Any（Shelf 与 String 混在一条上）。
-    val shelfTabs = remember(labels) {
-        listOf(
-            GlasmioTabItem<Any>(Shelf.Home, labels[Shelf.Home.ordinal], SfSymbol.HouseFilled),
-            GlasmioTabItem<Any>(Shelf.Timetable, labels[Shelf.Timetable.ordinal], SfSymbol.ClockFilled),
-            GlasmioTabItem<Any>(Shelf.Message, labels[Shelf.Message.ordinal], SfSymbol.Ellipsis),
-            GlasmioTabItem<Any>(Shelf.Notice, labels[Shelf.Notice.ordinal], SfSymbol.InfoCircle),
-            GlasmioTabItem<Any>(Shelf.Me, labels[Shelf.Me.ordinal], SfSymbol.PersonFilled),
-        )
-    }
-
     Box(modifier = Modifier.fillMaxSize()) {
-        GlasmioAdaptiveNavigationScaffold(
-            state = adaptiveNavigation,
-            layout = navigationLayout,
-            // 竖屏不给侧栏：底栏那套已经是导航，侧栏的入口只有横屏顶栏最左那颗。
-            sidebarEnabled = wideLayout,
-            // 侧栏底下的那块背景不要「从内容左缘拉出来延伸」：那套延伸是为播放器
-            // 那种整屏渐变压的，铺在这五屏上会变成一条被拉糊的彩色带。关掉它，
-            // 侧栏玻璃就老实去高斯模糊它自己盖住的那块内容。
-            extendContentUnderSidebar = false,
-            contentBackdrop = pageBackdrop,
-            sidebar = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                        .navigationBarsPadding()
-                        .padding(start = 10.dp, end = 10.dp, bottom = 10.dp),
-                ) {
-                    GlasmioSidebarToolbar(
-                        leading = {
-                            Text(
-                                text = androidx.compose.ui.res.stringResource(R.string.app_name),
-                                style = IosTypography.headline,
-                                modifier = Modifier.padding(horizontal = 10.dp),
-                            )
-                        },
-                        trailing = {
-                            GlasmioIconButton(onClick = { adaptiveNavigation.sidebarExpanded = false }) {
-                                GlasmioSidebarToggleIcon()
-                            }
-                        },
-                    )
-                    Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                        shelfTabs.forEach { item ->
-                            val shelf = item.key as Shelf
-                            GlasmioSidebarRow(
-                                title = item.label,
-                                symbol = item.symbol,
-                                selected = activeShelf == shelf,
-                                onClick = {
-                                    // 与底栏同一条路：先把高亮挪过去，再让 pager 滚。
-                                    if (shelf != Shelf.Me) {
-                                        barKey = shelf
-                                        meSelected = false
-                                    } else {
-                                        meSelected = true
-                                    }
-                                    // 侧栏选中后不收：横屏这块是常驻导航，挤着内容摆在那儿，
-                                    // 每点一下都收回去等于每次都要重新点开（他 11-14 提的）。
-                                    scope.launch { pager.animateScrollToPage(shelf.ordinal) }
-                                },
-                            )
-                        }
-                        // 五格之外再来一行：横屏顶栏末端那颗放大镜走的也是这里。
-                        GlasmioSidebarRow(
-                            title = "更多功能",
-                            symbol = SfSymbol.Ellipsis,
-                            selected = false,
-                            onClick = { open(Route.MORE) },
-                        )
-                    }
-                }
-            },
-        ) {
             GlasmioNavigationScaffold(
                 motion = headerMotion,
                 header = { entryKey -> headerSpecs[(entryKey as Shelf).ordinal] },
@@ -760,16 +854,11 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                         ) {
                             GlasmioTabBar(
                                 items = shelfTabs,
-                                selectedKey = activeShelf,
+                                selectedKey = shelfNav.active,
                                 onSelected = { key ->
                                     if (key is Shelf) {
                                         // 同底栏：先把高亮挪过去再翻页，水滴才跟手。
-                                        if (key != Shelf.Me) {
-                                            barKey = key
-                                            meSelected = false
-                                        } else {
-                                            meSelected = true
-                                        }
+                                        shelfNav.select(key)
                                         scope.launch { pager.animateScrollToPage(key.ordinal) }
                                     }
                                 },
@@ -902,15 +991,10 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                             onSelected = { shelf ->
                                 // 「我的」不传进 items（库会 indexOfFirst 兜成 0 再把水滴甩回首页），
                                 // 但也得让水滴立刻起步：只翻 meSelected，等 settledPage 回来才动就慢半拍。
-                                if (shelf != Shelf.Me) {
-                                    barKey = shelf
-                                    meSelected = false
-                                } else {
-                                    meSelected = true
-                                }
+                                shelfNav.select(shelf)
                                 scope.launch { pager.animateScrollToPage(shelf.ordinal) }
                             },
-                            trailingSelected = meSelected,
+                            trailingSelected = shelfNav.meSelected,
                             backdrop = shelfBackdrop,
                             compactProgress = navScroll.compactProgress,
                             scrollHint = navScroll.scrollHintProgress,
@@ -919,7 +1003,6 @@ private fun ShelfHost(appearance: Appearance, open: (String) -> Unit) {
                     }
                 }
             }
-        }
 
         // 播放器封面：直接叠在首页这一屏上，只渲染封面（coverOnly）。
         // 这样"涨起来"的那一帧底下就是首页本身和它那条胶囊，跟 MeiloX 里
