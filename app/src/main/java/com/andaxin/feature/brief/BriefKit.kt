@@ -7,10 +7,14 @@ import io.github.neoruaa.glasmio.glass.GlassSurface
 import androidx.compose.material3.HorizontalDivider
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
 import io.github.neoruaa.glasmio.glass.rememberCrossWindowBackdrop
+import io.github.neoruaa.glasmio.glass.progressiveBlurBackdrop
 import io.github.neoruaa.glasmio.glass.render.drawPlainBackdrop
 import io.github.neoruaa.glasmio.glass.render.effects.blur
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.scaffold.GlasmioScaffold
 import androidx.compose.ui.text.input.ImeAction
@@ -46,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -947,9 +952,12 @@ private fun StepRow(s: com.andaxin.data.brief.Step, last: Boolean) {
 /**
  * 三种页共用的那一层壳。
  *
- * ios 分支：这层壳分两片 —— 采样层是**真页面内容**，返回钮是浮在内容上的玻璃圆钮
- * （见 [GlassBackButton]）。顶端留白留在滚动容器里面，所以静止时标题在钮下，
+ * ios 分支：这层壳分三层 —— 采样层是**真页面内容**，中间是随滚动浮出来的顶部渐变模糊，
+ * 最上面浮着玻璃圆钮（见 [GlassBackButton]）。顶端留白留在滚动容器里面，所以静止时标题在钮下，
  * 滚起来会钻到钮底下被折射。
+ *
+ * 11-14：内容改成钻到状态栏底下，顶上补一层随滚动浮出来的渐变模糊 —— 静止时状态栏区
+ * 还是纯背景，往上滚才糊起来（iOS 大标题那种行为）。
  */
 @Composable
 fun ScaffoldPage(
@@ -959,13 +967,23 @@ fun ScaffoldPage(
     onRefresh: (suspend () -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    // ios 分支：这一屏分两层 —— 采样层是**真页面内容**，返回钮浮在内容上。
+    // ios 分支：这一屏分三层 —— 底下是**真页面内容**，中间是随滚动浮出来的顶部渐变模糊，
+    // 最上面浮着返回钮。
     // 11-02 他嫌丑的那条全宽玻璃顶栏 + 分隔线拆了：标题不再占固定位,它跟内容一起滚，
     // 滚到钮底下被折射。
+    // 11-14：顶上那片糊只在滚起来之后才画 —— 静止时状态栏区还是纯背景，
+    // 内容往上钻才糊出来（iOS 大标题那种行为）。
     //
     // 内容层里的玻璃件只有 GlasmioCard,而库自己的 Card 把 backdrop 参数标了
     // @Suppress("UNUSED_PARAMETER") —— 它压根不采样,只是填色,所以不存在
     // "玻璃采自己"的递归（库注释警告的是另一种接法）。
+    val scroll = rememberScrollState()
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // 滚过 12dp 就完全糊住：再往上滚只是让内容更深地钻进糊层,不必更糊。
+    val blurFadePx = with(LocalDensity.current) { 12.dp.toPx() }
+    val blurProgress by remember(blurFadePx) {
+        derivedStateOf { (scroll.value / blurFadePx).coerceIn(0f, 1f) }
+    }
     GlasmioBackdropHost(
         modifier = Modifier.fillMaxSize(),
         sampledContent = {
@@ -981,11 +999,10 @@ fun ScaffoldPage(
                     Column(
                         Modifier
                             .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            // 顶部让开状态栏 + 那颗 44dp 的悬浮返回钮;这份留白在滚动容器
-                            // 里面,所以静止时内容在钮下,滚起来会钻到钮底下被折射。
-                            .statusBarsPadding()
-.padding(top = GlassBackInset)
+                            .verticalScroll(scroll)
+                            // 11-14：这一层不再让开状态栏 —— 内容要能滚到状态栏底下（沉浸）。
+                            // 让位改由内部第一颗 Spacer 承担,所以静止时内容位置跟以前一样,
+                            // 滚起来才会钻到状态栏和返回钮底下。
                             // 底部安全区必须留着：改造前这一层在 GlasmioScaffold 里,
                             // 白拿 contentWindowInsets=safeDrawing;换成自搭两层壳后没人给了。
                             // 米11 手势条 inset 实测 70px(≈20dp),只靠尾部 Spacer(Gap.xxl=32dp)
@@ -993,6 +1010,9 @@ fun ScaffoldPage(
                             .navigationBarsPadding()
                             .padding(horizontal = Gap.screen),
                     ) {
+                        // 让开状态栏 + 那颗 44dp 的悬浮返回钮。放在滚动容器里面而不是用
+                        // statusBarsPadding,内容才能滚进状态栏区去。
+                        Spacer(Modifier.height(statusBarHeight + GlassBackInset))
                         // 给了标题才画：登录那一屏自己带一枚图标和名字，不需要顶端再挂一个"登录"。
                         if (title.isNotBlank()) {
                             Text(title, fontSize = Type.largeTitle, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
@@ -1006,6 +1026,16 @@ fun ScaffoldPage(
             }
         },
         overlayContent = {
+            // 11-14 顶部那片渐变模糊。高度取「状态栏 + 返回钮再往下一点」:库里那趟
+            // 模糊是沿画布 Y 从上往下递减的（ProgressiveBackdropBlur.kt:128-160）,
+            // 所以这层多高,糊就往下拖多深。progress 为 0 时它压根不画。
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(statusBarHeight + GlassBackInset + Gap.lg)
+                    .progressiveBlurBackdrop(backdrop = it, progress = blurProgress)
+            )
             // 只占左上角那一颗：写 fillMaxSize 会整层透明盖住全屏,把内容层的滚动和
             // 点击全吃掉（米11 实测：滑不动,两帧截图字节完全相同）。
             Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = Gap.screen, top = Gap.sm)) {
