@@ -1,0 +1,115 @@
+name: ios
+
+# 新仓（andaxin-walkman）的第一条 iOS 流水线：macOS runner 上链真机 framework -> XcodeGen 现生成工程
+# -> 出无签名 ipa。这一版故意只做这两段（模拟器截图、发 Release 都没进来）：
+# 绿是唯一目标，绿了再往上加东西。
+
+on:
+  push:
+    branches: [ios-shell]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: framework + 无签名 ipa
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: 现场（Xcode / SDK / 架构）
+        run: |
+          xcodebuild -version
+          xcode-select -p
+          uname -m
+          java -version 2>&1 | head -3
+
+      - name: 缓存 Gradle 与 K/N 工具链
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: mac-gradle-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', 'gradle.properties') }}
+          restore-keys: |
+            mac-gradle-
+
+      - name: 链真机 release framework
+        run: |
+          # 重试三次：maven mirror 抖一次 502 不该烧掉一整发（旧仓 102 那发就是这么红的）。
+          n=0
+          until ./gradlew :shared:linkReleaseFrameworkIosArm64 --console=plain --stacktrace; do
+            n=$((n + 1))
+            if [ "$n" -ge 3 ]; then echo "三连败，不是抖动了"; exit 1; fi
+            echo "第 $n 次没过，等 $((20 * n)) 秒再来"
+            sleep $((20 * n))
+          done
+          ls -la shared/build/bin/iosArm64/releaseFramework/
+
+      - name: 把 framework 放到工程认的那个路径
+        run: |
+          # xcodegen 生成工程时这个路径必须已经存在，否则它报 "framework not found" 直接停。
+          mkdir -p shared/build/xcodeFrameworks
+          rm -rf shared/build/xcodeFrameworks/shared.framework
+          cp -R shared/build/bin/iosArm64/releaseFramework/shared.framework shared/build/xcodeFrameworks/shared.framework
+          ls -la shared/build/xcodeFrameworks/shared.framework | head -12
+          file shared/build/xcodeFrameworks/shared.framework/shared | head -2
+
+      - name: 装 xcodegen 并现生成 .xcodeproj
+        run: |
+          brew install xcodegen
+          cd iosApp && xcodegen -s project.yml
+          ls -la iosApp/AndaXin.xcodeproj
+
+      - name: 无签名真机 ipa
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/AndaXin.xcodeproj \
+            -scheme AndaXin -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build-device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+          APP=$(find build-device/Build/Products -name 'AndaXin.app' -path '*iphoneos*' | head -1)
+          if [ -z "$APP" ]; then echo "没找到 iphoneos 的 .app"; find build-device/Build/Products -maxdepth 3 -name '*.app'; exit 1; fi
+          echo "app: $APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry AndaXin-unsigned.ipa Payload
+          unzip -l AndaXin-unsigned.ipa > ipa_list.txt
+          head -8 ipa_list.txt
+          echo "主二进制: $(wc -c < "$APP/AndaXin") 字节"
+          echo "ipa: $(wc -c < AndaXin-unsigned.ipa) 字节"
+          # 静态 framework 不该被嵌进包里：嵌了真机重签就闪退。这条检查先在这里把关。
+          # listing 已落文件再 grep，不走管道（这一步开了 pipefail，grep -q 提前退出会让 unzip 吃 SIGPIPE）。
+          echo "包里 Frameworks 条目: $(grep -c 'Payload/AndaXin.app/Frameworks/' ipa_list.txt || true) 条"
+          if grep -q 'Payload/AndaXin.app/Frameworks/' ipa_list.txt; then
+            echo "包内仍有嵌套 framework —— 重签后会闪退，这一发不发"
+            exit 1
+          fi
+          echo "--- 包内关键条目"
+          grep -E 'Payload/AndaXin.app/(AndaXin$|Info.plist|_CodeSignature)' ipa_list.txt || true
+          echo "--- 产物 Info.plist 关键键"
+          plutil -p "$APP/Info.plist" | grep -iE 'CFBundleIdentifier|CFBundleShortVersionString|CFBundleVersion|UILaunchScreen|UISupportedInterfaceOrientations' || true
+
+      - name: 打包 framework 产物
+        if: always()
+        run: |
+          if [ -d shared/build/bin/iosArm64/releaseFramework ]; then
+            zip -qry shared-framework.zip shared/build/bin/iosArm64/releaseFramework
+          else
+            echo "framework 目录不存在（链接那步没过？）"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-artifacts
+          path: |
+            AndaXin-unsigned.ipa
+            ipa_list.txt
+            shared-framework.zip
+          if-no-files-found: warn

@@ -31,6 +31,9 @@ rootProject.name = "AndaXin"
 include(":app")
 include(":music")
 
+// iOS 壳。只出 framework，不挂 android 目标 —— 见 shared/build.gradle.kts 顶上那段。
+include(":shared")
+
 // glasmio 0.1.2 的 AAR 里没有上游 main 用到的那批新 API（GlasmioHeaderSearchState /
 // rememberGlasmioHeaderSearch / 头部 overflowSystemName），所以把 glasmio 源码随仓携带，
 // 用包含构建直接编源码——与上游 -Pglasmio.source=true 的做法等价。

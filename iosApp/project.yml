@@ -1,0 +1,69 @@
+# XcodeGen 的工程描述：真 .xcodeproj 不进仓，在 CI（或以后的 Mac）上
+# xcodegen -s iosApp/project.yml 现生成。
+#
+# 这一版从旧仓 iosApp 裁到最小，但下面几个键一个都没省 —— 每一个都是踩过的坑：
+#   CADisableMinimumFrameDurationOnPhone  CMP 的 PlistSanityCheck 读不到就 abort（这版没上 Compose，
+#                                         留着是为了下一轮平移界面时不用再想起来这件事）
+#   UIApplicationSceneManifest            Apple 从 iOS 26/27 起收口单窗口老路（TN3187）
+#   UILaunchScreen                        empty dict 也算给了启动屏，缺了 xcodebuild 会告警
+#   MARKETING_VERSION 那两行              Info.plist 由 XcodeGen 现生成，不写这里 Xcode 就不展开，
+#                                        "关于"页和崩溃报告里读到的会是 1.0 / 1
+#   无签名三件套                          Windows 侧（Sideloadly / 爱思）重签，不走苹果账号
+
+name: AndaXin
+options:
+  bundleIdPrefix: com.andaxin
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGN_IDENTITY: ""
+
+targets:
+  AndaXin:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDevelopmentRegion: zh_CN
+        CFBundleName: AndaXin
+        CFBundleDisplayName: 安大信
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CADisableMinimumFrameDurationOnPhone: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default Configuration
+                UISceneDelegateClassName: SceneDelegate
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    dependencies:
+      # 静态 framework：embed: false 是硬要求。嵌进去 Xcode 会给一个没有二进制的空壳塞桩子，
+      # 真机 amfi 校验不过 → 重签后启动闪退。
+      # 路径固定，由 CI 在 xcodegen 之前把 linkReleaseFramework 的产物拷到这里。
+      - framework: ../shared/build/xcodeFrameworks/shared.framework
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.andaxin.walkman
+        MARKETING_VERSION: "0.9.28"
+        CURRENT_PROJECT_VERSION: "1"
+
+schemes:
+  AndaXin:
+    build:
+      targets:
+        AndaXin: all
+    run:
+      config: Debug
+    archive:
+      config: Release
