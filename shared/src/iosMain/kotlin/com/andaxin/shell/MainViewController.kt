@@ -1,6 +1,7 @@
 package com.andaxin.shell
 
 import androidx.compose.ui.window.ComposeUIViewController
+import com.andaxin.shell.ui.AndaxinApp
 import platform.UIKit.UIViewController
 
 /**
