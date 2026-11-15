@@ -67,7 +67,10 @@ jobs:
       - name: 装 xcodegen 并现生成 .xcodeproj
         run: |
           brew install xcodegen
-          cd iosApp && xcodegen -s project.yml
+          # 括号里 cd 是为了不让 cd 漏到后面：第一次写成 `cd iosApp && xcodegen`，
+          # 结果下一行 ls iosApp/AndaXin.xcodeproj 是在 iosApp/ 里找 iosApp/AndaXin.xcodeproj，
+          # 工程其实已经生成成功，是这句 ls 把整个步骤弄红的。
+          ( cd iosApp && xcodegen -s project.yml )
           ls -la iosApp/AndaXin.xcodeproj
 
       - name: 无签名真机 ipa
