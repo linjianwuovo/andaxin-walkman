@@ -19,6 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 补执行位（文件是从 Windows 侧推上去的，模式全是 100644）
+        run: |
+          # run 43718278933 的命：这一步后面 ./gradlew: Permission denied 三连，
+          # 整发红在「链真机 release framework」。根因不是 Gradle，是 gradlew 在索引里没有 +x
+          # （git 在 Windows 上不记执行位，API 建 blob 时也只能给 100644）。
+          # 所以不靠索引，运行前统一补：gradlew 与仓库里任何 .sh 都补一遍。
+          chmod +x gradlew || true
+          find . -name '*.sh' -type f -exec chmod +x {} + 2>/dev/null || true
+          ls -l gradlew
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
