@@ -6,6 +6,8 @@ import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.setActive
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
+import platform.AVFoundation.rate
+import platform.AVFoundation.replaceCurrentItemWithPlayerItem
 import platform.Foundation.NSURL
 
 /*
