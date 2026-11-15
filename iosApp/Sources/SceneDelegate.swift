@@ -189,8 +189,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     /// 底栏：标题跟 Android 那几格一致；图标用系统 SF Symbols（不再等美术出图）。
-    /// 「音乐」是这一版新加的第六格，**故意放在最后** —— 上面 watchUnread 写的是 items[2].badgeValue，
-    /// 一插到中间，消息红点就贴到别的格上去了。
+    /// 0.9.29 起是五格：**「音乐」占了原来「公告」那一格**。
+    /// UITabBarController 在 iPhone 上只画 5 格，第 6 格开始一律折进「更多」——
+    /// 上一发就是这么把「我的」和「音乐」一起收进去的（截图 simulator-guest.png 里那个「更多」）。
+    /// 公告因此不占格了，从「我的 → 更多功能 → 公告」进（route key 见 IosScreens.routeOf 的 "notice"）。
+    /// 顺序不能乱：上面 watchUnread 写的是 items[2].badgeValue，消息必须留在下标 2。
     private func makeTabs(_ g: IosAppGraph) -> UITabBarController {
         let tabs = UITabBarController()
         tabs.delegate = self          // 切格重拉，见下面的 UITabBarControllerDelegate
@@ -201,9 +204,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             (g.homeViewController(), "首页", "house"),
             (g.timetableViewController(), "课程表", "calendar"),
             (g.messageViewController(), "消息", "envelope"),
-            (g.noticeViewController(), "公告", "megaphone"),
-            (g.meViewController(), "我的", "person.crop.circle"),
             (g.musicViewController(), "音乐", "music.note"),
+            (g.meViewController(), "我的", "person.crop.circle"),
         ]
         for (vc, title, symbol) in items {
             vc.tabBarItem = UITabBarItem(
