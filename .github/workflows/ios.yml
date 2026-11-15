@@ -60,19 +60,22 @@ jobs:
           ls -1 "$HOME/.konan" 2>/dev/null | head -10 || true
           echo "--- 平台库在哪 ---"
           find "$HOME/.konan" -maxdepth 5 -type d -name "ios_arm64" 2>/dev/null | head -5 || true
-          echo "--- 哪个文件里有这个符号（-rl 全量 grep）---"
-          HIT=$(grep -rl --binary-files=text "MPRemoteCommandHandlerStatusSuccess" "$HOME/.konan" 2>/dev/null | head -3)
-          echo "$HIT"
-          LIB=$(echo "$HIT" | head -1)
-          if [ -x "$KONAN/bin/klib" ] && [ -n "$LIB" ]; then
-            echo "--- klib dump-metadata 里的枚举与 addTargetWithHandler ---"
-            D=$LIB; [ -f "$LIB" ] && D=$(dirname "$LIB")
-            "$KONAN/bin/klib" dump-metadata "$LIB" 2>/dev/null | grep -nE "MPRemoteCommandHandlerStatus|addTargetWithHandler" | head -25 || true
-            "$KONAN/bin/klib" dump-metadata "$D" 2>/dev/null | grep -nE "MPRemoteCommandHandlerStatus|addTargetWithHandler" | head -25 || true
-          fi
-          echo "--- strings 兜底：符号附近的名字 ---"
-          if [ -n "$LIB" ]; then
-            strings "$LIB" 2>/dev/null | grep -nE "MPRemoteCommandHandlerStatus" | head -15 || true
+          # 上一版定位到的层次：klib/platform/ios_arm64/org.jetbrains.kotlin.native.platform.MediaPlayer
+          # （dump-metadata 要的是这个库根目录，不是里面的 .knm，也不是它的父目录 —— 上次两种都试错了）
+          KL="$KONAN/klib/platform/ios_arm64"
+          echo "--- ls 平台库根 ---"
+          ls -1 "$KL" 2>/dev/null | head -8 || true
+          MP="$KL/org.jetbrains.kotlin.native.platform.MediaPlayer"
+          AVF="$KL/org.jetbrains.kotlin.native.platform.AVFoundation"
+          if [ -x "$KONAN/bin/klib" ]; then
+            echo "--- MediaPlayer：MPRemoteCommandHandlerStatus 的真身 ---"
+            "$KONAN/bin/klib" dump-metadata "$MP" 2>&1 | grep -nE "MPRemoteCommandHandlerStatus" | head -20 || true
+            echo "--- MediaPlayer：addTargetWithHandler 签名 ---"
+            "$KONAN/bin/klib" dump-metadata "$MP" 2>&1 | grep -nE "addTargetWithHandler" | head -6 || true
+            echo "--- AVFoundation：AVPlayerItem.duration / AVPlayer.currentTime ---"
+            "$KONAN/bin/klib" dump-metadata "$AVF" 2>&1 | grep -nE "fun duration\(|val duration|fun currentTime\(|val currentTime|fun seekToTime" | head -10 || true
+          else
+            echo "klib 工具不在 $KONAN/bin"
           fi
 
       - name: 链真机 release framework（本机做不了的那步，在这出证据）
