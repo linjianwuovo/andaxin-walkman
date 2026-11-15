@@ -11,6 +11,10 @@ import platform.AVFoundation.AVPlayerItem
 // 不 import 就只剩"没有这些方法"，报错是 "Unresolved reference 'seekToTime' on receiver of type 'AVPlayer'"。
 import platform.AVFoundation.currentItem
 import platform.AVFoundation.currentTime
+// duration 挂在 AVPlayerItem 上，但 K/N 里也是 @interface AVPlayerItem (AVPlayerItemDuration) 的
+// 顶层扩展属性（dump-metadata 原文：public final val platform/AVFoundation/AVPlayerItem.duration:
+// CValue<CMTime>），不 import 就报 "Unresolved reference 'duration' on receiver of type 'AVPlayerItem'"。
+import platform.AVFoundation.duration
 import platform.AVFoundation.rate
 import platform.AVFoundation.replaceCurrentItemWithPlayerItem
 import platform.AVFoundation.seekToTime

@@ -50,52 +50,6 @@ jobs:
           restore-keys: |
             mac-gradle-
 
-      # 只为回答"这个 K/N 绑定到底叫什么"：把平台库里那几行真身打出来，比按风格猜快一轮。
-      # 编不过的时候看这一步，别去改代码试。探针本身不许让这一步失败（全 || true）。
-      - name: 探针 · 平台库里那几个绑定的真身（MediaPlayer 枚举 / AVPlayer 成员）
-        run: |
-          KONAN=$(ls -d "$HOME/.konan"/kotlin-native-prebuilt-macos-* 2>/dev/null | head -1)
-          echo "KONAN=$KONAN"
-          echo "--- ls ~/.konan ---"
-          ls -1 "$HOME/.konan" 2>/dev/null | head -10 || true
-          echo "--- 平台库在哪 ---"
-          find "$HOME/.konan" -maxdepth 5 -type d -name "ios_arm64" 2>/dev/null | head -5 || true
-          # 上一版定位到的层次：klib/platform/ios_arm64/org.jetbrains.kotlin.native.platform.MediaPlayer
-          # （dump-metadata 要的是这个库根目录，不是里面的 .knm，也不是它的父目录 —— 上次两种都试错了）
-          KL="$KONAN/klib/platform/ios_arm64"
-          echo "--- ls 平台库根 ---"
-          ls -1 "$KL" 2>/dev/null | head -8 || true
-          MP="$KL/org.jetbrains.kotlin.native.platform.MediaPlayer"
-          AVF="$KL/org.jetbrains.kotlin.native.platform.AVFoundation"
-          if [ -x "$KONAN/bin/klib" ]; then
-            echo "--- MediaPlayer：MPRemoteCommandHandlerStatus 的真身 ---"
-            "$KONAN/bin/klib" dump-metadata "$MP" 2>&1 | grep -nE "MPRemoteCommandHandlerStatus" | head -20 || true
-            echo "--- MediaPlayer：addTargetWithHandler 签名 ---"
-            "$KONAN/bin/klib" dump-metadata "$MP" 2>&1 | grep -nE "addTargetWithHandler" | head -6 || true
-            echo "--- AVFoundation：AVPlayerItem 这个类块里到底有什么 ---"
-            "$KONAN/bin/klib" dump-metadata "$AVF" > /tmp/avf.txt 2>&1 || true
-            python3 - <<'PY' || true
-import re
-lines = open('/tmp/avf.txt', encoding='utf-8', errors='replace').read().splitlines()
-starts = [i for i, l in enumerate(lines) if re.search(r'\bclass AVPlayerItem\b', l)]
-print('找到 class AVPlayerItem 的行:', starts[:3])
-for i in starts[:1]:
-    print('--- 类头 ---')
-    print('\n'.join(l.strip()[:180] for l in lines[i:i+4]))
-    print('--- 类块里带 duration / currentTime / status 的行 ---')
-    n = 0
-    for l in lines[i+1:i+3000]:
-        if re.match(r'^\s{6}(public )?(open |final )?(abstract )?class ', l):
-            print('(下一个类开始，块到此为止)')
-            break
-        if 'duration' in l or 'currentTime' in l or 'status' in l:
-            print(l.strip()[:200]); n += 1
-            if n > 25: break
-PY
-          else
-            echo "klib 工具不在 $KONAN/bin"
-          fi
-
       - name: 链真机 release framework（本机做不了的那步，在这出证据）
         run: |
           # 102 那发死在这一步，但不是代码：maven.aliyun.com 那个 mirror 回了一次 502，
