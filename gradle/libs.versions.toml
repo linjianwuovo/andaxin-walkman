@@ -11,6 +11,13 @@ datastore = "1.1.1"
 okhttp = "4.12.0"
 serialization-json = "1.9.0"
 coil = "3.0.4"
+# iOS 共享模块（整块从 andaxin-ios 搬来）要的这一套
+coroutines = "1.10.2"
+# miuix 0.9.4 经 material3-window-size-class 1.12.0-alpha03 硬要求 0.7.1（0.6.1 压不回去）
+kotlinx-datetime = "0.7.1"
+ktor = "3.2.2"
+miuix = "0.9.4"
+org-json = "20250517"
 # ios 分支的外观底座：iOS 27 液态玻璃复刻框架（Apache-2.0，minSdk 33）
 glasmio = "0.1.2"
 camerax = "1.5.0-alpha06"
@@ -40,6 +47,18 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 
+# shared：KMP 内核的依赖（iOS 与 Android 共用同一份逻辑）
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinx-datetime" }
+datastore-preferences-core = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }
+miuix-ui = { group = "top.yukonga.miuix.kmp", name = "miuix-ui", version.ref = "miuix" }
+ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+ktor-client-darwin = { group = "io.ktor", name = "ktor-client-darwin", version.ref = "ktor" }
+kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
+# JVM 测试架用的真 org.json（Android 用平台自带那份，iOS 用自写垫片）
+org-json = { group = "org.json", name = "json", version.ref = "org-json" }
+lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+
 # 宿主 @HiltAndroidApp 自己也要跑一遍注解处理：music 模块里的 @AndroidEntryPoint
 # 是挂在宿主的 Application 上生成组件的，只靠库模块的 ksp 拼不出最终图。
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
@@ -66,5 +85,7 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 android-library = { id = "com.android.library", version.ref = "agp" }
 # iOS 壳模块（shared）用：本仓唯一一条不上 android 插件的 KMP
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+# AGP 9 的 KMP 库插件：shared 的 android 目标只能走它（老 com.android.library 的 DSL 与 KMP 不兼容）
+android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

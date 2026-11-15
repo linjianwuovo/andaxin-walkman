@@ -1,14 +1,6 @@
-# XcodeGen 的工程描述：真 .xcodeproj 不进仓，在 CI（或以后的 Mac）上
-# xcodegen -s iosApp/project.yml 现生成。
-#
-# 这一版从旧仓 iosApp 裁到最小，但下面几个键一个都没省 —— 每一个都是踩过的坑：
-#   CADisableMinimumFrameDurationOnPhone  CMP 的 PlistSanityCheck 读不到就 abort（这版界面就是
-#                                         Compose 画的，缺了启动即崩）
-#   UIApplicationSceneManifest            Apple 从 iOS 26/27 起收口单窗口老路（TN3187）
-#   UILaunchScreen                        empty dict 也算给了启动屏，缺了 xcodebuild 会告警
-#   MARKETING_VERSION 那两行              Info.plist 由 XcodeGen 现生成，不写这里 Xcode 就不展开，
-#                                        "关于"页和崩溃报告里读到的会是 1.0 / 1
-#   无签名三件套                          Windows 侧（Sideloadly / 爱思）重签，不走苹果账号
+# XcodeGen 的工程描述：真正的 .xcodeproj 不进仓，在 CI（或以后的 Mac）上用
+# `xcodegen -s iosApp/project.yml` 现生成。骨架，第二版：Info.plist 改真文件、补 scheme、
+# 脚本相位换成 Kotlin 官方那条 embedAndSign（按当前 SDK/架构自己挑 iosArm64 或模拟器目标编）。
 
 name: AndaXin
 options:
@@ -19,6 +11,7 @@ options:
 
 settings:
   base:
+    # 无苹果开发者账号阶段：整工程不开签名，产物给 Sideloadly/爱思在 Windows 侧重签。
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGN_IDENTITY: ""
 
@@ -30,33 +23,91 @@ targets:
       - path: Sources
     info:
       path: Info.plist
+      # 这些键必须写在这儿，不能只写 iosApp/Info.plist：
+      # XcodeGen 的 info: 每次生成工程都会重写那个文件（文档 ProjectSpec.md：
+      # "this will generate and write an Info.plist to the specified path"），
+      # 手写那份在 CI 上会被盖掉 —— 8bcec04 之前那几发就是这个坑：
+      # xcodebuild 一直报"缺启动屏/缺方向"，而包里也确实没有 ATS 例外（真机上体育那台明文 http 会被系统拦）。
       properties:
         CFBundleDevelopmentRegion: zh_CN
         CFBundleName: AndaXin
         CFBundleDisplayName: 安大信
+        # 相机：AI 课堂「扫码签到」那一格要开 AVCaptureSession（ScanScreen.ios.kt）。
+        # 缺这个键，requestAccessForMediaType 不会弹框、直接回 false，那格就永远停在"没给权限"。
+        NSCameraUsageDescription: 扫一下课桌上那张码就能签到，画面只在本机识别、不上传。
+        # 定位：运动那一格要 CoreLocation 三秒一个点算里程配速（跑步这条线要 UIBackgroundModes 里
+        # 带 location，见下面 capability 那段；Apple 明说 allowsBackgroundLocationUpdates=true
+        # 而 plist 没这个模式 = 直接终止进程，所以两样要一起给）。
+        NSLocationWhenInUseUsageDescription: 记录你跑出去的路线和配速，只在 App 开着的时候取。
+        # 版本号要真落到 plist 里才算：MARKETING_VERSION / CURRENT_PROJECT_VERSION 只是构建设定，
+        # 这份 Info.plist 由 XcodeGen 现生成、里面没有这两个键，Xcode 就不会替我展开 ——
+        # 结果 60c026a 那发的崩溃报告里 app_version 是 1.0 / build 1（系统默认值），
+        # "我的"页那行 bundleVersion() 也跟着读空。$() 会在 Process Info.plist 那步展开成上面的值。
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        CADisableMinimumFrameDurationOnPhone: true
         UILaunchScreen: {}
+        # 这个键才是 PlistSanityCheck 真正查的那个。1.12.0 那份 klib 的字符串池里，
+        # 它只 objectForInfoDictionaryKey: 读 CADisableMinimumFrameDurationOnPhone 一个键，
+        # 读不到或为 false 就抛 IllegalStateException —— K/N 的 TerminateHandler 接着 abort()。
+        # 真机 .ips 和模拟器 console 两处都是它（b432067 那发模拟器把原话打出来了）。
+        # 不给它 true，高刷屏上 Compose 的帧率会被按 60Hz 钳住。
+        CADisableMinimumFrameDurationOnPhone: true
+        # scene 生命周期声明：这个不是 CMP 要的，是 Apple 要的（iOS 26/27 起不再给
+        # "AppDelegate 单窗口"那条老路留活口），窗口由 SceneDelegate 建。
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations:
             UIWindowSceneSessionRoleApplication:
               - UISceneConfigurationName: Default Configuration
+                # 类名走 @objc(SceneDelegate) 那个注册名，不写 $(PRODUCT_MODULE_NAME).：
+                # 这文件是 XcodeGen 现生成的，那串变量在这儿展开不可靠；
+                # AppDelegate 里还同时把 delegateClass 给死了，两条路都通。
                 UISceneDelegateClassName: SceneDelegate
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # 只给跑量那台明文 http 的服务器开例外（对齐 Android 那份 network_security_config 的口径，不开全局放行）
+        NSAppTransportSecurity:
+          NSExceptionDomains:
+            sports.aiit.edu.cn:
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSIncludesSubdomains: true
     dependencies:
-      # 静态 framework：embed: false 是硬要求。嵌进去 Xcode 会给一个没有二进制的空壳塞桩子，
-      # 真机 amfi 校验不过 → 重签后启动闪退。
-      # 路径固定，由 CI 在 xcodegen 之前把 linkReleaseFramework 的产物拷到这里。
+      # 固定路径的 framework：脚本相位在每次构建前按 SDK/配置把对应 flavor 拷到这里替换
+      # （见 preBuildScripts），CI 在 xcodegen 之前会先放一份占位。
+      #
+      # embed: false —— 这份是 Kotlin/Native 的**静态** framework（shared/build.gradle.kts 里
+      # isStatic = true），符号已经链进主二进制（拆真机包看过：主二进制 47,891,544 字节，
+      # 里面一次都没有 `@rpath/shared.framework/shared`）。再"嵌入"一遍，Xcode 就给那个没有
+      # 二进制的空壳注入一个 33,128 字节的桩子放进 Frameworks/：模拟器不校验签名，照样跑；
+      # 真机上 amfi 要校验包内每一份嵌套可执行文件，重签工具（轻松签/Sideloadly/爱思）面对
+      # 这个空壳补不出有效签名 → 启动即 Code Signature Invalid，就是你说的闪退。
+      # 只链接不嵌入，包里就不该有 Frameworks/ 这一坨。
       - framework: ../shared/build/xcodeFrameworks/shared.framework
         embed: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.andaxin.walkman
+        PRODUCT_BUNDLE_IDENTIFIER: com.andaxin.ios
+        # 跟安卓那份 app/build.gradle.kts 的 versionName/versionCode 同步抬（这轮合到 0.8.49 / 91）：
+        # 两端是同一套业务，版本号各走各的会让"这版有什么"对不上。
+        # iOS 这边 build 号单独再抬：修 RSA 那发（92）和「先不登录逛逛」那发（93）、深夜自查批次（94）同为 0.8.49，
+        # 真机崩溃报告与「关于」页只带这个号，不抬就没法分清他手机上装的到底是哪一发。
+        # 10-26 深夜补一句：我在聊天里报的 105/106 一直没落到这一行（plist 从头到尾是 104），
+        # 所以那两发的崩溃报告里看到的号是 104 —— 从现在起这一行跟着聊天的号一起抬，别再两套号。
         MARKETING_VERSION: "0.9.28"
-        CURRENT_PROJECT_VERSION: "1"
+        CURRENT_PROJECT_VERSION: "168"
+    preBuildScripts:
+      - name: BuildSharedFramework
+        script: |
+          cd "$SRCROOT/.."
+          T=iosArm64
+          FLAVOR=Release
+          DIR=releaseFramework
+          if [ "$PLATFORM_NAME" = "iphonesimulator" ]; then T=iosSimulatorArm64; fi
+          if [ "$CONFIGURATION" = "Debug" ]; then FLAVOR=Debug; DIR=debugFramework; fi
+          ./gradlew ":shared:link${FLAVOR}Framework${T}" || exit 1
+          mkdir -p shared/build/xcodeFrameworks
+          rm -rf shared/build/xcodeFrameworks/shared.framework
+          cp -R "shared/build/bin/${T}/${DIR}/shared.framework" shared/build/xcodeFrameworks/shared.framework
 
 schemes:
   AndaXin:
