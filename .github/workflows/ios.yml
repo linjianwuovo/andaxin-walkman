@@ -41,6 +41,10 @@ jobs:
 
       - name: 链真机 release framework
         run: |
+          # 仓里的 gradlew 是在 Windows 上提交的，没带可执行位（100644）：
+          # runner 上直接 ./gradlew 回 "Permission denied"。第一发（87f13f2）就死在这，
+          # 三连败都报同一句 —— 不是 mirror 抖动。
+          chmod +x gradlew
           # 重试三次：maven mirror 抖一次 502 不该烧掉一整发（旧仓 102 那发就是这么红的）。
           n=0
           until ./gradlew :shared:linkReleaseFrameworkIosArm64 --console=plain --stacktrace; do
