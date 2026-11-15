@@ -24,6 +24,21 @@ class NeteaseApiTest {
     }
 
     @Test
+    fun 搜索回包_带出封面地址() {
+        val json = """{"result":{"songs":[{"id":7,"name":"歌","artists":[{"name":"人"}],"album":{"name":"辑","picUrl":"http://p1.music.126.net/x.jpg"}}]}}"""
+        val songs = parseSearchSongs(json)
+        assertEquals("http://p1.music.126.net/x.jpg", songs[0].cover)
+    }
+
+    @Test
+    fun 登录之后_MUSIC_U要被带进请求() {
+        val call = neteaseSearchCall("晴天", musicU = "abc123")
+        val cookie = call.headers.first { it.first == "Cookie" }.second
+        assertTrue(cookie.contains("MUSIC_U=abc123"))
+        assertTrue(cookie.contains("os=pc"))
+    }
+
+    @Test
     fun 搜索回包_缺字段的那首直接跳过而不是整包失败() {
         val json = """{"result":{"songs":[{"name":"没有 id"},{"id":9,"name":"留着"}]}}"""
         val songs = parseSearchSongs(json)

@@ -27,31 +27,37 @@ private const val UA =
 /** 匿名身份。os=pc 是最宽松的一档，没有它有些歌只回 30 秒试听。 */
 private const val ANON_COOKIE = "os=pc; appver=8.9.70; __csrf="
 
-private val BASE_HEADERS = listOf(
-    "User-Agent" to UA,
-    "Referer" to "https://music.163.com/",
-    "Cookie" to ANON_COOKIE,
-)
+/** 登录过就把 MUSIC_U 接在匿名身份后面：接口认的是这条 cookie，不是别的什么 token。 */
+private fun baseHeaders(musicU: String?): List<Pair<String, String>> {
+    val cookie = if (musicU.isNullOrBlank()) ANON_COOKIE else "$ANON_COOKIE; MUSIC_U=$musicU"
+    return listOf(
+        "User-Agent" to UA,
+        "Referer" to "https://music.163.com/",
+        "Cookie" to cookie,
+    )
+}
 
 data class MusicSong(
     val id: Long,
     val name: String,
     val artist: String,
     val album: String,
+    /** 封面地址（可能还是 / 结尾的模板地址）。锁屏那张图用它，列表里这版不画。 */
+    val cover: String = "",
 )
 
-fun neteaseSearchCall(query: String, limit: Int = 20): HttpCall = HttpCall(
+fun neteaseSearchCall(query: String, limit: Int = 20, musicU: String? = null): HttpCall = HttpCall(
     method = "GET",
     url = "https://music.163.com/api/search/get/?s=" + formUrlEncode(query) +
         "&type=1&limit=" + limit.coerceIn(1, 50) + "&offset=0",
-    headers = BASE_HEADERS,
+    headers = baseHeaders(musicU),
 )
 
-fun neteaseSongUrlCall(id: Long, br: Int = 128000): HttpCall = HttpCall(
+fun neteaseSongUrlCall(id: Long, br: Int = 128000, musicU: String? = null): HttpCall = HttpCall(
     method = "GET",
     // ids 是 JSON 数组的字符串，方括号必须转义，直接写 [ 会被服务端当成参数结束
     url = "https://music.163.com/api/song/enhance/player/url?ids=%5B" + id + "%5D&br=" + br,
-    headers = BASE_HEADERS,
+    headers = baseHeaders(musicU),
 )
 
 /** 老接口里的兜底直链：302 到同一首的 mp3。拿不到播放地址时用它，客户端自己跟重定向。 */
@@ -68,8 +74,14 @@ fun parseSearchSongs(json: String): List<MusicSong> {
             ?.mapNotNull { it.jsonObjectOrNull()?.get("name")?.jsonPrimitive?.contentOrNull() }
             ?.joinToString("/")
             .orEmpty()
-        val album = song["album"]?.jsonObjectOrNull()?.get("name")?.jsonPrimitive?.contentOrNull().orEmpty()
-        MusicSong(id = id, name = name, artist = artists, album = album)
+        val album = song["album"]?.jsonObjectOrNull()
+        MusicSong(
+            id = id,
+            name = name,
+            artist = artists,
+            album = album?.get("name")?.jsonPrimitive?.contentOrNull().orEmpty(),
+            cover = album?.get("picUrl")?.jsonPrimitive?.contentOrNull().orEmpty(),
+        )
     }
 }
 

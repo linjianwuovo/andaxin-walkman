@@ -8,6 +8,8 @@ import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.rate
 import platform.AVFoundation.replaceCurrentItemWithPlayerItem
+import platform.CoreMedia.CMTimeGetSeconds
+import platform.CoreMedia.CMTimeMakeWithSeconds
 import platform.Foundation.NSURL
 
 /*
@@ -19,6 +21,10 @@ import platform.Foundation.NSURL
  *
  * 起停用 rate 而不是 play()/pause()：rate 是属性，跨版本都稳；
  * 而且状态机就在这一处，调用方不用去读 player.rate（缓冲时它是 0，拿它当"用户在放"会闪）。
+ *
+ * 进度用"每 0.5 秒问一次当前位置"（调用方起协程轮），不用 addPeriodicTimeObserver：
+ * 那个 API 在 AVPlayer 的 category 里，K/N 要额外 import，跑偏一次就是一发红；
+ * 而 currentTime() 是主接口上的普通方法。0.5 秒的粒度做进度条和锁屏时间都够了。
  */
 @OptIn(ExperimentalForeignApi::class)
 class MusicPlayer {
@@ -39,6 +45,25 @@ class MusicPlayer {
     fun resume() {
         activate()
         player.rate = 1.0f
+    }
+
+    fun seek(seconds: Double) {
+        player.seekToTime(CMTimeMakeWithSeconds(seconds, 600))
+    }
+
+    /** 当前位置；还没开播就是 0。 */
+    fun positionSeconds(): Double {
+        val seconds = CMTimeGetSeconds(player.currentTime())
+        if (seconds.isNaN() || seconds.isInfinite() || seconds < 0.0) return 0.0
+        return seconds
+    }
+
+    /** 还没读到时长的返回 0（刚换 item 的头几百毫秒就是这样，调用方自己决定要不要显示）。 */
+    fun durationSeconds(): Double {
+        val item = player.currentItem ?: return 0.0
+        val seconds = CMTimeGetSeconds(item.duration)
+        if (seconds.isNaN() || seconds.isInfinite() || seconds <= 0.0) return 0.0
+        return seconds
     }
 
     private fun activate() {

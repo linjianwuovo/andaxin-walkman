@@ -46,6 +46,10 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        # 后台出声：锁屏/控制中心能按，App 进后台也不断（音乐那一格的必要条件）。
+        # 少了这一条，锁屏上按钮还是能按，但一按"播放"就被系统把进程挂起 —— 表现是"按了没反应"。
+        UIBackgroundModes:
+          - audio
         # 这个键才是 PlistSanityCheck 真正查的那个。1.12.0 那份 klib 的字符串池里，
         # 它只 objectForInfoDictionaryKey: 读 CADisableMinimumFrameDurationOnPhone 一个键，
         # 读不到或为 false 就抛 IllegalStateException —— K/N 的 TerminateHandler 接着 abort()。
@@ -71,6 +75,11 @@ targets:
             sports.aiit.edu.cn:
               NSExceptionAllowsInsecureHTTPLoads: true
               NSIncludesSubdomains: true
+            # 网易云的 mp3 直链还是明文 http（/api/song/enhance/player/url 回来的就是 http://m7xx.music.126.net/…），
+            # 不给这个域开例外，AVPlayer 会直接被 ATS 拦成"放不了"。只开这一族，别全局放行。
+            music.126.net:
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSIncludesSubdomains: true
     dependencies:
       # 固定路径的 framework：脚本相位在每次构建前按 SDK/配置把对应 flavor 拷到这里替换
       # （见 preBuildScripts），CI 在 xcodegen 之前会先放一份占位。
@@ -94,7 +103,7 @@ targets:
         # 10-26 深夜补一句：我在聊天里报的 105/106 一直没落到这一行（plist 从头到尾是 104），
         # 所以那两发的崩溃报告里看到的号是 104 —— 从现在起这一行跟着聊天的号一起抬，别再两套号。
         MARKETING_VERSION: "0.9.29"
-        CURRENT_PROJECT_VERSION: "170"
+        CURRENT_PROJECT_VERSION: "171"
     preBuildScripts:
       - name: BuildSharedFramework
         script: |
