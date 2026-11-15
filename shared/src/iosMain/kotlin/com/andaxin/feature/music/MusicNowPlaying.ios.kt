@@ -65,14 +65,16 @@ internal class NowPlaying(
         MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = null
     }
 
+    // K/N 把 ObjC 的 "-isEnabled" 映射成属性 enabled（getter 叫 isEnabled()），写成 isEnabled = true 会报
+    // "Function invocation 'isEnabled()' expected / Variable expected" —— 这一条是 CI 编出来的，不是猜的。
     private fun register() {
         val center = MPRemoteCommandCenter.sharedCommandCenter()
-        center.playCommand.isEnabled = true
-        center.pauseCommand.isEnabled = true
-        center.togglePlayPauseCommand.isEnabled = true
-        center.nextTrackCommand.isEnabled = true
-        center.previousTrackCommand.isEnabled = true
-        center.changePlaybackPositionCommand.isEnabled = true
+        center.playCommand.enabled = true
+        center.pauseCommand.enabled = true
+        center.togglePlayPauseCommand.enabled = true
+        center.nextTrackCommand.enabled = true
+        center.previousTrackCommand.enabled = true
+        center.changePlaybackPositionCommand.enabled = true
 
         val ok = MPRemoteCommandHandlerStatus.MPRemoteCommandHandlerStatusSuccess
         center.playCommand.addTargetWithHandler {

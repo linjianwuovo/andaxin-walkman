@@ -6,8 +6,14 @@ import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.setActive
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
+// AVPlayer 这一族（rate / currentItem / currentTime / seekToTime / replaceCurrentItemWithPlayerItem）
+// 在头文件里挂在 @interface AVPlayer (AVPlayerItemControl) 这个 category 下，K/N 把它们绑成**顶层扩展**，
+// 不 import 就只剩"没有这些方法"，报错是 "Unresolved reference 'seekToTime' on receiver of type 'AVPlayer'"。
+import platform.AVFoundation.currentItem
+import platform.AVFoundation.currentTime
 import platform.AVFoundation.rate
 import platform.AVFoundation.replaceCurrentItemWithPlayerItem
+import platform.AVFoundation.seekToTime
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMakeWithSeconds
 import platform.Foundation.NSURL

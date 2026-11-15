@@ -13,10 +13,17 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSData
+import platform.Foundation.NSError
 import platform.Foundation.NSURL
+import platform.Foundation.NSURLRequest
+import platform.Foundation.NSURLResponse
+import platform.Foundation.NSURLSession
+import platform.Foundation.dataTaskWithRequest
 import platform.UIKit.UIImage
+import kotlin.coroutines.resume
 
 /*
  * 音乐这一屏的全部状态和网络调用都收在这里，composable 只负责画。
@@ -231,12 +238,31 @@ class MusicController(
         val url = song.cover
         if (url.isEmpty()) return
         scope.launch {
-            val data = withContext(Dispatchers.Default) {
-                NSURL.URLWithString(url)?.let { NSData.dataWithContentsOfURL(it) }
-            }
+            val data = fetchData(url)
+            // 回来的时候可能已经切歌了，别把上一首的封面贴到这一首上
+            if (current?.cover != url) return@launch
             nowPlaying.setCover(data?.let { UIImage(data = it) })
             refreshNowPlaying()
         }
+    }
+
+    /**
+     * 取一张图回来。用 NSURLSession 而不是 NSData.dataWithContentsOfURL ——
+     * 后者在 K/N 里根本没绑成类方法（CI 报 Unresolved reference），
+     * 而 dataTaskWithRequest 这条 IosImages.kt 里已经跑通过，照抄它的写法：
+     * 带 completionHandler 的那条是**顶层扩展**，不 import 就只剩单参数成员，报 "Too many arguments"。
+     */
+    private suspend fun fetchData(url: String): NSData? = suspendCancellableCoroutine { c ->
+        val nsUrl = NSURL.URLWithString(url)
+        if (nsUrl == null) {
+            c.resume(null)
+            return@suspendCancellableCoroutine
+        }
+        val request = NSURLRequest.requestWithURL(nsUrl)
+        val task = NSURLSession.sharedSession.dataTaskWithRequest(request) { data: NSData?, _: NSURLResponse?, err: NSError? ->
+            c.resume(if (err == null) data else null)
+        }
+        task.resume()
     }
 
     private fun resumeFromRemote() {
