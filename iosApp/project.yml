@@ -2,8 +2,8 @@
 # xcodegen -s iosApp/project.yml 现生成。
 #
 # 这一版从旧仓 iosApp 裁到最小，但下面几个键一个都没省 —— 每一个都是踩过的坑：
-#   CADisableMinimumFrameDurationOnPhone  CMP 的 PlistSanityCheck 读不到就 abort（这版没上 Compose，
-#                                         留着是为了下一轮平移界面时不用再想起来这件事）
+#   CADisableMinimumFrameDurationOnPhone  CMP 的 PlistSanityCheck 读不到就 abort（这版界面就是
+#                                         Compose 画的，缺了启动即崩）
 #   UIApplicationSceneManifest            Apple 从 iOS 26/27 起收口单窗口老路（TN3187）
 #   UILaunchScreen                        empty dict 也算给了启动屏，缺了 xcodebuild 会告警
 #   MARKETING_VERSION 那两行              Info.plist 由 XcodeGen 现生成，不写这里 Xcode 就不展开，
