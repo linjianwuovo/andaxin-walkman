@@ -12,7 +12,7 @@ import platform.MediaPlayer.MPNowPlayingInfoCenter
 import platform.MediaPlayer.MPNowPlayingInfoPropertyElapsedPlaybackTime
 import platform.MediaPlayer.MPNowPlayingInfoPropertyPlaybackRate
 import platform.MediaPlayer.MPRemoteCommandCenter
-import platform.MediaPlayer.MPRemoteCommandHandlerStatus
+import platform.MediaPlayer.MPRemoteCommandHandlerStatusSuccess
 import platform.UIKit.UIImage
 
 /*
@@ -76,7 +76,13 @@ internal class NowPlaying(
         center.previousTrackCommand.enabled = true
         center.changePlaybackPositionCommand.enabled = true
 
-        val ok = MPRemoteCommandHandlerStatus.MPRemoteCommandHandlerStatusSuccess
+        // MPRemoteCommandHandlerStatus 在这一版 K/N 平台库里是 typealias NSInteger（= Long），
+        // 状态值是**顶层 const val**（dump-metadata 原文：
+        //   typealias MPRemoteCommandHandlerStatus = platform/darwin/NSInteger
+        //   public final const val MPRemoteCommandHandlerStatusSuccess: kotlin/Long = 0L
+        //   fun addTargetWithHandler(handler: Function1<MPRemoteCommandEvent?, Long>): Any
+        // ），所以既没有枚举成员，也不该写 MPRemoteCommandHandlerStatus.xxx。
+        val ok = MPRemoteCommandHandlerStatusSuccess
         center.playCommand.addTargetWithHandler {
             onPlay()
             ok
