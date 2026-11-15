@@ -56,20 +56,23 @@ jobs:
         run: |
           KONAN=$(ls -d "$HOME/.konan"/kotlin-native-prebuilt-macos-* 2>/dev/null | head -1)
           echo "KONAN=$KONAN"
-          MP=$(find "$HOME/.konan" -maxdepth 8 -type d -path "*ios_arm64*" -name "MediaPlayer" 2>/dev/null | head -1)
-          AVF=$(find "$HOME/.konan" -maxdepth 8 -type d -path "*ios_arm64*" -name "AVFoundation" 2>/dev/null | head -1)
-          echo "MP=$MP"; echo "AVF=$AVF"
-          if [ -x "$KONAN/bin/klib" ] && [ -n "$MP" ]; then
-            echo "--- klib dump: MPRemoteCommandHandlerStatus ---"
-            "$KONAN/bin/klib" dump-metadata "$MP" 2>/dev/null | grep -nE "MPRemoteCommandHandlerStatus" | head -20 || true
+          echo "--- ls ~/.konan ---"
+          ls -1 "$HOME/.konan" 2>/dev/null | head -10 || true
+          echo "--- 平台库在哪 ---"
+          find "$HOME/.konan" -maxdepth 5 -type d -name "ios_arm64" 2>/dev/null | head -5 || true
+          echo "--- 哪个文件里有这个符号（-rl 全量 grep）---"
+          HIT=$(grep -rl --binary-files=text "MPRemoteCommandHandlerStatusSuccess" "$HOME/.konan" 2>/dev/null | head -3)
+          echo "$HIT"
+          LIB=$(echo "$HIT" | head -1)
+          if [ -x "$KONAN/bin/klib" ] && [ -n "$LIB" ]; then
+            echo "--- klib dump-metadata 里的枚举与 addTargetWithHandler ---"
+            D=$LIB; [ -f "$LIB" ] && D=$(dirname "$LIB")
+            "$KONAN/bin/klib" dump-metadata "$LIB" 2>/dev/null | grep -nE "MPRemoteCommandHandlerStatus|addTargetWithHandler" | head -25 || true
+            "$KONAN/bin/klib" dump-metadata "$D" 2>/dev/null | grep -nE "MPRemoteCommandHandlerStatus|addTargetWithHandler" | head -25 || true
           fi
-          if [ -n "$MP" ]; then
-            echo "--- strings: MPRemoteCommandHandlerStatus* ---"
-            strings "$MP"/* 2>/dev/null | grep -oE "MPRemoteCommandHandlerStatus[A-Za-z]*" | sort | uniq -c | head -20 || true
-          fi
-          if [ -x "$KONAN/bin/klib" ] && [ -n "$AVF" ]; then
-            echo "--- klib dump: AVPlayer / AVPlayerItem ---"
-            "$KONAN/bin/klib" dump-metadata "$AVF" 2>/dev/null | grep -nE "currentTime|seekToTime|fun duration|currentItem" | head -30 || true
+          echo "--- strings 兜底：符号附近的名字 ---"
+          if [ -n "$LIB" ]; then
+            strings "$LIB" 2>/dev/null | grep -nE "MPRemoteCommandHandlerStatus" | head -15 || true
           fi
 
       - name: 链真机 release framework（本机做不了的那步，在这出证据）
