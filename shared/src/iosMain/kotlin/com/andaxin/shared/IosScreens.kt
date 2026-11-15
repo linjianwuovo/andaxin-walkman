@@ -14,6 +14,7 @@ import com.andaxin.feature.home.HeroLook
 import com.andaxin.feature.home.HomeDeps
 import com.andaxin.feature.home.HomeScreen
 import com.andaxin.feature.me.MeDeps
+import com.andaxin.feature.music.MusicScreen
 import com.andaxin.feature.me.MeScreen
 import com.andaxin.feature.message.MessageDeps
 import com.andaxin.feature.message.MessageScreen
@@ -454,4 +455,12 @@ fun IosAppGraph.onboardingViewController(onAgree: () -> Unit): UIViewController 
             IosThemeWrap { OnboardingScreen(onAgree = onAgree) }
         },
         "安大信",
+    )
+
+/** 音乐。第一版：搜 + 放 + 网页登录抓 MUSIC_U（见 feature/music/）。 */
+fun IosAppGraph.musicViewController(): UIViewController =
+    navigated(
+        ComposeUIViewController { IosTopInset { MusicScreen() } },
+        "音乐",
+        bar = false,
     )

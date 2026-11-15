@@ -188,7 +188,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
-    /// 五格底栏：标题跟 Android 那五格一致；图标用系统 SF Symbols（不再等美术出图）。
+    /// 底栏：标题跟 Android 那几格一致；图标用系统 SF Symbols（不再等美术出图）。
+    /// 「音乐」是这一版新加的第六格，**故意放在最后** —— 上面 watchUnread 写的是 items[2].badgeValue，
+    /// 一插到中间，消息红点就贴到别的格上去了。
     private func makeTabs(_ g: IosAppGraph) -> UITabBarController {
         let tabs = UITabBarController()
         tabs.delegate = self          // 切格重拉，见下面的 UITabBarControllerDelegate
@@ -201,6 +203,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             (g.messageViewController(), "消息", "envelope"),
             (g.noticeViewController(), "公告", "megaphone"),
             (g.meViewController(), "我的", "person.crop.circle"),
+            (g.musicViewController(), "音乐", "music.note"),
         ]
         for (vc, title, symbol) in items {
             vc.tabBarItem = UITabBarItem(
