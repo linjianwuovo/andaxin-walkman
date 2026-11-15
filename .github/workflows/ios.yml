@@ -50,6 +50,28 @@ jobs:
           restore-keys: |
             mac-gradle-
 
+      # 只为回答"这个 K/N 绑定到底叫什么"：把平台库里那几行真身打出来，比按风格猜快一轮。
+      # 编不过的时候看这一步，别去改代码试。探针本身不许让这一步失败（全 || true）。
+      - name: 探针 · 平台库里那几个绑定的真身（MediaPlayer 枚举 / AVPlayer 成员）
+        run: |
+          KONAN=$(ls -d "$HOME/.konan"/kotlin-native-prebuilt-macos-* 2>/dev/null | head -1)
+          echo "KONAN=$KONAN"
+          MP=$(find "$HOME/.konan" -maxdepth 8 -type d -path "*ios_arm64*" -name "MediaPlayer" 2>/dev/null | head -1)
+          AVF=$(find "$HOME/.konan" -maxdepth 8 -type d -path "*ios_arm64*" -name "AVFoundation" 2>/dev/null | head -1)
+          echo "MP=$MP"; echo "AVF=$AVF"
+          if [ -x "$KONAN/bin/klib" ] && [ -n "$MP" ]; then
+            echo "--- klib dump: MPRemoteCommandHandlerStatus ---"
+            "$KONAN/bin/klib" dump-metadata "$MP" 2>/dev/null | grep -nE "MPRemoteCommandHandlerStatus" | head -20 || true
+          fi
+          if [ -n "$MP" ]; then
+            echo "--- strings: MPRemoteCommandHandlerStatus* ---"
+            strings "$MP"/* 2>/dev/null | grep -oE "MPRemoteCommandHandlerStatus[A-Za-z]*" | sort | uniq -c | head -20 || true
+          fi
+          if [ -x "$KONAN/bin/klib" ] && [ -n "$AVF" ]; then
+            echo "--- klib dump: AVPlayer / AVPlayerItem ---"
+            "$KONAN/bin/klib" dump-metadata "$AVF" 2>/dev/null | grep -nE "currentTime|seekToTime|fun duration|currentItem" | head -30 || true
+          fi
+
       - name: 链真机 release framework（本机做不了的那步，在这出证据）
         run: |
           # 102 那发死在这一步，但不是代码：maven.aliyun.com 那个 mirror 回了一次 502，
