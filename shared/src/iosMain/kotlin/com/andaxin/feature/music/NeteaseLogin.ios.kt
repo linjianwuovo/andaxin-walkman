@@ -57,8 +57,8 @@ fun NeteaseLoginScreen(onDone: (String) -> Unit, onCancel: () -> Unit) {
             delay(800)
             var token: String? = null
             dataStore.httpCookieStore.getAllCookies { cookies ->
-                token = cookies.filterIsInstance<NSHTTPCookie>()
-                    .firstOrNull { it.name == "MUSIC_U" }
+                token = cookies?.filterIsInstance<NSHTTPCookie>()
+                    ?.firstOrNull { it.name == "MUSIC_U" }
                     ?.value
             }
             val got = token
