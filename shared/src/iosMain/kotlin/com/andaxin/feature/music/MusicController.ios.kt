@@ -38,8 +38,8 @@ import kotlin.coroutines.resume
  *  进度     —— 每 0.5 秒问一次 AVPlayer 的位置（见 MusicPlayer 里为什么不用 periodicTimeObserver），
  *              拖拽时把 scrubbing 置真，别让游标和用户的手指打架。
  *  锁屏     —— NowPlaying 那一层负责写 nowPlayingInfo + 接耳机线控。
- *  落盘     —— 队列/第几首/第几秒/MUSIC_U 存 NSUserDefaults；冷启动只恢复"上次那首 + 那个位置"，
- *              **不自动出声**（0.9.29 那条决定：重开就响会吓死人）。
+ *  落盘     —— 队列/第几首/第几秒/上次是否在放/MUSIC_U 存 NSUserDefaults；冷启动恢复
+ *              "上次那首 + 那个位置 + 上次的播放状态"：上次在放就接着放，上次停着就停着。
  */
 class MusicController(
     private val engine: HttpEngine = createHttpEngine(HttpEngineConfig()),
@@ -64,6 +64,13 @@ class MusicController(
     private var loaded = false
     private var endHandled = false
     private var lastSavedPosition = -1.0
+
+    /*
+     * 恢复播放时先 seek 到上次的位置：AVPlayer 的 seek 是异步的，刚落 item 的那一两拍
+     * currentTime() 还在 0，直接读会把游标拽回开头。这里让 ticker 空转几拍（500ms × 3），
+     * seek 落定后再开始跟播放器对齐。
+     */
+    private var suppressTicks = 0
 
     private val player = MusicPlayer()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -129,6 +136,7 @@ class MusicController(
             player.resume()
             playing = true
         }
+        MusicStore.savePlaying(playing)
         refreshNowPlaying()
     }
 
@@ -152,7 +160,8 @@ class MusicController(
         refreshNowPlaying()
     }
 
-    private suspend fun playAt(target: Int) {
+    /** startAt > 0 只出现在冷启动恢复：先出声，再 seek 回上次的位置。 */
+    private suspend fun playAt(target: Int, startAt: Double = 0.0) {
         val list = queue
         if (list.isEmpty()) return
         val i = ((target % list.size) + list.size) % list.size
@@ -164,12 +173,19 @@ class MusicController(
         index = i
         loaded = true
         playing = true
-        position = 0.0
+        if (startAt > 0.5) {
+            player.seek(startAt)
+            position = startAt
+            suppressTicks = 3
+        } else {
+            position = 0.0
+        }
         duration = 0.0
         endHandled = false
-        lastSavedPosition = 0.0
+        lastSavedPosition = position
         MusicStore.saveQueue(list, i)
-        MusicStore.savePosition(0.0)
+        MusicStore.savePosition(position)
+        MusicStore.savePlaying(true)
         refreshNowPlaying()
         loadCover(song)
     }
@@ -199,14 +215,20 @@ class MusicController(
         position = MusicStore.loadPosition()
         playing = false
         refreshNowPlaying()
+        // 上次退出时在放，就把那一首从那个位置接着放（用户 11-16 的决定）。
+        if (MusicStore.loadPlaying()) scope.launch { playAt(savedIndex, startAt = position) }
     }
 
     private suspend fun ticker() {
         while (scope.isActive) {
             delay(500)
             if (!scrubbing) {
-                val pos = player.positionSeconds()
-                if (loaded || pos > 0.0) position = pos
+                if (suppressTicks > 0) {
+                    suppressTicks--          // 恢复时 seek 还没落定，别把游标拽回 0
+                } else {
+                    val pos = player.positionSeconds()
+                    if (loaded || pos > 0.0) position = pos
+                }
             }
             val dur = player.durationSeconds()
             if (dur > 0.5 && dur != duration) duration = dur
@@ -273,6 +295,7 @@ class MusicController(
         }
         player.resume()
         playing = true
+        MusicStore.savePlaying(true)
         refreshNowPlaying()
     }
 
@@ -280,6 +303,7 @@ class MusicController(
         if (!playing) return
         player.pause()
         playing = false
+        MusicStore.savePlaying(false)
         refreshNowPlaying()
     }
 }

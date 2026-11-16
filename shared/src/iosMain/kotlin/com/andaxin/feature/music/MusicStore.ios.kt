@@ -5,9 +5,9 @@ import platform.Foundation.NSUserDefaults
 /*
  * 落盘：就 NSUserDefaults 一个盒子，不引数据库。
  *
- * 存四样：登录 cookie（MUSIC_U）、队列（encodeQueue 那个字符串）、放到第几首、放到第几秒。
- * **不存"正在放"**：0.9.29 那条决定是冷启动必须停着（用户原话：重开就响会吓死人），
- * 所以恢复的是"上次那首 + 那个位置"，按下去才出声。
+ * 存五样：登录 cookie（MUSIC_U）、队列（encodeQueue 那个字符串）、放到第几首、放到第几秒、
+ * 上次是不是在放。
+ * 播放状态是要存的（用户 11-16 的决定：上次在放，重开接着放）。
  */
 internal object MusicStore {
 
@@ -17,6 +17,7 @@ internal object MusicStore {
     private const val KEY_QUEUE = "music.queue"
     private const val KEY_INDEX = "music.index"
     private const val KEY_POSITION = "music.position"
+    private const val KEY_PLAYING = "music.playing"
 
     fun loadMusicU(): String? = defaults.stringForKey(KEY_MUSIC_U)?.takeIf { it.isNotBlank() }
 
@@ -44,5 +45,12 @@ internal object MusicStore {
 
     fun savePosition(seconds: Double) {
         defaults.setDouble(seconds, forKey = KEY_POSITION)
+    }
+
+    /** 上次退出时是不是在放；没存过就是 false（首装重开不出声）。 */
+    fun loadPlaying(): Boolean = defaults.boolForKey(KEY_PLAYING)
+
+    fun savePlaying(value: Boolean) {
+        defaults.setBool(value, forKey = KEY_PLAYING)
     }
 }
