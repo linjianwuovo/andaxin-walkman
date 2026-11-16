@@ -222,8 +222,8 @@ class MusicController(
         position = MusicStore.loadPosition()
         playing = false
         refreshNowPlaying()
-        // 上次退出时在放，就把那一首从那个位置接着放（用户 11-16 的决定）。
-        if (MusicStore.loadPlaying()) scope.launch { playAt(savedIndex, startAt = position) }
+        // 回来一律停在原处等用户按播放：上次在放歌也照样不自动出声（用户 11-16 的决定，
+        // 与安卓一致）。队列、位置、当前曲目照旧恢复，按播放从 position 继续。
     }
 
     private suspend fun ticker() {
