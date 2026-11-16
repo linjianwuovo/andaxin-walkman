@@ -134,6 +134,9 @@ class MusicController(
         if (playing) {
             player.pause()
             playing = false
+            // 按下去就停在这一秒：ticker 是每 5 秒才落一次盘，暂停后立刻杀 App 会丢最多 5 秒。
+            lastSavedPosition = position
+            MusicStore.savePosition(position)
         } else {
             player.resume()
             playing = true
@@ -314,6 +317,8 @@ class MusicController(
         if (!playing) return
         player.pause()
         playing = false
+        lastSavedPosition = position
+        MusicStore.savePosition(position)
         MusicStore.savePlaying(false)
         refreshNowPlaying()
     }
