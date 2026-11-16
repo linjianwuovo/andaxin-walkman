@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -48,6 +50,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,6 +80,11 @@ import kotlinx.coroutines.launch
 fun MusicScreen() {
     val controller = remember { MusicController() }
     val scope = rememberCoroutineScope()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val submitSearch: () -> Unit = {
+        keyboard?.hide()
+        scope.launch { controller.search() }
+    }
     var showLogin by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
@@ -100,12 +111,14 @@ fun MusicScreen() {
                 value = controller.query,
                 onValueChange = { controller.query = it },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { submitSearch() }),
                 placeholder = { Text("搜歌名或歌手") },
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.weight(1f),
             )
             Button(
-                onClick = { scope.launch { controller.search() } },
+                onClick = submitSearch,
                 modifier = Modifier.padding(start = 8.dp),
             ) { Text("搜索") }
         }
@@ -357,7 +370,13 @@ private enum class Transport { Play, Pause, Next, Prev }
 /** Canvas 现画的 transport 图标（三角 = 播放、双竖 = 暂停、三角+竖 = 下一首、竖+三角 = 上一首），不引图标依赖。 */
 @Composable
 private fun TransportIcon(kind: Transport, tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
+    val label = when (kind) {
+        Transport.Play -> "播放"
+        Transport.Pause -> "暂停"
+        Transport.Next -> "下一首"
+        Transport.Prev -> "上一首"
+    }
+    Canvas(modifier = modifier.semantics { contentDescription = label }) {
         val s = minOf(size.width, size.height)
         val ox = (size.width - s) / 2f
         val oy = (size.height - s) / 2f
