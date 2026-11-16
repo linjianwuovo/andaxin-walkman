@@ -66,11 +66,12 @@ class MusicController(
     private var lastSavedPosition = -1.0
 
     /*
-     * 恢复播放时先 seek 到上次的位置：AVPlayer 的 seek 是异步的，刚落 item 的那一两拍
-     * currentTime() 还在 0，直接读会把游标拽回开头。这里让 ticker 空转几拍（500ms × 3），
-     * seek 落定后再开始跟播放器对齐。
+     * 接着上次放的时候，seek 落定之前 currentTime() 可能还是 0（或者说还没跳到目标）。
+     * 这段时间让 ticker 别用播放器的游标覆盖 position，否则界面上会先弹回 0 再跳回来。
+     * resumeTarget = 目标位置；resumeTicks 是容忍上限（每拍 500ms，20 拍 = 10 秒）。
      */
-    private var suppressTicks = 0
+    private var resumeTarget = -1.0
+    private var resumeTicks = 0
 
     private val player = MusicPlayer()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -126,7 +127,8 @@ class MusicController(
     fun toggle() {
         val song = current ?: return
         if (!loaded) {
-            scope.launch { playAt(index) }
+            // 冷启动恢复出来的那一首：按播放要从上次停下的位置开始，不是从头。
+            scope.launch { playAt(index, startAt = position) }
             return
         }
         if (playing) {
@@ -168,17 +170,19 @@ class MusicController(
         val song = list[i]
         message = null
         val url = resolve(song)
-        player.play(url)
+        player.play(url, startAt = startAt)
         current = song
         index = i
         loaded = true
         playing = true
         if (startAt > 0.5) {
-            player.seek(startAt)
             position = startAt
-            suppressTicks = 3
+            resumeTarget = startAt
+            resumeTicks = 20          // 最多容忍 10 秒，超过就不再等 seek
         } else {
             position = 0.0
+            resumeTarget = -1.0
+            resumeTicks = 0
         }
         duration = 0.0
         endHandled = false
@@ -223,10 +227,16 @@ class MusicController(
         while (scope.isActive) {
             delay(500)
             if (!scrubbing) {
-                if (suppressTicks > 0) {
-                    suppressTicks--          // 恢复时 seek 还没落定，别把游标拽回 0
+                val pos = player.positionSeconds()
+                if (resumeTarget >= 0.0 && resumeTicks > 0) {
+                    resumeTicks--
+                    // 追上目标（留 1.5 秒容差）就算 seek 落定，从下一拍开始正常跟播放器。
+                    if (pos >= resumeTarget - 1.5) {
+                        resumeTarget = -1.0
+                        position = pos
+                    }
                 } else {
-                    val pos = player.positionSeconds()
+                    resumeTarget = -1.0
                     if (loaded || pos > 0.0) position = pos
                 }
             }

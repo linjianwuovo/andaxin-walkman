@@ -41,11 +41,20 @@ class MusicPlayer {
 
     private val player = AVPlayer()
 
-    fun play(url: String) {
+    /**
+     * startAt > 0 只出现在"接着上次放"：刚落 item 时它的 status 还是 unknown，
+     * 这时候直接 seek 有可能被吞掉，结果从头开始放、界面却显示着上次的位置。
+     * 所以带完成回调 seek，落定了再 rate=1，出声就是从那个位置开始的。
+     */
+    fun play(url: String, startAt: Double = 0.0) {
         val nsUrl = NSURL.URLWithString(url) ?: return
         activate()
         player.replaceCurrentItemWithPlayerItem(AVPlayerItem(uRL = nsUrl))
-        player.rate = 1.0f
+        if (startAt > 0.5) {
+            player.seekToTime(CMTimeMakeWithSeconds(startAt, 600)) { _ -> player.rate = 1.0f }
+        } else {
+            player.rate = 1.0f
+        }
     }
 
     fun pause() {
