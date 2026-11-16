@@ -300,7 +300,8 @@ class MusicController(
     private fun resumeFromRemote() {
         if (current == null) return
         if (!loaded) {
-            scope.launch { playAt(index) }
+            // 线控/锁屏上按播放，同样要从上次停下的位置开始。
+            scope.launch { playAt(index, startAt = position) }
             return
         }
         player.resume()
