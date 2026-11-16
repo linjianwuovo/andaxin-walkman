@@ -53,7 +53,6 @@ import com.ljyh.mei.constants.NotificationLeftActionKey
 import com.ljyh.mei.constants.NotificationRightActionKey
 import com.ljyh.mei.constants.PreviousPlaybackKey
 import com.ljyh.mei.constants.RestorePlaybackPositionKey
-import com.ljyh.mei.constants.RestorePlaybackStateKey
 import com.ljyh.mei.playback.UsbAudioStatus
 import com.ljyh.mei.ui.component.player.hasFloatingLyricsBackgroundPermission
 import com.ljyh.mei.ui.component.player.isXiaomiFloatingLyricsPermissionRequired
@@ -97,7 +96,6 @@ fun PlaySetting(
     val (cloudShuffle, onCloudShuffleChange) = rememberPreference(CloudShuffleEnabledKey, true)
     val (previousPlayback, onPreviousPlaybackChange) = rememberPreference(PreviousPlaybackKey, true)
     val (restorePlaybackPosition, onRestorePlaybackPositionChange) = rememberPreference(RestorePlaybackPositionKey, true)
-    val (restorePlaybackState, onRestorePlaybackStateChange) = rememberPreference(RestorePlaybackStateKey, true)
     val (notificationLeftAction, onNotificationLeftActionChange) = rememberEnumPreference(NotificationLeftActionKey, NotificationAction.PlayMode)
     val (notificationRightAction, onNotificationRightActionChange) = rememberEnumPreference(NotificationRightActionKey, NotificationAction.Like)
     val (noAudioSource, onNoAudioSourceChange) = rememberPreference(NoAudioSourceKey, false)
@@ -161,11 +159,6 @@ fun PlaySetting(
                     stringResource(R.string.restore_playback_position), "arrow.counterclockwise",
                     restorePlaybackPosition, onRestorePlaybackPositionChange,
                     description = stringResource(R.string.restore_playback_position_description),
-                )
-                ToggleRow(
-                    stringResource(R.string.restore_playback_state), "play.fill",
-                    restorePlaybackState, onRestorePlaybackStateChange,
-                    description = stringResource(R.string.restore_playback_state_description),
                 )
                 ValueRow(stringResource(R.string.music_quality), "waveform") {
                     GlasmioPopUpButton(

@@ -109,6 +109,7 @@ import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationScaffold
 import com.ljyh.mei.constants.NavigationBarHeight
 import com.kyant.backdrop.backdrops.layerBackdrop
 import io.github.neoruaa.glasmio.core.GlassAppearance as GlasmioGlassAppearance
+import io.github.neoruaa.glasmio.core.nativeControlLensUnsupported
 import io.github.neoruaa.glasmio.core.LocalGlassAppearance as LocalGlasmioGlassAppearance
 import io.github.neoruaa.glasmio.core.LocalGlassColors as LocalGlasmioGlassColors
 import io.github.neoruaa.glasmio.core.defaultGlassColors as glasmioDefaultGlassColors
@@ -941,7 +942,7 @@ private fun ShelfHost(
                         ),
                         LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
                             liquidGlassEnabled = true,
-                            reduceTransparency = false,
+                            reduceTransparency = nativeControlLensUnsupported,
                         ),
                         LocalGlasmioGlassBackdrop provides shelfBackdrop,
                         LocalGlasmioBlurBackdrop provides shelfBackdrop,
@@ -975,7 +976,7 @@ private fun ShelfHost(
                         LocalGlasmioGlassColors provides glassColors,
                         LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
                             liquidGlassEnabled = true,
-                            reduceTransparency = false,
+                            reduceTransparency = nativeControlLensUnsupported,
                         ),
                         LocalGlasmioGlassBackdrop provides shelfBackdrop,
                         LocalGlasmioBlurBackdrop provides shelfBackdrop,

@@ -1300,6 +1300,9 @@ class MusicService : MediaLibraryService(),
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        // 划掉最近任务即视为退出：先暂停再落盘，重开时停在那一秒等用户按播放。
+        // 否则前台服务活着，用户「大退」后重开看到的还是正在放。
+        if (player.playWhenReady) player.pause()
         persistPlaybackSnapshotBlocking()
         super.onTaskRemoved(rootIntent)
     }

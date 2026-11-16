@@ -15,15 +15,17 @@ import androidx.compose.ui.text.font.FontFamily
 @Immutable
 data class GlassAppearance(
     val liquidGlassEnabled: Boolean = true,
-    val reduceTransparency: Boolean = false,
+    // Mi 11 / HyperOS renders nativeControlLens as a black block; force the
+    // library's tested opaque (reduceTransparency) path there (GlassDeviceCompat.kt).
+    val reduceTransparency: Boolean = nativeControlLensUnsupported,
     /** Resolve an individual glass surface from its sampled backdrop, with hysteresis. */
     val adaptiveColorScheme: Boolean = false,
 ) {
     val usesRefraction: Boolean
-        get() = liquidGlassEnabled && !reduceTransparency
+        get() = liquidGlassEnabled && !reduceTransparency && !nativeControlLensUnsupported
 
     val usesBackdrop: Boolean
-        get() = !reduceTransparency
+        get() = !reduceTransparency && !nativeControlLensUnsupported
 }
 
 val LocalGlassAppearance = staticCompositionLocalOf { GlassAppearance() }
