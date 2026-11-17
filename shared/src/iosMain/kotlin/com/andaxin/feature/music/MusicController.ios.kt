@@ -54,6 +54,8 @@ class MusicController(
         private set
     var position by mutableStateOf(0.0)
     var duration by mutableStateOf(0.0)
+    var lyrics by mutableStateOf<List<LyricLine>>(emptyList())
+    var lyricIndex by mutableStateOf(-1)
     var musicU by mutableStateOf(MusicStore.loadMusicU())
         private set
 
@@ -172,9 +174,12 @@ class MusicController(
         val i = ((target % list.size) + list.size) % list.size
         val song = list[i]
         message = null
+        lyrics = emptyList()
+        lyricIndex = -1
         val url = resolve(song)
         player.play(url, startAt = startAt)
         current = song
+        scope.launch { loadLyrics(song) }
         index = i
         loaded = true
         playing = true
@@ -195,6 +200,22 @@ class MusicController(
         MusicStore.savePlaying(true)
         refreshNowPlaying()
         loadCover(song)
+    }
+
+    private suspend fun loadLyrics(song: MusicSong) {
+        val reply = try {
+            engine.execute(neteaseLyricCall(song.id, musicU = musicU))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            return
+        }
+        if (!reply.isSuccessful) return
+        val parsed = parseLyrics(reply.bodyText)
+        if (current?.id == song.id) {
+            lyrics = parsed
+            lyricIndex = -1
+        }
     }
 
     /*
@@ -253,6 +274,12 @@ class MusicController(
                 lastSavedPosition = position
                 MusicStore.savePosition(position)
             }
+            val nowMs = (position * 1000.0).toLong()
+            var active = -1
+            for (i in lyrics.indices) {
+                if (lyrics[i].timeMs <= nowMs) active = i else break
+            }
+            if (active != lyricIndex) lyricIndex = active
             if (playing) refreshNowPlaying()
         }
     }

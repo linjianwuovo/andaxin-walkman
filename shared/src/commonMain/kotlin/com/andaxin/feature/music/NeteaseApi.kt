@@ -1,5 +1,6 @@
 package com.andaxin.feature.music
 
+import com.andaxin.core.net.HttpBody
 import com.andaxin.core.net.HttpCall
 import com.andaxin.core.net.formUrlEncode
 import kotlinx.serialization.json.Json
@@ -62,6 +63,81 @@ fun neteaseSongUrlCall(id: Long, br: Int = 128000, musicU: String? = null): Http
 
 /** 老接口里的兜底直链：302 到同一首的 mp3。拿不到播放地址时用它，客户端自己跟重定向。 */
 fun neteaseOuterUrl(id: Long): String = "https://music.163.com/song/media/outer/url?id=" + id + ".mp3"
+
+fun neteaseLyricCall(id: Long, musicU: String? = null): HttpCall = HttpCall(
+    method = "POST",
+    url = "https://interface.music.163.com/api/song/lyric/v1",
+    headers = baseHeaders(musicU).plus("Content-Type" to "application/x-www-form-urlencoded"),
+    body = HttpBody.Form(
+        listOf(
+            "id" to id.toString(),
+            "cp" to "false",
+            "tv" to "0",
+            "lv" to "0",
+            "rv" to "0",
+            "kv" to "0",
+            "yv" to "0",
+            "ytv" to "0",
+            "yrv" to "0",
+        ),
+    ),
+)
+
+data class LyricLine(val timeMs: Long, val text: String)
+
+fun parseLyrics(json: String): List<LyricLine> = runCatching {
+    val root = Json.parseToJsonElement(json).jsonObject
+    if (runCatching { root["code"]?.jsonPrimitive?.longOrNull }.getOrNull() != 200L) return@runCatching emptyList()
+    val lrc = runCatching { root["lrc"]?.jsonObject }.getOrNull() ?: return@runCatching emptyList()
+    val lyric = runCatching { lrc["lyric"]?.jsonPrimitive?.content }.getOrNull() ?: return@runCatching emptyList()
+    (parseEnhancedLyrics(lyric) + parseClassicLyrics(lyric)).distinctBy { it.timeMs }.sortedBy { it.timeMs }
+}.getOrNull() ?: emptyList()
+
+private fun parseEnhancedLyrics(lyric: String): List<LyricLine> = buildList {
+    lyric.lineSequence().forEach { line ->
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || !trimmed.startsWith("{")) return@forEach
+        val obj = runCatching { Json.parseToJsonElement(trimmed).jsonObject }.getOrNull() ?: return@forEach
+        val timeMs = runCatching { obj["t"]?.jsonPrimitive?.longOrNull }.getOrNull() ?: return@forEach
+        val text = runCatching {
+            (obj["c"] as? JsonArray)?.mapNotNull {
+                runCatching { it.jsonObject["tx"]?.jsonPrimitive?.content }.getOrNull()
+            }?.joinToString("").orEmpty()
+        }.getOrDefault("")
+        if (text.isNotBlank()) add(LyricLine(timeMs, text))
+    }
+}.sortedBy { it.timeMs }
+
+private val classicLyricLine = Regex("\\[(\\d+):(\\d+(?:\\.\\d+)?)\\](.*)")
+
+private fun parseClassicLyrics(lyric: String): List<LyricLine> = buildList {
+    lyric.lineSequence().forEach { line ->
+        var matched = false
+        classicLyricLine.findAll(line).forEach { match ->
+            matched = true
+            val minutes = match.groupValues[1].toLongOrNull() ?: return@forEach
+            val seconds = match.groupValues[2].toDoubleOrNull() ?: return@forEach
+            if (seconds < 0.0 || seconds >= 60.0) return@forEach
+            val text = match.groupValues[3].trim()
+            if (text.isNotEmpty()) add(LyricLine(minutes * 60_000L + (seconds * 1000.0).toLong(), text))
+        }
+        if (!matched && line.isNotBlank() && !line.trim().startsWith("{")) {
+            val timeMs = metadataTimeMs(line.trim())
+            if (timeMs != null) add(LyricLine(timeMs, line.trim()))
+        }
+    }
+}
+
+private fun metadataTimeMs(line: String): Long? {
+    if (!line.startsWith("[") || !line.contains("]:")) return null
+    val value = line.substringAfter('[').substringBefore(']').trim()
+    val parts = value.split(':')
+    if (parts.size < 2) return null
+    val minutes = parts[0].toLongOrNull() ?: return null
+    val seconds = parts[1].toDoubleOrNull() ?: return null
+    if (seconds < 0.0 || seconds >= 60.0) return null
+    return minutes * 60_000L + (seconds * 1000.0).toLong()
+}
 
 fun parseSearchSongs(json: String): List<MusicSong> {
     val root = runCatching { Json.parseToJsonElement(json).jsonObject }.getOrNull() ?: return emptyList()

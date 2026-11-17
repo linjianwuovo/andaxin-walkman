@@ -70,7 +70,66 @@ class NeteaseApiTest {
     }
 
     @Test
-    fun ids参数_方括号要转义否则服务端当场参数错误() {
-        assertTrue(neteaseSongUrlCall(347230).url.contains("ids=%5B347230%5D"))
+    fun 歌词请求_九个表单字段和音乐U都要带齐() {
+        val call = neteaseLyricCall(347230, musicU = "abc123")
+        val body = call.body as com.andaxin.core.net.HttpBody.Form
+        assertEquals("POST", call.method)
+        assertEquals("https://interface.music.163.com/api/song/lyric/v1", call.url)
+        assertEquals(
+            listOf(
+                "id" to "347230",
+                "cp" to "false",
+                "tv" to "0",
+                "lv" to "0",
+                "rv" to "0",
+                "kv" to "0",
+                "yv" to "0",
+                "ytv" to "0",
+                "yrv" to "0",
+            ),
+            body.fields,
+        )
+        assertTrue(call.headers.any { it.first == "Content-Type" && it.second == "application/x-www-form-urlencoded" })
+        assertTrue(call.headers.any { it.first == "Cookie" && it.second.contains("MUSIC_U=abc123") })
+    }
+
+    @Test
+    fun 歌词回包_增强格式按片段拼成完整一行() {
+        val lrc = """{"t":0,"c":[{"tx":"作词: "},{"tx":"周杰伦","li":"http://x"}]}
+{"t":1250,"c":[{"tx":"故事的小黄花"},{"tx":" 从出生那年就飘着"}]}
+{"t":9800,"c":[{"tx":"  "}]}""".trimIndent()
+        val json = """{"code":200,"lrc":{"lyric":${kotlinx.serialization.json.Json.encodeToString(lrc)}}}"""
+        assertEquals(
+            listOf(
+                LyricLine(0L, "作词: 周杰伦"),
+                LyricLine(1250L, "故事的小黄花 从出生那年就飘着"),
+            ),
+            parseLyrics(json),
+        )
+    }
+
+    @Test
+    fun 歌词回包_经典LRC按时间戳排序() {
+        val lrc = """[00:12.34]第二句
+[00:01.50]第一句
+[00:10]整秒
+[ar:歌手]
+空白""".trimIndent()
+        val json = """{"code":200,"lrc":{"lyric":${kotlinx.serialization.json.Json.encodeToString(lrc)}}}"""
+        assertEquals(
+            listOf(
+                LyricLine(1500L, "第一句"),
+                LyricLine(10_000L, "整秒"),
+                LyricLine(12_340L, "第二句"),
+            ),
+            parseLyrics(json),
+        )
+    }
+
+    @Test
+    fun 歌词回包_坏输入回空列表() {
+        assertTrue(parseLyrics("不是 JSON").isEmpty())
+        assertTrue(parseLyrics("""{"code":404,"lrc":{"lyric":"[00:01.00]别读"}}""").isEmpty())
+        assertTrue(parseLyrics("""{"code":200,"lrc":"字段不对"}""").isEmpty())
     }
 }

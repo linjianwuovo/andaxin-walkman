@@ -250,10 +250,13 @@ fun MusicScreen() {
 private fun PlayerPanel(controller: MusicController, onBack: () -> Unit) {
     val song = controller.current ?: return
     val total = if (controller.duration > 0.0) controller.duration else 1.0
+    var showLyrics by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             TextButton(onClick = onBack) { Text("← 收起") }
             Spacer(Modifier.weight(1f))
+            TextButton(onClick = { showLyrics = !showLyrics }) { Text(if (showLyrics) "歌词" else "封面") }
+            Spacer(Modifier.width(8.dp))
             Text(
                 text = if (controller.queue.isEmpty()) "" else "第 " + (controller.queueIndexOf(song) + 1) + " / " + controller.queue.size + " 首",
                 style = MaterialTheme.typography.labelMedium,
@@ -266,8 +269,12 @@ private fun PlayerPanel(controller: MusicController, onBack: () -> Unit) {
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            val side = minOf(maxWidth, maxHeight)
-            AlbumArt(song.cover, Modifier.size(side), RoundedCornerShape(20.dp))
+            if (showLyrics) {
+                LyricView(controller, Modifier.fillMaxSize())
+            } else {
+                val side = minOf(maxWidth, maxHeight)
+                AlbumArt(song.cover, Modifier.size(side), RoundedCornerShape(20.dp))
+            }
         }
         Spacer(Modifier.height(20.dp))
         Text(song.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -329,6 +336,53 @@ private fun PlayerPanel(controller: MusicController, onBack: () -> Unit) {
             text = "队列就是这次搜索的结果；放到末尾会回到第一首。锁屏和耳机线上是同一套按钮。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun LyricView(controller: MusicController, modifier: Modifier) {
+    val current = controller.lyrics.getOrNull(controller.lyricIndex)?.text
+    val next = controller.lyrics.getOrNull(controller.lyricIndex + 1)?.text
+    Column(
+        modifier = modifier.padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (controller.lyrics.isEmpty()) {
+            Text(
+                text = "这首歌暂时没有歌词",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            return
+        }
+        if (current == null) {
+            Text(
+                text = "♪",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            return
+        }
+        Text(
+            text = current,
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(14.dp))
+        Text(
+            text = next ?: "—",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f),
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
