@@ -19,10 +19,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // 系统那条栏：实心、跟 App 底色一路（默认的半透明磨砂在长列表滚起来会糊成一片）。
+        // 系统那条栏：用系统默认外观，跟 Xcode 26 构建出的官方设计一致。
         // 走 UINavigationBar.appearance 是因为五格各自有自己的导航栈，逐台配会漏。
         let bar = UINavigationBarAppearance()
-        bar.configureWithOpaqueBackground()
+        bar.configureWithDefaultBackground()
         UINavigationBar.appearance().standardAppearance = bar
         UINavigationBar.appearance().scrollEdgeAppearance = bar
         return true

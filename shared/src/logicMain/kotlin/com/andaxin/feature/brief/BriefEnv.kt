@@ -87,6 +87,12 @@ object BriefEnv {
     var openOutside: ((url: String) -> Boolean)? = null
 
     /**
+     * 「打开系统通知设置」。安卓跳系统通知设置页，iOS 交 `UIApplication.openSettingsURLString`。
+     * 不插这一根就不画那一行 —— 不摆按了没反应的键。
+     */
+    var openSystemSettings: (() -> Unit)? = null
+
+    /**
      * 「把这份文件交给系统」：写个临时文件 + 弹系统分享面板。回 true = 真交出去了。
      *
      * 安卓 = `cache/export` + FileProvider + `Intent.ACTION_SEND`（见 AndroidPhotoHost），

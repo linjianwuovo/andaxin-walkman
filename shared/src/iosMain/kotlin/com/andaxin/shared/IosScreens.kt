@@ -70,11 +70,11 @@ import com.andaxin.feature.notice.NoticeDeps
 import com.andaxin.feature.notice.NoticeDetailDeps
 import com.andaxin.feature.notice.NoticeDetailScreen
 import com.andaxin.feature.notice.NoticeScreen
+import com.andaxin.feature.notify.NotifyScreen
 import com.andaxin.feature.brief.BriefEnv
 import com.andaxin.feature.brief.RemotePhoto
 import com.andaxin.feature.schedule.TimetableDeps
 import com.andaxin.feature.schedule.TimetableScreen
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.cinterop.useContents
 import platform.Foundation.NSBundle
 import platform.UIKit.UINavigationController
@@ -261,8 +261,8 @@ fun IosAppGraph.loginViewController(onDone: () -> Unit): UIViewController {
                     auth = auth,
                     session = session,
                     vault = vault,
-                    kicked = MutableStateFlow(null),
-                    consumeKicked = {},
+                    kicked = loginKicked,
+                    consumeKicked = { loginKicked.value = null },
                 ),
                 onDone = onDone,
                 onBack = {
@@ -376,6 +376,7 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         // （入口是按 canOpen 决定画不画的），所以 iOS 上一直没有换颜色的地方。
         // 现在这一屏改的三样（明暗/强调色/首页壁纸）当场生效 —— 见 IosTopInset 那段。
         key == "theme" -> IosRoute("主题") { ThemeScreen(onBack = {}) }
+        key == "notify" -> IosRoute("通知设置") { NotifyScreen(onBack = {}) }
 
         // 运动这一族（「选线面板」是 beta 那一档才有的东西，正式包和 iOS 都没有这一扇）
         key == "sport" -> IosRoute("运动") { SportStartScreen(open = open, onBack = {}) }

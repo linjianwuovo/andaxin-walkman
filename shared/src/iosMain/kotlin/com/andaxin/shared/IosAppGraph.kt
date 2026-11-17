@@ -69,6 +69,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -98,6 +99,9 @@ private val graphFailure = CoroutineExceptionHandler { _, e ->
 class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + graphFailure)
+
+    /** 被踢下线的提示：登录页读完就清空，下一次被踢还能再提示一次。 */
+    val loginKicked = MutableStateFlow<String?>(null)
 
     override val store: Store = Store(documentsPath + "/andaxin.preferences_pb")
     val session: SessionStore = SessionStore(store)
@@ -161,6 +165,11 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         com.andaxin.feature.brief.BriefEnv.openOutside = { url ->
             val target = platform.Foundation.NSURL.URLWithString(url)
             target != null && platform.UIKit.UIApplication.sharedApplication.openURL(target)
+        }
+        // 「通知设置 → 打开系统通知设置」：iOS 16 上有系统设置页的固定 URL，不用新 API
+        com.andaxin.feature.brief.BriefEnv.openSystemSettings = {
+            val target = platform.Foundation.NSURL.URLWithString(platform.UIKit.UIApplication.openSettingsURLString)
+            if (target != null) platform.UIKit.UIApplication.sharedApplication.openURL(target)
         }
     }
 

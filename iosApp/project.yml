@@ -45,6 +45,8 @@ targets:
         # "我的"页那行 bundleVersion() 也跟着读空。$() 会在 Process Info.plist 那步展开成上面的值。
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Xcode 26 构建出的包走官方系统设计，不回退到旧版兼容外观。
+        UIDesignRequiresCompatibility: false
         UILaunchScreen: {}
         # 后台出声：锁屏/控制中心能按，App 进后台也不断（音乐那一格的必要条件）。
         # 少了这一条，锁屏上按钮还是能按，但一按"播放"就被系统把进程挂起 —— 表现是"按了没反应"。
@@ -103,7 +105,7 @@ targets:
         # 10-26 深夜补一句：我在聊天里报的 105/106 一直没落到这一行（plist 从头到尾是 104），
         # 所以那两发的崩溃报告里看到的号是 104 —— 从现在起这一行跟着聊天的号一起抬，别再两套号。
         MARKETING_VERSION: "0.9.32"
-        CURRENT_PROJECT_VERSION: "175"
+        CURRENT_PROJECT_VERSION: "176"
     preBuildScripts:
       - name: BuildSharedFramework
         script: |
