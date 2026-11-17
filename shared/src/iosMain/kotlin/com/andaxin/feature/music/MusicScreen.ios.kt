@@ -36,7 +36,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -435,13 +434,12 @@ private fun PlayerPanel(
     onLogout: () -> Unit,
 ) {
     val song = controller.current ?: return
-    val total = if (controller.duration > 0.0) controller.duration else 1.0
-    var showLyrics by remember { mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(controller.lyricsVisible) }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             TextButton(onClick = onBack) { Text("← 收起") }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { showLyrics = !showLyrics }) { Text(if (showLyrics) "歌词" else "封面") }
+            TextButton(onClick = { showLyrics = !showLyrics; controller.setLyricsVisible(showLyrics) }) { Text(if (showLyrics) "歌词" else "封面") }
             TextButton(onClick = onQueue) { Text("队列") }
         }
         Spacer(Modifier.height(10.dp))
@@ -453,15 +451,9 @@ private fun PlayerPanel(
         Text(song.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(song.artist + if (song.album.isEmpty()) "" else " · " + song.album, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(12.dp))
-        Slider(
-            value = controller.position.coerceIn(0.0, total).toFloat(),
-            valueRange = 0f..total.toFloat(),
-            onValueChange = { value -> controller.scrubbing = true; controller.position = value.toDouble() },
-            onValueChangeFinished = { controller.scrubbing = false; controller.seekTo(controller.position) },
-        )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(clock(controller.position), style = MaterialTheme.typography.labelSmall)
-            Text(clock(controller.duration), style = MaterialTheme.typography.labelSmall)
+            Text("点歌词跳转 · " + clock(controller.position), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(clock(controller.duration), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
@@ -498,8 +490,12 @@ private fun KaraokeLyricsView(controller: MusicController, modifier: Modifier) {
     LaunchedEffect(activeIndex) {
         if (activeIndex >= 0) state.animateScrollToItem(activeIndex, scrollOffset = -120)
     }
-    if (controller.lyrics.isEmpty() || !controller.lyricsVisible) {
-        Box(modifier, contentAlignment = Alignment.Center) { Text("这首歌暂时没有歌词或已关闭显示", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    if (controller.lyrics.isEmpty()) {
+        val hint = if (controller.current == null) "播放歌曲后这里会显示逐字歌词" else "正在获取歌词…如果一直为空，请检查网络或重试"
+        Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text(hint, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            TextButton(onClick = { controller.reloadLyrics() }) { Text("重试歌词") }
+        }
         return
     }
     LazyColumn(
@@ -517,7 +513,7 @@ private fun KaraokeLyricsView(controller: MusicController, modifier: Modifier) {
                 style = if (active) MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold) else MaterialTheme.typography.bodyLarge,
                 color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable { controller.seekTo(line.timeMs / 1000.0) },
             )
         }
     }

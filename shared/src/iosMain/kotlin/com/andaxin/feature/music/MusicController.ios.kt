@@ -115,6 +115,11 @@ class MusicController(
         MusicStore.saveLyricsVisible(value)
     }
 
+    fun reloadLyrics() {
+        val song = current ?: return
+        scope.launch { loadLyrics(song) }
+    }
+
     fun playQueueAt(index: Int) {
         if (queue.indices.contains(index)) scope.launch { playAt(index) }
     }
