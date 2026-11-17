@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readValue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import platform.CoreGraphics.CGRectZero
 import platform.Foundation.NSHTTPCookie
@@ -55,13 +56,7 @@ fun NeteaseLoginScreen(onDone: (String) -> Unit, onCancel: () -> Unit) {
         webView.loadRequest(NSURLRequest(NSURL.URLWithString("https://music.163.com/#/login")!!))
         while (true) {
             delay(800)
-            var token: String? = null
-            dataStore.httpCookieStore.getAllCookies { cookies ->
-                token = cookies?.filterIsInstance<NSHTTPCookie>()
-                    ?.firstOrNull { it.name == "MUSIC_U" }
-                    ?.value
-            }
-            val got = token
+            val got = awaitMusicU(dataStore)
             if (!got.isNullOrBlank()) {
                 hint = "已拿到登录凭据（MUSIC_U " + got.length + " 字符）"
                 onDone(got)
@@ -80,4 +75,19 @@ fun NeteaseLoginScreen(onDone: (String) -> Unit, onCancel: () -> Unit) {
             Text(text = hint, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 4.dp))
         }
     }
+}
+
+
+/** getAllCookies 是异步回调：必须用 Deferred 等它回来，不能在调用后同步读局部变量（那样永远是 null）。 */
+@OptIn(ExperimentalForeignApi::class)
+private suspend fun awaitMusicU(dataStore: WKWebsiteDataStore): String? {
+    val done = CompletableDeferred<String?>()
+    dataStore.httpCookieStore.getAllCookies { cookies ->
+        done.complete(
+            cookies?.filterIsInstance<NSHTTPCookie>()
+                ?.firstOrNull { it.name == "MUSIC_U" }
+                ?.value
+        )
+    }
+    return done.await()
 }
