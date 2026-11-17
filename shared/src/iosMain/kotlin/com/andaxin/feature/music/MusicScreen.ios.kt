@@ -214,7 +214,7 @@ private fun HomeTab(controller: MusicController, onSearch: (String) -> Unit) {
 @Composable
 private fun DiscoverTab(controller: MusicController, onSearch: (String) -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        SearchField(controller.query, { controller.query = it }, "发现：搜歌名或歌手", onSearch)
+        SearchField(controller.query, { controller.query = it }, "发现：搜歌名或歌手", { onSearch(controller.query) })
         LazyRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(listOf("热门", "新歌", "华语", "轻音乐", "电子", "经典")) { chip ->
                 FilterChip(selected = false, onClick = { onSearch(chip) }, label = { Text(chip) })
@@ -513,7 +513,7 @@ private fun KaraokeLyricsView(controller: MusicController, modifier: Modifier) {
             val line = controller.lyrics[index]
             val active = index == activeIndex
             Text(
-                text = if (active) karaokeLine(line, controller.position) else line.text,
+                text = if (active) karaokeLine(line, controller.position) else AnnotatedString(line.text),
                 style = if (active) MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold) else MaterialTheme.typography.bodyLarge,
                 color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
                 textAlign = TextAlign.Center,
