@@ -166,9 +166,10 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
             val target = platform.Foundation.NSURL.URLWithString(url)
             target != null && platform.UIKit.UIApplication.sharedApplication.openURL(target)
         }
-        // 「通知设置 → 打开系统通知设置」：iOS 16 上有系统设置页的固定 URL，不用新 API
+        // 「通知设置 → 打开系统通知设置」：这个 scheme 字面量就是 Apple 官方
+        // UIApplication.openSettingsURLString 的取值，写成字面量避开 K/N 对该类属性的导入差异。
         com.andaxin.feature.brief.BriefEnv.openSystemSettings = {
-            val target = platform.Foundation.NSURL.URLWithString(platform.UIKit.UIApplication.openSettingsURLString)
+            val target = platform.Foundation.NSURL.URLWithString("app-settings:")
             if (target != null) platform.UIKit.UIApplication.sharedApplication.openURL(target)
         }
     }
