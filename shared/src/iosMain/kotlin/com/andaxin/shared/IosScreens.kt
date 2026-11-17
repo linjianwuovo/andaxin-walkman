@@ -30,6 +30,7 @@ import com.andaxin.feature.web.encodeUrl
 import com.andaxin.feature.aiclass.OpenCourseDetailScreen
 import com.andaxin.feature.aiclass.OpenCourseListScreen
 import com.andaxin.feature.about.AboutScreen
+import com.andaxin.feature.about.LicenseScreen
 import com.andaxin.feature.modules.GroupScreen
 import com.andaxin.feature.aiclass.AiClassListScreen
 import com.andaxin.feature.aiclass.CourseDetailScreen
@@ -372,6 +373,7 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         key == "group" -> IosRoute("班级群") { GroupScreen(onBack = {}) }
         key == "notice" -> IosRoute("公告") { NoticeScreen(deps = NoticeDeps(model = noticeModel), open = {}) }
         key == "about" -> IosRoute("关于安大信") { AboutScreen(onBack = {}) }
+        key == "licenses" -> IosRoute("开源许可") { LicenseScreen(onBack = {}) }
         // 10-27 新开的这一扇：之前 routeOf 认不出 "theme"，「我的」那格里根本不会画这一行
         // （入口是按 canOpen 决定画不画的），所以 iOS 上一直没有换颜色的地方。
         // 现在这一屏改的三样（明暗/强调色/首页壁纸）当场生效 —— 见 IosTopInset 那段。

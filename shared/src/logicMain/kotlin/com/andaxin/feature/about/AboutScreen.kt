@@ -96,6 +96,11 @@ fun AboutScreen(
 
         Spacer(Modifier.height(Gap.lg))
         Sheet {
+            RowLine("开源许可", sub = "GNU GPL v3 全文 · 第三方组件", onClick = { open("licenses") })
+        }
+
+        Spacer(Modifier.height(Gap.lg))
+        Sheet {
             // 那张规格屏上这里有两行：GitHub 仓库、小红书·我的主页（右边写的是"复制链接"）。
             // 小红书那一行等他把主页链接发过来再上屏 —— 摆一颗按不动的键比没有这一行更糟。
             LINKS.forEachIndexed { i, row ->
