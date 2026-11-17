@@ -5,30 +5,21 @@ import com.andaxin.core.net.HttpCall
 import com.andaxin.core.net.formUrlEncode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 /*
- * 网易云那一层的「协议」：只有拼 URL 和拆 JSON，不碰网络也不碰 UI ——
- * 这样它在 Windows 上就能被 jvmTest 直接跑（本机没有 iOS 编译器，
- * 凡是能在 JVM 上钉死的东西一律先钉死，别留给 CI 猜）。
- *
- * 用的是**不需要签名**的两条老接口：
- *   GET /api/search/get            —— 搜索
- *   GET /api/song/enhance/player/url?ids=[id]&br=128000 —— 播放地址
- * 2026-11-15 实测（Windows/python，匿名 cookie）两条都回 200，
- * 拿到的 mp3 直链可以直接下；weapi/eapi 那层签名留着以后取无损/登录态再用。
+ * 网易云协议层：只拼 URL 和拆 JSON，不碰网络也不碰 UI。
+ * 只用匿名老接口（搜索、取直链、歌词），不引签名也不碰 Apple Music 官方 API。
  */
 
 private const val UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-
-/** 匿名身份。os=pc 是最宽松的一档，没有它有些歌只回 30 秒试听。 */
 private const val ANON_COOKIE = "os=pc; appver=8.9.70; __csrf="
 
-/** 登录过就把 MUSIC_U 接在匿名身份后面：接口认的是这条 cookie，不是别的什么 token。 */
 private fun baseHeaders(musicU: String?): List<Pair<String, String>> {
     val cookie = if (musicU.isNullOrBlank()) ANON_COOKIE else "$ANON_COOKIE; MUSIC_U=$musicU"
     return listOf(
@@ -43,7 +34,6 @@ data class MusicSong(
     val name: String,
     val artist: String,
     val album: String,
-    /** 封面地址（可能还是 / 结尾的模板地址）。锁屏那张图用它，列表里这版不画。 */
     val cover: String = "",
 )
 
@@ -56,12 +46,10 @@ fun neteaseSearchCall(query: String, limit: Int = 20, musicU: String? = null): H
 
 fun neteaseSongUrlCall(id: Long, br: Int = 128000, musicU: String? = null): HttpCall = HttpCall(
     method = "GET",
-    // ids 是 JSON 数组的字符串，方括号必须转义，直接写 [ 会被服务端当成参数结束
     url = "https://music.163.com/api/song/enhance/player/url?ids=%5B" + id + "%5D&br=" + br,
     headers = baseHeaders(musicU),
 )
 
-/** 老接口里的兜底直链：302 到同一首的 mp3。拿不到播放地址时用它，客户端自己跟重定向。 */
 fun neteaseOuterUrl(id: Long): String = "https://music.163.com/song/media/outer/url?id=" + id + ".mp3"
 
 fun neteaseLyricCall(id: Long, musicU: String? = null): HttpCall = HttpCall(
@@ -83,28 +71,41 @@ fun neteaseLyricCall(id: Long, musicU: String? = null): HttpCall = HttpCall(
     ),
 )
 
-data class LyricLine(val timeMs: Long, val text: String)
+/** 一行歌词：timeMs 是行开始时间；wordTimes 是逐字时间戳（增强歌词才有）。 */
+data class LyricLine(
+    val timeMs: Long,
+    val text: String,
+    val wordTimes: List<Long> = emptyList(),
+)
 
 fun parseLyrics(json: String): List<LyricLine> = runCatching {
     val root = Json.parseToJsonElement(json).jsonObject
     if (runCatching { root["code"]?.jsonPrimitive?.longOrNull }.getOrNull() != 200L) return@runCatching emptyList()
     val lrc = runCatching { root["lrc"]?.jsonObject }.getOrNull() ?: return@runCatching emptyList()
     val lyric = runCatching { lrc["lyric"]?.jsonPrimitive?.content }.getOrNull() ?: return@runCatching emptyList()
-    (parseEnhancedLyrics(lyric) + parseClassicLyrics(lyric)).distinctBy { it.timeMs }.sortedBy { it.timeMs }
+    val enhanced = parseEnhancedLyrics(lyric)
+    // 增强歌词自带完整的时间轴，别把同一行的经典 LRC 版本再叠上去。
+    if (enhanced.isNotEmpty()) enhanced.sortedBy { it.timeMs }
+    else parseClassicLyrics(lyric).distinctBy { it.timeMs }.sortedBy { it.timeMs }
 }.getOrNull() ?: emptyList()
 
+/** 增强歌词：{"t":1250,"c":[{"tx":"故事","t":900},{"tx":"的小黄花"}]}，tx 拼正文，c[].t 是逐字时间。 */
 private fun parseEnhancedLyrics(lyric: String): List<LyricLine> = buildList {
     lyric.lineSequence().forEach { line ->
         val trimmed = line.trim()
         if (trimmed.isEmpty() || !trimmed.startsWith("{")) return@forEach
         val obj = runCatching { Json.parseToJsonElement(trimmed).jsonObject }.getOrNull() ?: return@forEach
         val timeMs = runCatching { obj["t"]?.jsonPrimitive?.longOrNull }.getOrNull() ?: return@forEach
-        val text = runCatching {
-            (obj["c"] as? JsonArray)?.mapNotNull {
-                runCatching { it.jsonObject["tx"]?.jsonPrimitive?.content }.getOrNull()
-            }?.joinToString("").orEmpty()
-        }.getOrDefault("")
-        if (text.isNotBlank()) add(LyricLine(timeMs, text))
+        val chunks = runCatching { obj["c"] as? JsonArray }.getOrNull().orEmpty()
+        val text = chunks.mapNotNull { chunk ->
+            runCatching { chunk.jsonObject["tx"]?.jsonPrimitive?.content }.getOrNull()
+        }.joinToString("")
+        if (text.isNotBlank()) {
+            val wordTimes = chunks.map { chunk ->
+                runCatching { chunk.jsonObject["t"]?.jsonPrimitive?.longOrNull }.getOrNull()
+            }
+            add(LyricLine(timeMs, text, wordTimes.filterNotNull().takeIf { it.size == chunks.size }.orEmpty()))
+        }
     }
 }.sortedBy { it.timeMs }
 
@@ -161,7 +162,6 @@ fun parseSearchSongs(json: String): List<MusicSong> {
     }
 }
 
-/** 成功返回直链；版权受限/下架时 url 是 null，返回 null 让上层去试 outer 兜底。 */
 fun parseSongUrl(json: String): String? {
     val root = runCatching { Json.parseToJsonElement(json).jsonObject }.getOrNull() ?: return null
     val first = (root["data"] as? JsonArray)?.firstOrNull()?.jsonObjectOrNull() ?: return null
@@ -169,8 +169,5 @@ fun parseSongUrl(json: String): String? {
     return url?.takeIf { it.startsWith("http") }
 }
 
-private fun kotlinx.serialization.json.JsonElement.jsonObjectOrNull(): JsonObject? =
-    runCatching { jsonObject }.getOrNull()
-
-private fun kotlinx.serialization.json.JsonPrimitive.contentOrNull(): String? =
-    runCatching { content }.getOrNull()
+private fun JsonElement.jsonObjectOrNull(): JsonObject? = runCatching { jsonObject }.getOrNull()
+private fun kotlinx.serialization.json.JsonPrimitive.contentOrNull(): String? = runCatching { content }.getOrNull()

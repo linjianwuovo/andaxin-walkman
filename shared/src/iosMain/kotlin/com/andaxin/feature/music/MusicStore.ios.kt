@@ -1,5 +1,6 @@
 package com.andaxin.feature.music
 
+import platform.Foundation.NSNumber
 import platform.Foundation.NSUserDefaults
 
 /*
@@ -18,6 +19,12 @@ internal object MusicStore {
     private const val KEY_INDEX = "music.index"
     private const val KEY_POSITION = "music.position"
     private const val KEY_PLAYING = "music.playing"
+    private const val KEY_RECENT = "music.recent"
+    private const val KEY_LIKED = "music.liked"
+    private const val KEY_PLAY_MODE = "music.playMode"
+    private const val KEY_SEARCH_HISTORY = "music.searchHistory"
+    private const val KEY_BITRATE = "music.bitrate"
+    private const val KEY_LYRICS_VISIBLE = "music.lyricsVisible"
 
     fun loadMusicU(): String? = defaults.stringForKey(KEY_MUSIC_U)?.takeIf { it.isNotBlank() }
 
@@ -52,5 +59,53 @@ internal object MusicStore {
 
     fun savePlaying(value: Boolean) {
         defaults.setBool(value, forKey = KEY_PLAYING)
+    }
+
+    fun loadRecent(): List<MusicSong> = decodeQueue(defaults.stringForKey(KEY_RECENT).orEmpty())
+
+    fun saveRecent(songs: List<MusicSong>) {
+        defaults.setObject(encodeQueue(songs.take(30)), forKey = KEY_RECENT)
+    }
+
+    fun loadLikedIds(): Set<Long> = (defaults.arrayForKey(KEY_LIKED) as? List<*>)
+        ?.mapNotNull { (it as? Number)?.toLong() }
+        ?.toSet()
+        ?: emptySet()
+
+    fun saveLikedIds(ids: Set<Long>) {
+        defaults.setObject(ids.map { it as Any }, forKey = KEY_LIKED)
+    }
+
+    fun loadPlayMode(): Int = defaults.integerForKey(KEY_PLAY_MODE).toInt().coerceIn(0, 2)
+
+    fun savePlayMode(value: Int) {
+        defaults.setInteger(value.toLong(), forKey = KEY_PLAY_MODE)
+    }
+
+    fun loadSearchHistory(): List<String> = (defaults.arrayForKey(KEY_SEARCH_HISTORY) as? List<*>)
+        ?.mapNotNull { it as? String }
+        ?.take(20)
+        ?: emptyList()
+
+    fun saveSearchHistory(items: List<String>) {
+        defaults.setObject(items.take(20).map { it as Any }, forKey = KEY_SEARCH_HISTORY)
+    }
+
+    fun loadBitrate(): Int {
+        val value = defaults.integerForKey(KEY_BITRATE).toInt()
+        return if (value == 320000) 320000 else 128000
+    }
+
+    fun saveBitrate(value: Int) {
+        defaults.setInteger(value.toLong(), forKey = KEY_BITRATE)
+    }
+
+    fun loadLyricsVisible(): Boolean {
+        val value = defaults.objectForKey(KEY_LYRICS_VISIBLE) ?: return true
+        return (value as? NSNumber)?.boolValue ?: true
+    }
+
+    fun saveLyricsVisible(value: Boolean) {
+        defaults.setBool(value, forKey = KEY_LYRICS_VISIBLE)
     }
 }

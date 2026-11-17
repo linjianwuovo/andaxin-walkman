@@ -109,6 +109,20 @@ class NeteaseApiTest {
     }
 
     @Test
+    fun 歌词回包_逐字时间戳按片段保留() {
+        val lrc = """{"t":0,"c":[{"tx":"故","t":0},{"tx":"事","t":380},{"tx":"的","t":760}]}
+{"t":2000,"c":[{"tx":"下一行"}]}""".trimIndent()
+        val json = """{"code":200,"lrc":{"lyric":${kotlinx.serialization.json.Json.encodeToString(lrc)}}}"""
+        assertEquals(
+            listOf(
+                LyricLine(0L, "故事的", listOf(0L, 380L, 760L)),
+                LyricLine(2000L, "下一行"),
+            ),
+            parseLyrics(json),
+        )
+    }
+
+    @Test
     fun 歌词回包_经典LRC按时间戳排序() {
         val lrc = """[00:12.34]第二句
 [00:01.50]第一句

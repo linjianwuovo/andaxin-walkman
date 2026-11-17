@@ -14,7 +14,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSURL
@@ -25,21 +24,14 @@ import platform.Foundation.dataTaskWithRequest
 import platform.UIKit.UIImage
 import kotlin.coroutines.resume
 
+private const val MODE_LIST = 0
+private const val MODE_ONE = 1
+private const val MODE_SHUFFLE = 2
+
 /*
- * 音乐这一屏的全部状态和网络调用都收在这里，composable 只负责画。
- *
- * 协议层只有匿名链路（搜索 + 取直链 + 放），实测这两个接口不要签名：
- *   GET /api/search/get/            -> songs 数组
- *   GET /api/song/enhance/player/url -> data[0].url 就是 mp3 直链
- * 登录（WKWebView 抓 MUSIC_U）拿到的 cookie 现在会真的带进请求，也落进 NSUserDefaults。
- *
- * 四件"这一版才补上"的东西：
- *  队列     —— 一次搜索的结果就是队列，下一首/上一首在里面转圈走。
- *  进度     —— 每 0.5 秒问一次 AVPlayer 的位置（见 MusicPlayer 里为什么不用 periodicTimeObserver），
- *              拖拽时把 scrubbing 置真，别让游标和用户的手指打架。
- *  锁屏     —— NowPlaying 那一层负责写 nowPlayingInfo + 接耳机线控。
- *  落盘     —— 队列/第几首/第几秒/上次是否在放/MUSIC_U 存 NSUserDefaults；冷启动恢复
- *              "上次那首 + 那个位置 + 上次的播放状态"：上次在放就接着放，上次停着就停着。
+ * 音乐 tab 的全部状态和网络调用都收在这里，composable 只负责画。
+ * 协议层只有匿名链路：搜索 / 取直链 / 歌词；登录态只影响请求头里的 MUSIC_U。
+ * 本地收藏、最近播放、搜索历史、播放模式与音质全部落在 NSUserDefaults。
  */
 class MusicController(
     private val engine: HttpEngine = createHttpEngine(HttpEngineConfig()),
@@ -52,26 +44,28 @@ class MusicController(
     var message by mutableStateOf<String?>(null)
     var queue by mutableStateOf<List<MusicSong>>(emptyList())
         private set
+    var history by mutableStateOf<List<MusicSong>>(emptyList())
+        private set
+    var likedIds by mutableStateOf<Set<Long>>(emptySet())
+        private set
+    var playMode by mutableStateOf(MusicStore.loadPlayMode())
+        private set
+    var bitrate by mutableStateOf(MusicStore.loadBitrate())
+        private set
+    var lyricsVisible by mutableStateOf(MusicStore.loadLyricsVisible())
+        private set
     var position by mutableStateOf(0.0)
     var duration by mutableStateOf(0.0)
     var lyrics by mutableStateOf<List<LyricLine>>(emptyList())
     var lyricIndex by mutableStateOf(-1)
     var musicU by mutableStateOf(MusicStore.loadMusicU())
         private set
-
-    /** 用户正按着进度条：这段时间别用播放器的游标覆盖 position。 */
     var scrubbing = false
 
     private var index = -1
     private var loaded = false
     private var endHandled = false
     private var lastSavedPosition = -1.0
-
-    /*
-     * 接着上次放的时候，seek 落定之前 currentTime() 可能还是 0（或者说还没跳到目标）。
-     * 这段时间让 ticker 别用播放器的游标覆盖 position，否则界面上会先弹回 0 再跳回来。
-     * resumeTarget = 目标位置；resumeTicks 是容忍上限（每拍 500ms，20 拍 = 10 秒）。
-     */
     private var resumeTarget = -1.0
     private var resumeTicks = 0
 
@@ -87,6 +81,8 @@ class MusicController(
 
     init {
         restore()
+        history = MusicStore.loadRecent()
+        likedIds = MusicStore.loadLikedIds()
         scope.launch { ticker() }
     }
 
@@ -97,8 +93,81 @@ class MusicController(
         MusicStore.saveMusicU(value)
     }
 
-    suspend fun search() {
+    fun toggleLike(song: MusicSong) {
+        likedIds = if (likedIds.contains(song.id)) likedIds - song.id else likedIds + song.id
+        MusicStore.saveLikedIds(likedIds)
+    }
+
+    fun setPlayMode(value: Int) {
+        playMode = value.coerceIn(MODE_LIST, MODE_SHUFFLE)
+        MusicStore.savePlayMode(playMode)
+    }
+
+    fun cyclePlayMode() = setPlayMode((playMode + 1) % 3)
+
+    fun setBitrate(value: Int) {
+        bitrate = if (value == 320000) 320000 else 128000
+        MusicStore.saveBitrate(bitrate)
+    }
+
+    fun setLyricsVisible(value: Boolean) {
+        lyricsVisible = value
+        MusicStore.saveLyricsVisible(value)
+    }
+
+    fun playQueueAt(index: Int) {
+        if (queue.indices.contains(index)) scope.launch { playAt(index) }
+    }
+
+    fun clearSearchHistory() = MusicStore.saveSearchHistory(emptyList())
+
+    fun searchHistory(): List<String> = MusicStore.loadSearchHistory()
+
+    fun playFromUi(song: MusicSong) {
+        scope.launch { play(song) }
+    }
+
+    fun clearLikes() {
+        likedIds = emptySet()
+        MusicStore.saveLikedIds(emptySet())
+    }
+
+    /** 从当前列表里把某首歌挑出来放；缺歌时不往队列里塞占位数据。 */
+    suspend fun play(song: MusicSong) {
+        val list = queue.ifEmpty { songs.ifEmpty { listOf(song) } }
+        val found = list.indexOfFirst { it.id == song.id }
+        queue = list
+        playAt(if (found >= 0) found else 0)
+        val recent = listOf(song) + history.filterNot { it.id == song.id }
+        history = recent.take(30)
+        MusicStore.saveRecent(history)
+    }
+
+    /** 首页/发现点推荐卡片：搜到什么就把结果装进队列，供播放器“下一首”走。 */
+    suspend fun searchAsPlaylist(keyword: String) {
+        val trimmed = keyword.trim()
+        if (trimmed.isEmpty() || searching) return
+        query = trimmed
+        searchFor(trimmed)
+        if (songs.isNotEmpty()) {
+            queue = songs
+            message = "「$trimmed」已放入播放队列"
+        }
+    }
+
+    suspend fun search() = searchFor(query)
+
+    /** 搜索页专用：先把关键词写进历史，再发真正的匿名请求。 */
+    suspend fun searchRemembered() {
         val q = query.trim()
+        if (q.isEmpty() || searching) return
+        val trimmedHistory = listOf(q) + MusicStore.loadSearchHistory().filterNot { it == q }
+        MusicStore.saveSearchHistory(trimmedHistory)
+        searchFor(q)
+    }
+
+    private suspend fun searchFor(keyword: String) {
+        val q = keyword.trim()
         if (q.isEmpty() || searching) return
         searching = true
         message = null
@@ -106,9 +175,7 @@ class MusicController(
             val reply = engine.execute(neteaseSearchCall(q, musicU = musicU))
             val found = parseSearchSongs(reply.bodyText)
             songs = found
-            if (found.isEmpty()) {
-                message = if (reply.isSuccessful) "没搜到。" else "搜索返回 " + reply.status
-            }
+            if (found.isEmpty()) message = if (reply.isSuccessful) "没搜到。" else "搜索返回 " + reply.status
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -118,25 +185,15 @@ class MusicController(
         }
     }
 
-    /** 点列表里的一首：这次搜索的结果整条变成队列，从这一首开始放。 */
-    suspend fun play(song: MusicSong) {
-        val list = songs.ifEmpty { listOf(song) }
-        val found = list.indexOfFirst { it.id == song.id }
-        queue = list
-        playAt(if (found >= 0) found else 0)
-    }
-
     fun toggle() {
         val song = current ?: return
         if (!loaded) {
-            // 冷启动恢复出来的那一首：按播放要从上次停下的位置开始，不是从头。
             scope.launch { playAt(index, startAt = position) }
             return
         }
         if (playing) {
             player.pause()
             playing = false
-            // 按下去就停在这一秒：ticker 是每 5 秒才落一次盘，暂停后立刻杀 App 会丢最多 5 秒。
             lastSavedPosition = position
             MusicStore.savePosition(position)
         } else {
@@ -149,12 +206,20 @@ class MusicController(
 
     fun next() {
         if (queue.isEmpty()) return
-        scope.launch { playAt(index + 1) }
+        val target = when (playMode) {
+            MODE_ONE -> index
+            MODE_SHUFFLE -> if (queue.size <= 1) index else index + 1 + (1 until queue.size).random()
+            else -> index + 1
+        }
+        scope.launch { playAt(target) }
     }
 
     fun previous() {
         if (queue.isEmpty()) return
-        scope.launch { playAt(index - 1) }
+        val target = if (playMode == MODE_SHUFFLE && queue.size > 1) {
+            index - 1 - (1 until queue.size).random()
+        } else index - 1
+        scope.launch { playAt(target) }
     }
 
     fun seekTo(seconds: Double) {
@@ -167,7 +232,6 @@ class MusicController(
         refreshNowPlaying()
     }
 
-    /** startAt > 0 只出现在冷启动恢复：先出声，再 seek 回上次的位置。 */
     private suspend fun playAt(target: Int, startAt: Double = 0.0) {
         val list = queue
         if (list.isEmpty()) return
@@ -176,7 +240,7 @@ class MusicController(
         message = null
         lyrics = emptyList()
         lyricIndex = -1
-        val url = resolve(song)
+        val url = resolve(song, bitrate)
         player.play(url, startAt = startAt)
         current = song
         scope.launch { loadLyrics(song) }
@@ -186,7 +250,7 @@ class MusicController(
         if (startAt > 0.5) {
             position = startAt
             resumeTarget = startAt
-            resumeTicks = 20          // 最多容忍 10 秒，超过就不再等 seek
+            resumeTicks = 20
         } else {
             position = 0.0
             resumeTarget = -1.0
@@ -218,13 +282,9 @@ class MusicController(
         }
     }
 
-    /*
-     * 直链拿不到（会员曲/无版权/接口抽风）就走外链兜底：/song/media/outer/url 会 302 到能放的那一版，
-     * 免费歌基本都能过；两条都空才如实告诉用户，别静默假装在放。
-     */
-    private suspend fun resolve(song: MusicSong): String {
+    private suspend fun resolve(song: MusicSong, br: Int): String {
         val direct = try {
-            parseSongUrl(engine.execute(neteaseSongUrlCall(song.id, musicU = musicU)).bodyText)
+            parseSongUrl(engine.execute(neteaseSongUrlCall(song.id, br = br, musicU = musicU)).bodyText)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -243,8 +303,6 @@ class MusicController(
         position = MusicStore.loadPosition()
         playing = false
         refreshNowPlaying()
-        // 回来一律停在原处等用户按播放：上次在放歌也照样不自动出声（用户 11-16 的决定，
-        // 与安卓一致）。队列、位置、当前曲目照旧恢复，按播放从 position 继续。
     }
 
     private suspend fun ticker() {
@@ -254,7 +312,6 @@ class MusicController(
                 val pos = player.positionSeconds()
                 if (resumeTarget >= 0.0 && resumeTicks > 0) {
                     resumeTicks--
-                    // 追上目标（留 1.5 秒容差）就算 seek 落定，从下一拍开始正常跟播放器。
                     if (pos >= resumeTarget - 1.5) {
                         resumeTarget = -1.0
                         position = pos
@@ -268,7 +325,8 @@ class MusicController(
             if (dur > 0.5 && dur != duration) duration = dur
             if (playing && duration > 0.0 && position >= duration - 0.4 && !endHandled) {
                 endHandled = true
-                next()
+                // 单曲循环绕过 next()，确保自动续播也停在同一首。
+                if (playMode == MODE_ONE) scope.launch { playAt(index) } else next()
             }
             if (position - lastSavedPosition >= 5.0) {
                 lastSavedPosition = position
@@ -301,19 +359,12 @@ class MusicController(
         if (url.isEmpty()) return
         scope.launch {
             val data = fetchData(url)
-            // 回来的时候可能已经切歌了，别把上一首的封面贴到这一首上
             if (current?.cover != url) return@launch
             nowPlaying.setCover(data?.let { UIImage(data = it) })
             refreshNowPlaying()
         }
     }
 
-    /**
-     * 取一张图回来。用 NSURLSession 而不是 NSData.dataWithContentsOfURL ——
-     * 后者在 K/N 里根本没绑成类方法（CI 报 Unresolved reference），
-     * 而 dataTaskWithRequest 这条 IosImages.kt 里已经跑通过，照抄它的写法：
-     * 带 completionHandler 的那条是**顶层扩展**，不 import 就只剩单参数成员，报 "Too many arguments"。
-     */
     private suspend fun fetchData(url: String): NSData? = suspendCancellableCoroutine { c ->
         val nsUrl = NSURL.URLWithString(url)
         if (nsUrl == null) {
@@ -330,7 +381,6 @@ class MusicController(
     private fun resumeFromRemote() {
         if (current == null) return
         if (!loaded) {
-            // 线控/锁屏上按播放，同样要从上次停下的位置开始。
             scope.launch { playAt(index, startAt = position) }
             return
         }
