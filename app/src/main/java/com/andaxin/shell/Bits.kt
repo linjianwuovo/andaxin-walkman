@@ -223,27 +223,39 @@ fun Refreshable(
 @Composable
 private fun BoxScope.IosRefreshSpinner(pull: PullToRefreshState, refreshing: Boolean) {
     val ink = LocalInk.current
-    val spin = rememberInfiniteTransition(label = "iosRefresh")
-    val turn by spin.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(animation = tween(Motion.pageEnter, easing = LinearEasing)),
-        label = "iosRefreshTurn",
-    )
-    val fraction = pull.distanceFraction.coerceIn(0f, 1f)
+    // 转圈只在真刷新时才建：rememberInfiniteTransition 一旦组合上就每帧推进，
+    // 静置时照样把整帧时钟占满（实测空转 120fps、CPU 155%，见 11-17 真机采样）。
+    // 静止态这里只读下拉距离，不碰动画时钟。
+    if (refreshing) {
+        val spin = rememberInfiniteTransition(label = "iosRefresh")
+        val turn by spin.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(animation = tween(Motion.pageEnter, easing = LinearEasing)),
+            label = "iosRefreshTurn",
+        )
+        RefreshRing(ink = ink.faint, alpha = 1f, startAngle = turn, sweepAngle = 300f)
+    } else {
+        val fraction = pull.distanceFraction.coerceIn(0f, 1f)
+        RefreshRing(ink = ink.faint, alpha = fraction, startAngle = -90f, sweepAngle = 360f * fraction)
+    }
+}
+
+@Composable
+private fun BoxScope.RefreshRing(ink: Color, alpha: Float, startAngle: Float, sweepAngle: Float) {
     Canvas(
         modifier = Modifier
             .align(Alignment.TopCenter)
             .padding(top = Gap.sm)
             .size(20.dp)
-            .alpha(if (refreshing) 1f else fraction),
+            .alpha(alpha),
     ) {
         val stroke = 2.dp.toPx()
         val inset = stroke / 2
         drawArc(
-            color = ink.faint,
-            startAngle = if (refreshing) turn else -90f,
-            sweepAngle = if (refreshing) 300f else 360f * fraction,
+            color = ink,
+            startAngle = startAngle,
+            sweepAngle = sweepAngle,
             useCenter = false,
             topLeft = Offset(inset, inset),
             size = Size(size.width - stroke, size.height - stroke),

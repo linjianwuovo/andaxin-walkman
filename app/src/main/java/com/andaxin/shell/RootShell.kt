@@ -47,6 +47,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.andaxin.R
 import com.andaxin.app.LocalAppGraph
+import com.andaxin.core.design.LocalShelfPageActive
 import com.andaxin.core.design.Motion
 import com.andaxin.core.design.NoSamplingBackdrop
 import com.andaxin.core.settings.Appearance
@@ -109,6 +110,7 @@ import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationScaffold
 import com.ljyh.mei.constants.NavigationBarHeight
 import com.kyant.backdrop.backdrops.layerBackdrop
 import io.github.neoruaa.glasmio.core.GlassAppearance as GlasmioGlassAppearance
+import io.github.neoruaa.glasmio.core.nativeControlLensUnsupported
 import io.github.neoruaa.glasmio.core.LocalGlassAppearance as LocalGlasmioGlassAppearance
 import io.github.neoruaa.glasmio.core.LocalGlassColors as LocalGlasmioGlassColors
 import io.github.neoruaa.glasmio.core.defaultGlassColors as glasmioDefaultGlassColors
@@ -906,13 +908,19 @@ private fun ShelfHost(
                     ) { index ->
                         // 每一格都挂上「我是哪一格」，屏内的滚动视口才报得到 navScroll 手上。
                         val shelf = Shelf.entries[index]
-                        ShelfPageEntry(key = shelf, headers = shelfHeaders) {
-                            when (shelf) {
-                                Shelf.Home -> HomeScreen(open = open)
-                                Shelf.Timetable -> TimetableScreen()
-                                Shelf.Message -> MessageScreen()
-                                Shelf.Notice -> NoticeScreen(open = open)
-                                Shelf.Me -> MeScreen(open = open)
+                        // 装饰动效（首页那颗小球的眨眼/飘）只在落定那一格跑：翻页器把相邻页
+                        // 也留在组合里，否则站在别的格上它仍在整帧重绘（真机静置 120fps/CPU 183%）。
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            LocalShelfPageActive provides (pager.settledPage == index),
+                        ) {
+                            ShelfPageEntry(key = shelf, headers = shelfHeaders) {
+                                when (shelf) {
+                                    Shelf.Home -> HomeScreen(open = open)
+                                    Shelf.Timetable -> TimetableScreen()
+                                    Shelf.Message -> MessageScreen()
+                                    Shelf.Notice -> NoticeScreen(open = open)
+                                    Shelf.Me -> MeScreen(open = open)
+                                }
                             }
                         }
                     }
@@ -941,7 +949,7 @@ private fun ShelfHost(
                         ),
                         LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
                             liquidGlassEnabled = true,
-                            reduceTransparency = false,
+                            reduceTransparency = nativeControlLensUnsupported,
                         ),
                         LocalGlasmioGlassBackdrop provides shelfBackdrop,
                         LocalGlasmioBlurBackdrop provides shelfBackdrop,
@@ -975,7 +983,7 @@ private fun ShelfHost(
                         LocalGlasmioGlassColors provides glassColors,
                         LocalGlasmioGlassAppearance provides GlasmioGlassAppearance(
                             liquidGlassEnabled = true,
-                            reduceTransparency = false,
+                            reduceTransparency = nativeControlLensUnsupported,
                         ),
                         LocalGlasmioGlassBackdrop provides shelfBackdrop,
                         LocalGlasmioBlurBackdrop provides shelfBackdrop,

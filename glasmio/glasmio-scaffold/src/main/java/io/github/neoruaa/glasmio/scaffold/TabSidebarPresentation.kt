@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RenderEffect as ComposeRenderEffect
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.scale
@@ -26,6 +27,7 @@ import com.kyant.shapes.RoundedRectangle
 import io.github.neoruaa.glasmio.ui.GlasmioTabBarPresentation
 import io.github.neoruaa.glasmio.core.GlassColors
 import io.github.neoruaa.glasmio.core.GlassAppearance
+import kotlin.math.roundToInt
 
 /** One presentation owner for the adaptive host and its measured top-tabs slot. */
 internal class AdaptiveSidebarCoordinator(initialExpanded: Boolean) {
@@ -76,6 +78,10 @@ internal fun TabSidebarContentPreview(
 ) {
     val density = LocalDensity.current
     val rendered = rememberGraphicsLayer()
+    // 半径按 1px 量化后复用同一批模糊实例，省掉每帧新建 RenderEffect 的分配。
+    // 平板横屏 x86_64 模拟器 A/B（4 次展开+4 次收起）：janky 10.80%→10.00%，
+    // p95 73ms→69ms —— 在噪声范围内，不能宣称是卡顿的主因；主因仍未定位。
+    val blurEffects = remember { HashMap<Int, ComposeRenderEffect>() }
     Box(Modifier.fillMaxSize().drawWithCache {
         val source = layer()
         val endpoint = endpointSize()
@@ -96,7 +102,13 @@ internal fun TabSidebarContentPreview(
             if (frame.width <= 0f || frame.height <= 0f) return@onDrawWithContent
             val blur = (1f - p) * with(density) { 4.dp.toPx() }
             rendered.alpha = p
-            rendered.renderEffect = if (blur > .01f) RenderEffect.createBlurEffect(blur, blur, Shader.TileMode.DECAL).asComposeRenderEffect() else null
+            rendered.renderEffect = if (blur > .5f) {
+                val radius = blur.roundToInt()
+                blurEffects.getOrPut(radius) {
+                    RenderEffect.createBlurEffect(radius.toFloat(), radius.toFloat(), Shader.TileMode.DECAL)
+                        .asComposeRenderEffect()
+                }
+            } else null
             val shape = RoundedRectangle(with(density) { cornerRadius().coerceAtLeast(0f).toDp() })
             val outline = shape.createOutline(Size(frame.width, frame.height), layoutDirection, density)
             clip.rewind()
