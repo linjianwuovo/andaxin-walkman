@@ -271,7 +271,7 @@ private fun HomeTab(controller: MusicController, onSearch: (String) -> Unit, onD
     ) {
         item { SectionTitle("最近播放") }
         if (recents.isEmpty()) item { EmptyHint("还没有播放记录，先去搜索或发现页找首歌。") }
-        else items(recents, key = { it.id }) { SongRow(it, controller, showLike = true) }
+        else items(recents, key = { it.id }) { SongRow(it, controller, showLike = true, onDetail = onDetail) }
         item { SectionTitle("网易云榜单") }
         if (!rankingsLoaded) item { ProgressRow() }
         else if (rankings.isEmpty()) item { EmptyHint(if (rankingsFailed) "榜单加载失败，请稍后再试。" else "暂时没有榜单数据。") }
@@ -579,6 +579,7 @@ private fun ProgressRow() {
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun MusicDetailSheet(target: MusicDetail, controller: MusicController, onClose: () -> Unit) {
     var state by remember(target) { mutableStateOf(DetailUiState()) }
