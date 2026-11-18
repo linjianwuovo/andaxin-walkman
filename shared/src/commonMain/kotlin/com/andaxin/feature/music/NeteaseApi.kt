@@ -4,9 +4,13 @@ import com.andaxin.core.net.HttpBody
 import com.andaxin.core.net.HttpCall
 import com.andaxin.core.net.formUrlEncode
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
@@ -35,6 +39,9 @@ data class MusicSong(
     val artist: String,
     val album: String,
     val cover: String = "",
+    val duration: Long = 0L,
+    val artistId: Long = 0L,
+    val albumId: Long = 0L,
 )
 
 fun neteaseSearchCall(query: String, limit: Int = 20, musicU: String? = null): HttpCall = HttpCall(
@@ -52,122 +59,272 @@ fun neteaseSongUrlCall(id: Long, br: Int = 128000, musicU: String? = null): Http
 
 fun neteaseOuterUrl(id: Long): String = "https://music.163.com/song/media/outer/url?id=" + id + ".mp3"
 
-fun neteaseLyricCall(id: Long, musicU: String? = null): HttpCall = HttpCall(
-    method = "POST",
-    url = "https://interface.music.163.com/api/song/lyric/v1",
-    headers = baseHeaders(musicU).plus("Content-Type" to "application/x-www-form-urlencoded"),
-    body = HttpBody.Form(
-        listOf(
-            "id" to id.toString(),
-            "cp" to "false",
-            "tv" to "0",
-            "lv" to "0",
-            "rv" to "0",
-            "kv" to "0",
-            "yv" to "0",
-            "ytv" to "0",
-            "yrv" to "0",
-        ),
-    ),
+fun neteaseTopListCall(musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/toplist/detail",
+    headers = baseHeaders(musicU),
 )
 
-/** 一行歌词：timeMs 是行开始时间；wordTimes 是逐字时间戳（增强歌词才有）。 */
-data class LyricLine(
-    val timeMs: Long,
-    val text: String,
-    val wordTimes: List<Long> = emptyList(),
+fun neteasePlaylistDetailCall(id: Long, musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/playlist/detail?id=" + id,
+    headers = baseHeaders(musicU),
 )
+
+fun neteaseAlbumCall(id: Long, musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/album/" + id,
+    headers = baseHeaders(musicU),
+)
+
+fun neteaseArtistCall(id: Long, musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/artist/" + id,
+    headers = baseHeaders(musicU),
+)
+
+fun neteaseArtistAlbumsCall(id: Long, limit: Int = 30, offset: Int = 0, musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/artist/albums/" + id + "?limit=" + limit + "&offset=" + offset,
+    headers = baseHeaders(musicU),
+)
+
+data class LyricLine(val timeMs: Long, val text: String, val wordTimes: List<Long> = emptyList())
+
+data class MusicCatalogItem(val id: Long, val name: String, val cover: String, val count: Int = 0)
+data class MusicArtistDetail(val id: Long, val name: String, val cover: String, val description: String)
+data class MusicAlbumDetail(val id: Long, val name: String, val cover: String, val artist: String, val description: String, val songs: List<MusicSong>)
+data class MusicPlaylistDetail(val id: Long, val name: String, val cover: String, val description: String, val playCount: Long, val songs: List<MusicSong>)
+
+fun neteaseLyricCall(id: Long, musicU: String? = null): HttpCall = HttpCall(
+    method = "POST",
+    url = "https://music.163.com/api/song/lyric/v1",
+    headers = baseHeaders(musicU) + listOf("Content-Type" to "application/x-www-form-urlencoded"),
+    body = HttpBody.Form(listOf("id" to id.toString(), "lv" to "-1", "kv" to "-1", "tv" to "-1", "rv" to "-1")),
+)
+
+fun neteaseTopListByIdCall(id: Long, musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/toplist?id=" + id,
+    headers = baseHeaders(musicU),
+)
+
+fun neteaseSearchSuggestCall(keyword: String, musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/search/suggest/web?s=" + formUrlEncode(keyword),
+    headers = baseHeaders(musicU),
+)
+
+fun neteasePlaylistCatalogueCall(musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/playlist/catalogue",
+    headers = baseHeaders(musicU),
+)
+
+fun neteasePlaylistByCategoryCall(category: String, limit: Int = 30, offset: Int = 0, musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/playlist/list?cat=" + formUrlEncode(category) + "&limit=" + limit + "&offset=" + offset,
+    headers = baseHeaders(musicU),
+)
+
+fun neteasePodcastCategoryCall(musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/djradio/category/get",
+    headers = baseHeaders(musicU),
+)
+
+fun neteaseSongDetailCall(ids: List<Long>, musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/song/detail?ids=[" + ids.joinToString(",") + "]",
+    headers = baseHeaders(musicU),
+)
+
+private fun contentOrNull(obj: JsonElement?, key: String): String? = runCatching { obj?.jsonObject?.get(key)?.jsonPrimitive?.contentOrNull }.getOrNull()
+private fun longOrNull(obj: JsonElement?, key: String): Long? = runCatching { obj?.jsonObject?.get(key)?.jsonPrimitive?.longOrNull }.getOrNull()
+private fun intOrNull(obj: JsonElement?, key: String): Int? = runCatching { obj?.jsonObject?.get(key)?.jsonPrimitive?.intOrNull }.getOrNull()
+private fun arrayOrEmpty(obj: JsonElement?, key: String): List<JsonElement> = runCatching { obj?.jsonObject?.get(key)?.jsonArray?.toList() }.getOrNull().orEmpty()
+private fun firstCover(obj: JsonElement?): String = listOf("coverImgUrl", "picUrl", "pic56x56Url", "cover", "img1v1Url").mapNotNull { contentOrNull(obj, it) }.firstOrNull().orEmpty()
+private fun parseSongElement(obj: JsonElement): MusicSong {
+    val sid = longOrNull(obj, "id") ?: 0L
+    val name = contentOrNull(obj, "name").orEmpty()
+    val artists = arrayOrEmpty(obj, "artists").mapNotNull { contentOrNull(it, "name") };
+        val albumName = (obj.jsonObject?.get("album")?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull).orEmpty()
+    val albumId = longOrNull(obj.jsonObject?.get("album"), "id") ?: 0L
+    val artist = artists.firstOrNull().orEmpty()
+    val artistId = arrayOrEmpty(obj, "artists").firstOrNull()?.let { longOrNull(it, "id") } ?: 0L
+    return MusicSong(sid, name, artist, albumName, firstCover(obj.jsonObject?.get("album")), 0L, artistId, albumId)
+}
+
+fun parseSearchSongs(json: String): List<MusicSong> = runCatching {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val result = root["result"]?.jsonObject ?: root
+    val array = result["songs"]?.jsonArray.orEmpty()
+    array.map(::parseSongElement)
+}.getOrElse { emptyList() }
+
+fun parseSongUrl(json: String): String = runCatching {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val data = root["data"]?.jsonArray ?: return@runCatching ""
+    data.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull.orEmpty()
+}.getOrElse { "" }
+fun parseSongArray(json: String): List<MusicSong> = runCatching {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val array = root["songs"]?.jsonArray ?: root["tracks"]?.jsonArray ?: root["data"]?.jsonArray ?: return@runCatching emptyList()
+    array.map(::parseSongElement)
+}.getOrElse { emptyList() }
+
+fun parseRankings(json: String): List<MusicCatalogItem> = runCatching {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val list = root["list"]?.jsonArray.orEmpty()
+    list.mapNotNull { item ->
+        val id = longOrNull(item, "id") ?: return@mapNotNull null
+        MusicCatalogItem(id, contentOrNull(item, "name").orEmpty(), firstCover(item), intOrNull(item, "updateFrequency") ?: 0)
+    }
+}.getOrElse { emptyList() }
+
+fun parseCatalogItems(json: String, key: String): List<MusicCatalogItem> = runCatching {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val data = root["result"]?.jsonObject ?: root
+    val list = data[key]?.jsonArray.orEmpty()
+    list.mapNotNull { item ->
+        val name = contentOrNull(item, "name").orEmpty()
+        if (name.isEmpty()) return@mapNotNull null
+        MusicCatalogItem(longOrNull(item, "id") ?: 0L, name, firstCover(item), intOrNull(item, "resourceCount") ?: 0)
+    }
+}.getOrElse { emptyList() }
+
+fun parseSearchSuggestions(json: String): List<MusicSong> = runCatching {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val result = root["result"]?.jsonObject ?: root
+    arrayOrEmpty(result, "songs").map(::parseSongElement)
+}.getOrElse { emptyList() }
+
+fun parseAlbumDetail(json: String): MusicAlbumDetail? = runCatching {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val album = root["album"]?.jsonObject ?: root
+    val id = longOrNull(album, "id") ?: return@runCatching null
+    val artist = arrayOrEmpty(album, "artists").firstOrNull()?.let { contentOrNull(it, "name") } ?: contentOrNull(album, "artist").orEmpty()
+    val songs = arrayOrEmpty(album, "songs").map(::parseSongElement)
+    MusicAlbumDetail(id, contentOrNull(album, "name").orEmpty(), firstCover(album), artist, contentOrNull(album, "description").orEmpty(), songs)
+}.getOrNull()
+
+fun parseArtistDetail(json: String): MusicArtistDetail? = runCatching {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val artist = root["artist"]?.jsonObject ?: root
+    val id = longOrNull(artist, "id") ?: return@runCatching null
+    MusicArtistDetail(id, contentOrNull(artist, "name").orEmpty(), firstCover(artist), contentOrNull(artist, "briefDesc").orEmpty())
+}.getOrNull()
+
+fun parseArtistAlbums(json: String): List<MusicCatalogItem> = parseCatalogItems(json, "hotAlbums")
+
+fun parsePlaylistDetail(json: String): MusicPlaylistDetail? = runCatching {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val playlist = root["playlist"]?.jsonObject ?: return@runCatching null
+    val id = longOrNull(playlist, "id") ?: return@runCatching null
+    val songs = arrayOrEmpty(playlist, "tracks").map(::parseSongElement)
+    MusicPlaylistDetail(id, contentOrNull(playlist, "name").orEmpty(), firstCover(playlist), contentOrNull(playlist, "description").orEmpty(), longOrNull(playlist, "playCount") ?: 0L, songs)
+}.getOrNull()
+
+private val classicTimeRegex = Regex("\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?\\]")
+private val richChunkRegex = Regex("<cy([^>]*)>(.*?)</cy>", RegexOption.DOT_MATCHES_ALL)
+private val richTimeRegex = Regex("(?:timestamp|t|d)=\\s*['\"]?([^'\"\\s>]+)['\"]?")
+private val ttmlLineRegex = Regex("<p([^>]*)>(.*?)</p>", RegexOption.DOT_MATCHES_ALL)
+private val ttmlSpanRegex = Regex("<span([^>]*)>(.*?)</span>", RegexOption.DOT_MATCHES_ALL)
+private fun stripTags(value: String): String = value.replace(Regex("<[^>]*>"), "")
+private fun timeMs(raw: String): Long {
+    val value = raw.trim()
+    if (value.isEmpty()) return 0L
+    if (value.all { it.isDigit() }) return value.toLongOrNull() ?: 0L
+    if (value.endsWith("ms")) return (value.removeSuffix("ms").toLongOrNull() ?: 0L)
+    if (value.endsWith('m')) return (value.removeSuffix("m").toLongOrNull() ?: 0L) * 60000L
+    if (value.endsWith('h')) return (value.removeSuffix("h").toLongOrNull() ?: 0L) * 3600000L
+    if (value.endsWith('s')) return parseClockTime(value.dropLast(1))
+    return parseClockTime(value)
+}
+private fun parseClockTime(value: String): Long {
+    val parts = value.split(':')
+    val secondsPart = parts.last()
+    val decimal = secondsPart.split('.', limit = 2)
+    val seconds = (decimal[0].toLongOrNull() ?: 0L)
+    val millis = decimal.getOrNull(1)?.padEnd(3, '0')?.take(3)?.toLongOrNull() ?: 0L
+    var minutes = 0L
+    for (index in 0 until parts.size - 1) minutes = minutes * 60L + (parts[index].toLongOrNull() ?: 0L)
+    return minutes * 60000L + seconds * 1000L + millis
+}
+private fun classicLrcTimeMs(line: String): Long? {
+    val match = classicTimeRegex.find(line) ?: return null
+    val minute = match.groupValues[1].toLongOrNull() ?: 0L
+    val second = match.groupValues[2].toLongOrNull() ?: 0L
+    val fraction = match.groupValues[3]
+    val millis = if (fraction.isEmpty()) 0L else fraction.padEnd(3, '0').take(3).toLongOrNull() ?: 0L
+    return minute * 60000L + second * 1000L + millis
+}
+private fun parseClassicLrc(raw: String): List<LyricLine> {
+    val result = mutableListOf<LyricLine>()
+    raw.lineSequence().forEach { line ->
+        val time = classicLrcTimeMs(line) ?: return@forEach
+        val text = line.replace(classicTimeRegex, "").trim();
+        result.add(LyricLine(time, if (text.isEmpty()) "♪" else text))
+    }
+    return result.sortedBy { it.timeMs }
+}
+private fun parseRichLyrics(raw: String): List<LyricLine> {
+    val result = mutableListOf<LyricLine>()
+    richChunkRegex.findAll(raw).forEach { chunk ->
+        val attrs = chunk.groupValues[1]
+        val times = richTimeRegex.findAll(attrs).map { timeMs(it.groupValues[1].trim('"', '\'')) }.toList()
+        val start = times.firstOrNull() ?: return@forEach
+        val text = stripTags(chunk.groupValues[2]).trim()
+        if (text.isNotEmpty()) result.add(LyricLine(start, text))
+    }
+    if (result.isNotEmpty()) return result.sortedBy { it.timeMs }
+    return parseClassicLrc(stripTags(raw))
+}
+private fun parseTtmlLyrics(raw: String): List<LyricLine> {
+    val result = mutableListOf<LyricLine>()
+    ttmlLineRegex.findAll(raw).forEach { line ->
+        val beginAttr = line.groupValues[1]
+        val begin = Regex("begin\\s*=\\s*['\"]?([^'\"\\s>]+)['\"]?").find(beginAttr)?.groupValues?.get(1) ?: "0"
+        val start = timeMs(begin)
+        val inner = line.groupValues[2]
+        val spans = ttmlSpanRegex.findAll(inner).toList()
+        if (spans.isEmpty()) {
+            val text = stripTags(inner).trim()
+            if (text.isNotEmpty()) result.add(LyricLine(start, text))
+        } else spans.forEach { span ->
+            val spanAttr = span.groupValues[1]
+            val spanBegin = Regex("begin\\s*=\\s*['\"]?([^'\"\\s>]+)['\"]?").find(spanAttr)?.groupValues?.get(1) ?: begin
+            val text = stripTags(span.groupValues[2]).trim()
+            if (text.isNotEmpty()) result.add(LyricLine(timeMs(spanBegin), text))
+        }
+    }
+    if (result.isNotEmpty()) return result.sortedBy { it.timeMs }
+    return parseClassicLrc(stripTags(raw))
+}
+private fun parseLyricPayload(raw: String): List<LyricLine> {
+    if (raw.isBlank()) return emptyList()
+    if (raw.trimStart().startsWith("{")) return runCatching {
+        val obj = Json.parseToJsonElement(raw).jsonObject;
+        val translated = arrayOrEmpty(obj, "translatedLyric").mapNotNull { e -> classicLrcTimeMs(contentOrNull(e, "lineLyric").orEmpty())?.let { LyricLine(it, contentOrNull(e, "lineLyric").orEmpty()) } };
+        if (translated.isNotEmpty()) translated else parseClassicLrc(contentOrNull(obj, "lyric").orEmpty())
+    }.getOrElse { parseClassicLrc(raw) }
+    if (raw.contains("<p") && raw.contains("</p>")) return parseTtmlLyrics(raw)
+    if (raw.contains("<cy")) return parseRichLyrics(raw)
+    return parseClassicLrc(raw)
+}
 
 fun parseLyrics(json: String): List<LyricLine> = runCatching {
     val root = Json.parseToJsonElement(json).jsonObject
-    if (runCatching { root["code"]?.jsonPrimitive?.longOrNull }.getOrNull() != 200L) return@runCatching emptyList()
-    val lrc = runCatching { root["lrc"]?.jsonObject }.getOrNull() ?: return@runCatching emptyList()
-    val lyric = runCatching { lrc["lyric"]?.jsonPrimitive?.content }.getOrNull() ?: return@runCatching emptyList()
-    val enhanced = parseEnhancedLyrics(lyric)
-    // 增强歌词自带完整的时间轴，别把同一行的经典 LRC 版本再叠上去。
-    if (enhanced.isNotEmpty()) enhanced.sortedBy { it.timeMs }
-    else parseClassicLyrics(lyric).distinctBy { it.timeMs }.sortedBy { it.timeMs }
-}.getOrNull() ?: emptyList()
-
-/** 增强歌词：{"t":1250,"c":[{"tx":"故事","t":900},{"tx":"的小黄花"}]}，tx 拼正文，c[].t 是逐字时间。 */
-private fun parseEnhancedLyrics(lyric: String): List<LyricLine> = buildList {
-    lyric.lineSequence().forEach { line ->
-        val trimmed = line.trim()
-        if (trimmed.isEmpty() || !trimmed.startsWith("{")) return@forEach
-        val obj = runCatching { Json.parseToJsonElement(trimmed).jsonObject }.getOrNull() ?: return@forEach
-        val timeMs = runCatching { obj["t"]?.jsonPrimitive?.longOrNull }.getOrNull() ?: return@forEach
-        val chunks = runCatching { obj["c"] as? JsonArray }.getOrNull().orEmpty()
-        val text = chunks.mapNotNull { chunk ->
-            runCatching { chunk.jsonObject["tx"]?.jsonPrimitive?.content }.getOrNull()
-        }.joinToString("")
-        if (text.isNotBlank()) {
-            val wordTimes = chunks.map { chunk ->
-                runCatching { chunk.jsonObject["t"]?.jsonPrimitive?.longOrNull }.getOrNull()
-            }
-            add(LyricLine(timeMs, text, wordTimes.filterNotNull().takeIf { it.size == chunks.size }.orEmpty()))
+    val lrcObject = root["lrc"]?.jsonObject ?: root
+    val candidates = listOf("ttml", "yrc", "qrc", "lrc", "translatedLrc", "romalrc")
+    val chosen = candidates.firstNotNullOfOrNull { key ->
+        val value = lrcObject[key] ?: root[key]
+        val text = when {
+            value == null -> null
+            value is JsonPrimitive -> value.contentOrNull
+            else -> contentOrNull(value, "lyric") ?: contentOrNull(value, "content")
         }
-    }
-}.sortedBy { it.timeMs }
-
-private val classicLyricLine = Regex("\\[(\\d+):(\\d+(?:\\.\\d+)?)\\](.*)")
-
-private fun parseClassicLyrics(lyric: String): List<LyricLine> = buildList {
-    lyric.lineSequence().forEach { line ->
-        var matched = false
-        classicLyricLine.findAll(line).forEach { match ->
-            matched = true
-            val minutes = match.groupValues[1].toLongOrNull() ?: return@forEach
-            val seconds = match.groupValues[2].toDoubleOrNull() ?: return@forEach
-            if (seconds < 0.0 || seconds >= 60.0) return@forEach
-            val text = match.groupValues[3].trim()
-            if (text.isNotEmpty()) add(LyricLine(minutes * 60_000L + (seconds * 1000.0).toLong(), text))
-        }
-        if (!matched && line.isNotBlank() && !line.trim().startsWith("{")) {
-            val timeMs = metadataTimeMs(line.trim())
-            if (timeMs != null) add(LyricLine(timeMs, line.trim()))
-        }
-    }
-}
-
-private fun metadataTimeMs(line: String): Long? {
-    if (!line.startsWith("[") || !line.contains("]:")) return null
-    val value = line.substringAfter('[').substringBefore(']').trim()
-    val parts = value.split(':')
-    if (parts.size < 2) return null
-    val minutes = parts[0].toLongOrNull() ?: return null
-    val seconds = parts[1].toDoubleOrNull() ?: return null
-    if (seconds < 0.0 || seconds >= 60.0) return null
-    return minutes * 60_000L + (seconds * 1000.0).toLong()
-}
-
-fun parseSearchSongs(json: String): List<MusicSong> {
-    val root = runCatching { Json.parseToJsonElement(json).jsonObject }.getOrNull() ?: return emptyList()
-    val songs = root["result"]?.jsonObjectOrNull()?.get("songs") as? JsonArray ?: return emptyList()
-    return songs.mapNotNull { element ->
-        val song = element.jsonObjectOrNull() ?: return@mapNotNull null
-        val id = song["id"]?.jsonPrimitive?.longOrNull ?: return@mapNotNull null
-        val name = song["name"]?.jsonPrimitive?.contentOrNull() ?: return@mapNotNull null
-        val artists = (song["artists"] as? JsonArray)
-            ?.mapNotNull { it.jsonObjectOrNull()?.get("name")?.jsonPrimitive?.contentOrNull() }
-            ?.joinToString("/")
-            .orEmpty()
-        val album = song["album"]?.jsonObjectOrNull()
-        MusicSong(
-            id = id,
-            name = name,
-            artist = artists,
-            album = album?.get("name")?.jsonPrimitive?.contentOrNull().orEmpty(),
-            cover = album?.get("picUrl")?.jsonPrimitive?.contentOrNull().orEmpty(),
-        )
-    }
-}
-
-fun parseSongUrl(json: String): String? {
-    val root = runCatching { Json.parseToJsonElement(json).jsonObject }.getOrNull() ?: return null
-    val first = (root["data"] as? JsonArray)?.firstOrNull()?.jsonObjectOrNull() ?: return null
-    val url = first["url"]?.jsonPrimitive?.contentOrNull()
-    return url?.takeIf { it.startsWith("http") }
-}
-
-private fun JsonElement.jsonObjectOrNull(): JsonObject? = runCatching { jsonObject }.getOrNull()
-private fun kotlinx.serialization.json.JsonPrimitive.contentOrNull(): String? = runCatching { content }.getOrNull()
+        text?.takeIf { it.isNotBlank() }
+    }.orEmpty()
+    parseLyricPayload(chosen)
+}.getOrElse { emptyList() }

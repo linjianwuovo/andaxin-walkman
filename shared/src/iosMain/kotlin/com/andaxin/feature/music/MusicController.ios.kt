@@ -27,6 +27,7 @@ import kotlin.coroutines.resume
 private const val MODE_LIST = 0
 private const val MODE_ONE = 1
 private const val MODE_SHUFFLE = 2
+private const val MODE_REPEAT_ALL = 3
 
 /*
  * 音乐 tab 的全部状态和网络调用都收在这里，composable 只负责画。
@@ -44,8 +45,6 @@ class MusicController(
     var message by mutableStateOf<String?>(null)
     var queue by mutableStateOf<List<MusicSong>>(emptyList())
         private set
-    var history by mutableStateOf<List<MusicSong>>(emptyList())
-        private set
     var likedIds by mutableStateOf<Set<Long>>(emptySet())
         private set
     var playMode by mutableStateOf(MusicStore.loadPlayMode())
@@ -54,10 +53,30 @@ class MusicController(
         private set
     var lyricsVisible by mutableStateOf(MusicStore.loadLyricsVisible())
         private set
+    var sleepMinutes by mutableStateOf(MusicStore.loadSleepMinutes())
+        private set
+    var sleepRemaining by mutableStateOf(0)
+        private set
+    var lyricFontSize by mutableStateOf(MusicStore.loadLyricFontSize())
+        private set
+    var lyricColor by mutableStateOf(MusicStore.loadLyricColor())
+        private set
+    var translateLyrics by mutableStateOf(MusicStore.loadTranslateLyrics())
+        private set
+    var tabOrder by mutableStateOf(MusicStore.loadTabOrder())
+        private set
+    var tabVisibility by mutableStateOf(MusicStore.loadTabVisibility())
+        private set
+    var customPlaylists by mutableStateOf(MusicStore.loadCustomPlaylists())
+        private set
+    var history by mutableStateOf<List<MusicSong>>(emptyList())
+        private set
     var position by mutableStateOf(0.0)
     var duration by mutableStateOf(0.0)
     var lyrics by mutableStateOf<List<LyricLine>>(emptyList())
+        private set
     var lyricIndex by mutableStateOf(-1)
+        private set
     var musicU by mutableStateOf(MusicStore.loadMusicU())
         private set
     var scrubbing = false
@@ -99,11 +118,19 @@ class MusicController(
     }
 
     fun setPlayMode(value: Int) {
-        playMode = value.coerceIn(MODE_LIST, MODE_SHUFFLE)
+        playMode = if (value in MODE_LIST..MODE_REPEAT_ALL) value else MODE_LIST
         MusicStore.savePlayMode(playMode)
     }
 
-    fun cyclePlayMode() = setPlayMode((playMode + 1) % 3)
+    fun loadSelectedTabLabel(): String = store.loadSelectedTab().ifEmpty { "首页" }
+
+    fun setSelectedTab(label: String) {
+        store.saveSelectedTab(label)
+    }
+
+    suspend fun fetchText(call: HttpCall): String = engine.execute(call).bodyText
+
+    fun cyclePlayMode() = setPlayMode((playMode + 1) % 4)
 
     fun setBitrate(value: Int) {
         bitrate = if (value == 320000) 320000 else 128000
@@ -124,6 +151,103 @@ class MusicController(
         if (queue.indices.contains(index)) scope.launch { playAt(index) }
     }
 
+    fun addToQueue(song: MusicSong, playNext: Boolean = false) {
+        if (queue.any { it.id == song.id }) {
+            message = "歌曲已在队列中"
+            return
+        }
+        val nextIndex = if (index >= 0) index + 1 else queue.size
+        queue = if (playNext && nextIndex <= queue.size) {
+            queue.toMutableList().also { it.add(nextIndex, song) }
+        } else queue + song
+        MusicStore.saveQueue(queue, index.coerceAtLeast(0))
+        message = if (playNext) "已插播到下一首" else "已加入播放队列"
+    }
+
+    fun removeFromQueue(songId: Long) {
+        val target = queue.indexOfFirst { it.id == songId }
+        if (target < 0) return
+        val mutable = queue.toMutableList().also { it.removeAt(target) }
+        val newIndex = when {
+            mutable.isEmpty() -> -1
+            target < index -> index - 1
+            target == index -> index.coerceAtMost(mutable.lastIndex)
+            else -> index
+        }
+        queue = mutable
+        index = newIndex
+        if (newIndex >= 0) current = mutable[newIndex]
+        MusicStore.saveQueue(queue, index.coerceAtLeast(0))
+    }
+
+    fun moveQueueItem(from: Int, to: Int) {
+        if (from !in queue.indices || to !in queue.indices || from == to) return
+        val mutable = queue.toMutableList()
+        val item = mutable.removeAt(from)
+        mutable.add(to, item)
+        queue = mutable
+        index = when (index) {
+            from -> to
+            in (from + 1)..to -> index - 1
+            in to until from -> index + 1
+            else -> index
+        }
+        MusicStore.saveQueue(queue, index.coerceAtLeast(0))
+    }
+
+    fun setSleepMinutes(value: Int) {
+        sleepMinutes = value.coerceIn(0, 240)
+        sleepRemaining = sleepMinutes * 60
+        MusicStore.saveSleepMinutes(sleepMinutes)
+        message = if (sleepMinutes == 0) "已关闭定时关闭" else "已设置 $sleepMinutes 分钟后停止"
+    }
+
+    fun setLyricFontSize(value: Int) {
+        lyricFontSize = value.coerceIn(14, 32)
+        MusicStore.saveLyricFontSize(lyricFontSize)
+    }
+
+    fun setLyricColor(value: String) {
+        lyricColor = value
+        MusicStore.saveLyricColor(value)
+    }
+
+    fun setTranslateLyrics(value: Boolean) {
+        translateLyrics = value
+        MusicStore.saveTranslateLyrics(value)
+    }
+
+    fun setTabOrder(order: List<String>) {
+        tabOrder = (order + tabOrder.filterNot { it in order }).distinct()
+        MusicStore.saveTabOrder(tabOrder)
+    }
+
+    fun setTabVisible(label: String, visible: Boolean) {
+        tabVisibility = tabVisibility + (label to visible)
+        MusicStore.saveTabVisibility(tabVisibility)
+    }
+
+    fun createPlaylist(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        customPlaylists = customPlaylists + (trimmed to emptyList())
+        MusicStore.saveCustomPlaylists(customPlaylists)
+        message = "已创建本地歌单：$trimmed"
+    }
+
+    fun addSongToPlaylist(name: String, song: MusicSong) {
+        val ids = (customPlaylists[name].orEmpty() + song.id).distinct()
+        customPlaylists = customPlaylists + (name to ids)
+        MusicStore.saveCustomPlaylists(customPlaylists)
+        message = "已加入本地歌单：$name"
+    }
+
+    fun playModeLabel(): String = when (playMode) {
+        MODE_ONE -> "单曲循环"
+        MODE_SHUFFLE -> "随机播放"
+        MODE_REPEAT_ALL -> "全部循环"
+        else -> "列表循环"
+    }
     fun clearSearchHistory() = MusicStore.saveSearchHistory(emptyList())
 
     fun searchHistory(): List<String> = MusicStore.loadSearchHistory()
@@ -211,9 +335,14 @@ class MusicController(
 
     fun next() {
         if (queue.isEmpty()) return
+        if (playMode != MODE_REPEAT_ALL && playMode != MODE_SHUFFLE && index >= queue.lastIndex) {
+            message = "已播放到队列末尾"
+            return
+        }
         val target = when (playMode) {
             MODE_ONE -> index
             MODE_SHUFFLE -> if (queue.size <= 1) index else index + 1 + (1 until queue.size).random()
+            MODE_REPEAT_ALL -> (index + 1) % queue.size
             else -> index + 1
         }
         scope.launch { playAt(target) }
@@ -328,6 +457,16 @@ class MusicController(
             }
             val dur = player.durationSeconds()
             if (dur > 0.5 && dur != duration) duration = dur
+            if (sleepMinutes > 0 && playing) {
+                sleepRemaining = (sleepRemaining - 1).coerceAtLeast(0)
+                if (sleepRemaining == 0) {
+                    pauseFromRemote()
+                    sleepMinutes = 0
+                    sleepRemaining = 0
+                    MusicStore.saveSleepMinutes(0)
+                    message = "定时关闭已生效"
+                }
+            }
             if (playing && duration > 0.0 && position >= duration - 0.4 && !endHandled) {
                 endHandled = true
                 // 单曲循环绕过 next()，确保自动续播也停在同一首。

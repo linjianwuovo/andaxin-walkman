@@ -25,6 +25,14 @@ internal object MusicStore {
     private const val KEY_SEARCH_HISTORY = "music.searchHistory"
     private const val KEY_BITRATE = "music.bitrate"
     private const val KEY_LYRICS_VISIBLE = "music.lyricsVisible"
+    private const val KEY_TAB_ORDER = "music.tabOrder"
+    private const val KEY_TAB_VISIBILITY = "music.tabVisibility"
+    private const val KEY_TAB_SELECTED = "music.tabSelected"
+    private const val KEY_SLEEP_MINUTES = "music.sleepMinutes"
+    private const val KEY_LYRIC_FONT = "music.lyricFont"
+    private const val KEY_LYRIC_COLOR = "music.lyricColor"
+    private const val KEY_TRANSLATE_LYRICS = "music.translateLyrics"
+    private const val KEY_CUSTOM_PLAYLISTS = "music.customPlaylists"
 
     fun loadMusicU(): String? = defaults.stringForKey(KEY_MUSIC_U)?.takeIf { it.isNotBlank() }
 
@@ -76,7 +84,7 @@ internal object MusicStore {
         defaults.setObject(ids.map { it as Any }, forKey = KEY_LIKED)
     }
 
-    fun loadPlayMode(): Int = defaults.integerForKey(KEY_PLAY_MODE).toInt().coerceIn(0, 2)
+    fun loadPlayMode(): Int = defaults.integerForKey(KEY_PLAY_MODE).toInt().coerceIn(0, 3)
 
     fun savePlayMode(value: Int) {
         defaults.setInteger(value.toLong(), forKey = KEY_PLAY_MODE)
@@ -107,5 +115,79 @@ internal object MusicStore {
 
     fun saveLyricsVisible(value: Boolean) {
         defaults.setBool(value, forKey = KEY_LYRICS_VISIBLE)
+    }
+
+    fun loadTabOrder(): List<String> {
+        val saved = defaults.stringForKey(KEY_TAB_ORDER).orEmpty().split(",").filter { it.isNotBlank() }
+        val canonical = listOf("首页", "发现", "播客", "音乐库", "搜索", "设置", "下载", "云盘", "历史")
+        return (saved + canonical.filterNot { it in saved }).distinct()
+    }
+
+    fun saveTabOrder(order: List<String>) {
+        defaults.setObject(order.joinToString(","), forKey = KEY_TAB_ORDER)
+    }
+
+    fun loadTabVisibility(): Map<String, Boolean> {
+        val raw = defaults.stringForKey(KEY_TAB_VISIBILITY).orEmpty()
+        if (raw.isBlank()) return mapOf("下载" to false, "云盘" to false, "历史" to false)
+        return raw.split(",").mapNotNull { part ->
+            val kv = part.split(":", limit = 2)
+            if (kv.size == 2) kv[0] to (kv[1] == "1") else null
+        }.toMap()
+    }
+
+    fun saveTabVisibility(visibility: Map<String, Boolean>) {
+        defaults.setObject(visibility.entries.joinToString(",") { it.key + ":" + if (it.value) "1" else "0" }, forKey = KEY_TAB_VISIBILITY)
+    }
+
+    fun loadSelectedTab(): String = defaults.stringForKey(KEY_TAB_SELECTED)?.takeIf { it.isNotBlank() }.orEmpty()
+
+    fun saveSelectedTab(label: String) {
+        defaults.setObject(label, forKey = KEY_TAB_SELECTED)
+    }
+
+    fun loadSleepMinutes(): Int = defaults.integerForKey(KEY_SLEEP_MINUTES).toInt().coerceIn(0, 240)
+
+    fun saveSleepMinutes(value: Int) {
+        defaults.setInteger(value.coerceIn(0, 240).toLong(), forKey = KEY_SLEEP_MINUTES)
+    }
+
+    fun loadLyricFontSize(): Int {
+        val value = defaults.integerForKey(KEY_LYRIC_FONT).toInt()
+        return if (value in 14..32) value else 20
+    }
+
+    fun saveLyricFontSize(value: Int) {
+        defaults.setInteger(value.coerceIn(14, 32).toLong(), forKey = KEY_LYRIC_FONT)
+    }
+
+    fun loadLyricColor(): String = defaults.stringForKey(KEY_LYRIC_COLOR)?.takeIf { it.isNotBlank() }.orEmpty()
+
+    fun saveLyricColor(value: String) {
+        defaults.setObject(value, forKey = KEY_LYRIC_COLOR)
+    }
+
+    fun loadTranslateLyrics(): Boolean = defaults.boolForKey(KEY_TRANSLATE_LYRICS)
+
+    fun saveTranslateLyrics(value: Boolean) {
+        defaults.setBool(value, forKey = KEY_TRANSLATE_LYRICS)
+    }
+
+    fun loadCustomPlaylists(): Map<String, List<Long>> {
+        val raw = defaults.stringForKey(KEY_CUSTOM_PLAYLISTS).orEmpty()
+        if (raw.isBlank()) return emptyMap()
+        return raw.split(";").mapNotNull { entry ->
+            val kv = entry.split("=", limit = 2)
+            if (kv.size != 2) return@mapNotNull null
+            val ids = kv[1].split(",").mapNotNull { it.toLongOrNull() }
+            kv[0] to ids
+        }.toMap()
+    }
+
+    fun saveCustomPlaylists(playlists: Map<String, List<Long>>) {
+        val raw = playlists.entries.joinToString(";") { entry ->
+            entry.key + "=" + entry.value.joinToString(",")
+        }
+        defaults.setObject(raw, forKey = KEY_CUSTOM_PLAYLISTS)
     }
 }
