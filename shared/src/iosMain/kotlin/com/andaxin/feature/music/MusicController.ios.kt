@@ -3,6 +3,7 @@ package com.andaxin.feature.music
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.andaxin.core.net.HttpCall
 import com.andaxin.core.net.HttpEngine
 import com.andaxin.core.net.HttpEngineConfig
 import com.andaxin.core.net.createHttpEngine
@@ -122,10 +123,10 @@ class MusicController(
         MusicStore.savePlayMode(playMode)
     }
 
-    fun loadSelectedTabLabel(): String = store.loadSelectedTab().ifEmpty { "首页" }
+    fun loadSelectedTabLabel(): String = MusicStore.loadSelectedTab().ifEmpty { "首页" }
 
     fun setSelectedTab(label: String) {
-        store.saveSelectedTab(label)
+        MusicStore.saveSelectedTab(label)
     }
 
     suspend fun fetchText(call: HttpCall): String = engine.execute(call).bodyText

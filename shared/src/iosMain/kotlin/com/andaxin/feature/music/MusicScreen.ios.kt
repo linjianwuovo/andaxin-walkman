@@ -191,7 +191,6 @@ fun MusicScreen() {
             controller.current?.let { song -> MiniPlayer(song, controller, expanded = { expanded = true }) }
         }
         detail?.let { target -> MusicDetailSheet(target, controller, onClose = { detail = null }) }
-        }
     }
 }
 
@@ -938,3 +937,98 @@ private fun QueueSheet(controller: MusicController, onClose: () -> Unit) {
                     val currentRow = song.id == controller.current?.id
                     Row(
                         Modifier.fillMaxWidth().clickable { controller.playQueueAt(index) }
+                            .background(if (currentRow) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text((index + 1).toString(), style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(28.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(song.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(song.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (currentRow) Text("♪", color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlbumArt(url: String?, modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(10.dp)) {
+    var bmp by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(url) { bmp = if (url.isNullOrBlank()) null else IosImages.load(url) }
+    val b = bmp
+    if (b != null) Image(b, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier.clip(shape))
+    else BoxWithConstraints(modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+        Text("♪", fontSize = (maxWidth.value * 0.4f).sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+    }
+}
+
+@Composable
+private fun TransportIcon(
+    kind: Transport,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    filled: Boolean = false,
+    onClick: (() -> Unit)? = null,
+) {
+    val label = when (kind) {
+        Transport.Play -> "播放"
+        Transport.Pause -> "暂停"
+        Transport.Next -> "下一首"
+        Transport.Prev -> "上一首"
+        Transport.Mode -> "播放模式"
+        Transport.Queue -> "播放队列"
+        Transport.Heart -> "收藏"
+    }
+    val clickable = if (onClick != null) modifier.clickable { onClick() } else modifier
+    Canvas(clickable.semantics { contentDescription = label }) {
+        val s = minOf(size.width, size.height)
+        val ox = (size.width - s) / 2f
+        val oy = (size.height - s) / 2f
+        fun px(f: Float) = ox + s * f
+        fun py(f: Float) = oy + s * f
+        when (kind) {
+            Transport.Play -> drawPath(Path().apply { moveTo(px(0.30f), py(0.18f)); lineTo(px(0.82f), py(0.50f)); lineTo(px(0.30f), py(0.82f)); close() }, tint)
+            Transport.Pause -> {
+                val barW = s * 0.20f; val gap = s * 0.18f
+                val left = px(0.5f) - (barW * 2 + gap) / 2f; val top = py(0.18f); val bh = s * 0.64f
+                val cr = CornerRadius(barW * 0.35f, barW * 0.35f)
+                drawRoundRect(tint, Offset(left, top), Size(barW, bh), cr)
+                drawRoundRect(tint, Offset(left + barW + gap, top), Size(barW, bh), cr)
+            }
+            Transport.Next -> {
+                drawPath(Path().apply { moveTo(px(0.20f), py(0.22f)); lineTo(px(0.60f), py(0.50f)); lineTo(px(0.20f), py(0.78f)); close() }, tint)
+                drawRoundRect(tint, Offset(px(0.66f), py(0.22f)), Size(s * 0.12f, s * 0.56f), CornerRadius(s * 0.04f, s * 0.04f))
+            }
+            Transport.Prev -> {
+                drawRoundRect(tint, Offset(px(0.22f), py(0.22f)), Size(s * 0.12f, s * 0.56f), CornerRadius(s * 0.04f, s * 0.04f))
+                drawPath(Path().apply { moveTo(px(0.80f), py(0.22f)); lineTo(px(0.40f), py(0.50f)); lineTo(px(0.80f), py(0.78f)); close() }, tint)
+            }
+            Transport.Mode -> {
+                drawRoundRect(tint, Offset(px(0.16f), py(0.36f)), Size(s * 0.68f, s * 0.10f), CornerRadius(s * 0.05f, s * 0.05f))
+                drawPath(Path().apply { moveTo(px(0.72f), py(0.20f)); lineTo(px(0.88f), py(0.41f)); lineTo(px(0.60f), py(0.41f)); close() }, tint)
+                drawPath(Path().apply { moveTo(px(0.28f), py(0.80f)); lineTo(px(0.12f), py(0.59f)); lineTo(px(0.40f), py(0.59f)); close() }, tint)
+            }
+            Transport.Queue -> repeat(3) { i -> drawRoundRect(tint, Offset(px(0.18f), py(0.24f + i * 0.20f)), Size(s * 0.64f, s * 0.08f), CornerRadius(s * 0.04f, s * 0.04f)) }
+            Transport.Heart -> {
+                val p = Path().apply {
+                    moveTo(px(0.50f), py(0.86f))
+                    cubicTo(px(0.10f), py(0.55f), px(0.22f), py(0.18f), px(0.50f), py(0.38f))
+                    cubicTo(px(0.78f), py(0.18f), px(0.90f), py(0.55f), px(0.50f), py(0.86f))
+                    close()
+                }
+                drawPath(p, if (filled) tint else tint.copy(alpha = 0.55f))
+            }
+        }
+    }
+}
+
+private fun clock(seconds: Double): String {
+    if (seconds.isNaN() || seconds <= 0.0) return "0:00"
+    val total = seconds.toInt()
+    val minutes = total / 60
+    val rest = total % 60
+    return minutes.toString() + ":" + (if (rest < 10) "0" + rest else rest.toString())
+}
