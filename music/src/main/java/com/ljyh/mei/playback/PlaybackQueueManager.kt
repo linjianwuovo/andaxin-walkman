@@ -846,10 +846,21 @@ class PlaybackQueueManager(
                         }
                         if (request == null) additions.forEach { rememberPersonalFmSong(it.mediaId) }
                         val firstAdditionIndex = player.mediaItemCount
-                        if (!replacing) player.addMediaItems(additions)
-                        if (!replacing && firstAdditionIndex == 0) {
-                            player.prepare()
-                            player.play()
+                        if (!replacing) {
+                            val resumeAfterEnd = firstAdditionIndex > 0 &&
+                                player.playbackState == Player.STATE_ENDED && player.playWhenReady
+                            player.addMediaItems(additions)
+                            if (firstAdditionIndex == 0) {
+                                player.prepare()
+                                player.play()
+                            } else if (resumeAfterEnd) {
+                                val nextIndex = if (player.shuffleModeEnabled) {
+                                    player.playbackOrderIndices().firstOrNull { it >= firstAdditionIndex }
+                                        ?: firstAdditionIndex
+                                } else firstAdditionIndex
+                                player.seekToDefaultPosition(nextIndex)
+                                player.prepare()
+                            }
                         }
                         if (_queueAutoplayEnabled.value && _queueAutoplayStartEntryId.value == null) {
                             restoreQueueAutoplayStartIndex(firstAdditionIndex)
@@ -1313,17 +1324,28 @@ class PlaybackQueueManager(
                 currentCoroutineContext().ensureActive()
                 if (generation != queueBuildGeneration || sourceContentQueue !== queue || isFmMode || additions.isEmpty()) return@launch
                 val firstAddition = player.mediaItemCount
+                val orderBeforeAppend = player.playbackOrderIndices()
+                val currentPlaybackPosition = orderBeforeAppend.indexOf(player.currentMediaItemIndex)
                 val resumeAtAddition = player.playbackState == Player.STATE_ENDED &&
-                    player.currentMediaItemIndex == firstAddition - 1 && player.playWhenReady
+                    currentPlaybackPosition >= 0 && currentPlaybackPosition == orderBeforeAppend.lastIndex &&
+                    player.playWhenReady
+                val stablePlayer = player as? StableDeckPlayer
                 val append = {
                     player.addMediaItems(additions)
                     sourceContentWindowEnd = firstSourceIndex + additions.size
                     if (resumeAtAddition) {
-                        player.seekToDefaultPosition(firstAddition)
+                        val orderAfterAppend = player.playbackOrderIndices()
+                        val appendedOrder = orderAfterAppend.filter { it >= firstAddition }
+                        if (stablePlayer != null && player.shuffleModeEnabled && appendedOrder.isNotEmpty()) {
+                            // Keep consumed entries ahead of the newly appended shuffled suffix.
+                            stablePlayer.setPlaybackOrder(orderBeforeAppend + appendedOrder)
+                        }
+                        val nextIndex = player.playbackOrderIndices()
+                            .firstOrNull { it >= firstAddition } ?: firstAddition
+                        player.seekToDefaultPosition(nextIndex)
                         player.prepare()
                     }
                 }
-                val stablePlayer = player as? StableDeckPlayer
                 if (stablePlayer != null) stablePlayer.withInternalQueueUpdate(append) else append()
                 _queueState.value = QueueState.Playing(queue.title ?: "播放列表", player.mediaItemCount)
                 appended = true
@@ -1478,6 +1500,10 @@ class PlaybackQueueManager(
 
             val currentIndex = player.currentMediaItemIndex
             if (currentIndex !in 0 until player.mediaItemCount) return@launch
+            // Manual next/previous ignores repeat-one, so hydrate those neighbors too.
+            val navigationRepeatMode = if (player.repeatMode == Player.REPEAT_MODE_ONE) {
+                Player.REPEAT_MODE_OFF
+            } else player.repeatMode
             val indicesToCheck = mutableSetOf<Int>()
             indicesToCheck.add(currentIndex)
 
@@ -1490,8 +1516,9 @@ class PlaybackQueueManager(
                 if (next == C.INDEX_UNSET) break
 
                 next =
-                    timeline.getNextWindowIndex(next, player.repeatMode, player.shuffleModeEnabled)
+                    timeline.getNextWindowIndex(next, navigationRepeatMode, player.shuffleModeEnabled)
                 if (next != C.INDEX_UNSET) {
+                    if (next == currentIndex) break
                     indicesToCheck.add(next)
                 }
             }
@@ -1504,10 +1531,11 @@ class PlaybackQueueManager(
 
                 prev = timeline.getPreviousWindowIndex(
                     prev,
-                    player.repeatMode,
+                    navigationRepeatMode,
                     player.shuffleModeEnabled
                 )
                 if (prev != C.INDEX_UNSET) {
+                    if (prev == currentIndex) break
                     indicesToCheck.add(prev)
                 }
             }

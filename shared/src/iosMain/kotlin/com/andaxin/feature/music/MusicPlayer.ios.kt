@@ -40,6 +40,10 @@ import platform.Foundation.NSURL
 class MusicPlayer {
 
     private val player = AVPlayer()
+    private var generation = 0L
+    private var wantsPlayback = false
+    var seeking = false
+        private set
 
     /**
      * startAt > 0 只出现在"接着上次放"：刚落 item 时它的 status 还是 unknown，
@@ -48,26 +52,46 @@ class MusicPlayer {
      */
     fun play(url: String, startAt: Double = 0.0) {
         val nsUrl = NSURL.URLWithString(url) ?: return
+        generation++
+        wantsPlayback = true
+        seeking = false
         activate()
         player.replaceCurrentItemWithPlayerItem(AVPlayerItem(uRL = nsUrl))
         if (startAt > 0.5) {
-            player.seekToTime(CMTimeMakeWithSeconds(startAt, 600)) { _ -> player.rate = 1.0f }
+            seek(startAt)
         } else {
             player.rate = 1.0f
         }
     }
 
+    fun stop() {
+        generation++
+        wantsPlayback = false
+        seeking = false
+        player.rate = 0.0f
+        player.replaceCurrentItemWithPlayerItem(null)
+    }
+
     fun pause() {
+        wantsPlayback = false
         player.rate = 0.0f
     }
 
     fun resume() {
+        wantsPlayback = true
         activate()
-        player.rate = 1.0f
+        if (!seeking) player.rate = 1.0f
     }
 
     fun seek(seconds: Double) {
-        player.seekToTime(CMTimeMakeWithSeconds(seconds, 600))
+        val request = ++generation
+        seeking = true
+        player.seekToTime(CMTimeMakeWithSeconds(seconds, 600)) { finished ->
+            if (request == generation) {
+                seeking = false
+                if (finished && wantsPlayback) player.rate = 1.0f
+            }
+        }
     }
 
     /** 当前位置；还没开播就是 0。 */

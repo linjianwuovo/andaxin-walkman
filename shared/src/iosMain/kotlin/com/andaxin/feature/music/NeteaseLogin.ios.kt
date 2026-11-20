@@ -30,6 +30,8 @@ import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import platform.WebKit.WKWebsiteDataStore
 
+private const val MUSIC_LOGIN_HOST = "music.163.com"
+
 /*
  * 网易云登录：把官方网页装进一个 WKWebView，人在里面登，登完从 cookie 仓库里把 MUSIC_U 捞出来。
  *
@@ -42,7 +44,8 @@ import platform.WebKit.WKWebsiteDataStore
 @OptIn(ExperimentalForeignApi::class)
 @Composable
 fun NeteaseLoginScreen(onDone: (String) -> Unit, onCancel: () -> Unit) {
-    val dataStore = remember { WKWebsiteDataStore.defaultDataStore() }
+    // The app saves the token separately. Reopening login must not restore a logged-out session.
+    val dataStore = remember { WKWebsiteDataStore.nonPersistentDataStore() }
     var hint by remember { mutableStateOf("正在打开网易云…登录完成后会自动返回") }
 
     val webView = remember {
@@ -53,15 +56,19 @@ fun NeteaseLoginScreen(onDone: (String) -> Unit, onCancel: () -> Unit) {
     }
 
     LaunchedEffect(Unit) {
-        webView.loadRequest(NSURLRequest(NSURL.URLWithString("https://music.163.com/#/login")!!))
-        while (true) {
-            delay(800)
-            val got = awaitMusicU(dataStore)
-            if (!got.isNullOrBlank()) {
-                hint = "已拿到登录凭据（MUSIC_U " + got.length + " 字符）"
-                onDone(got)
-                break
+        try {
+            webView.loadRequest(NSURLRequest(NSURL.URLWithString("https://$MUSIC_LOGIN_HOST/#/login")!!))
+            while (true) {
+                delay(800)
+                val got = awaitMusicU(dataStore)
+                if (!got.isNullOrBlank()) {
+                    hint = "已拿到登录凭据（MUSIC_U " + got.length + " 字符）"
+                    onDone(got)
+                    break
+                }
             }
+        } finally {
+            webView.stopLoading()
         }
     }
 
@@ -85,7 +92,11 @@ private suspend fun awaitMusicU(dataStore: WKWebsiteDataStore): String? {
     dataStore.httpCookieStore.getAllCookies { cookies ->
         done.complete(
             cookies?.filterIsInstance<NSHTTPCookie>()
-                ?.firstOrNull { it.name == "MUSIC_U" }
+                ?.firstOrNull {
+                    val domain = it.domain.removePrefix(".").lowercase()
+                    it.name == "MUSIC_U" && it.value.isNotBlank() &&
+                        (domain == MUSIC_LOGIN_HOST || domain == "163.com")
+                }
                 ?.value
         )
     }

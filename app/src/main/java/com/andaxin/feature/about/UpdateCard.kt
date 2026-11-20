@@ -105,7 +105,12 @@ internal fun UpdateCard(open: (String) -> Unit) {
                         val r = latest ?: return@GlasmioButton
                         runCatching {
                             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                            val file = r.apkUrl.substringAfterLast('/')
+                            val channel = if (beta) "beta" else "stable"
+                            val version = r.version.take(48)
+                                .replace(Regex("[^A-Za-z0-9._-]+"), "-")
+                                .trim('.', '_', '-')
+                                .ifEmpty { "unknown" }
+                            val file = "app-$channel-$version-${java.util.UUID.randomUUID()}.apk"
                             dm.enqueue(
                                 DownloadManager.Request(Uri.parse(r.apkUrl))
                                     .setTitle(file)
@@ -117,7 +122,8 @@ internal fun UpdateCard(open: (String) -> Unit) {
                                         android.os.Environment.DIRECTORY_DOWNLOADS, file
                                     ),
                             )
-                        }.onSuccess { queued = "已交给系统下载：${latest!!.apkUrl.substringAfterLast('/')}，通知栏里点开才装" }
+                            file
+                        }.onSuccess { file -> queued = "已交给系统下载：${file}，通知栏里点开才装" }
                             .onFailure {
                                 queued = "系统下载器没接这单：${it.message ?: it.javaClass.simpleName}"
                             }

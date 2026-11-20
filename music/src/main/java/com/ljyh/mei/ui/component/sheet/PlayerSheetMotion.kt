@@ -20,8 +20,8 @@ import androidx.compose.ui.unit.IntSize
 internal const val PlayerSheetStiffness = 300f
 internal const val PlayerBackgroundHandoffEnd = 0.06f
 internal const val PlayerPressHighlightFadeEnd = 0.99f
-internal const val PlayerContentAppearStart = 0.3f
-internal const val PlayerContentAppearEnd = 0.9f
+internal const val PlayerContentAppearStart = 0.2f
+internal const val PlayerContentAppearEnd = 0.7f
 internal const val PlayerReleasePositionDamping = 0.9f
 
 internal fun playerSheetSpring() = spring<Dp>(
@@ -41,6 +41,8 @@ internal fun GlasmioBottomSheetState.syncPlaybackVisibility(hasCurrentMediaItem:
 
 internal fun easeInCubic(value: Float): Float = value.coerceIn(0f, 1f).let { it * it * it }
 internal fun easeOutCubic(value: Float): Float = 1f - easeInCubic(1f - value)
+/** Flat at both ends, so the shell is already fully lit as the spring lands. */
+internal fun easeSmoothStep(value: Float): Float = value.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
 /** The backdrop covers the shell until it is nearly the capsule, so the glass never shows as a bare slab. */
 internal fun playerBackgroundAlpha(progress: Float) =
     (progress.coerceIn(0f, 1f) / PlayerBackgroundHandoffEnd).coerceIn(0f, 1f)
@@ -48,7 +50,7 @@ internal fun playerPressHighlightAlpha(progress: Float) = 1f - easeOutCubic(prog
 internal fun playerPressHighlightRect(sourceSize: Size, container: Rect) = Rect(container.topLeft, sourceSize)
 /** Capsule content rides the same handoff as the backdrop, so it never floats over the shell. */
 internal fun playerMiniContentAlpha(progress: Float) = 1f - playerBackgroundAlpha(progress)
-internal fun playerContentAlpha(progress: Float) = easeInCubic(
+internal fun playerContentAlpha(progress: Float) = easeSmoothStep(
     (progress - PlayerContentAppearStart) / (PlayerContentAppearEnd - PlayerContentAppearStart),
 )
 

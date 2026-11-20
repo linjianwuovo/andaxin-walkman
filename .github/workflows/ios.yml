@@ -7,17 +7,23 @@ name: ios
 on:
   push:
     branches: [ios-shell]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the unsigned IPA as a GitHub prerelease
+        type: boolean
+        default: false
 
 jobs:
   build:
     name: framework + 模拟器 + 无签名 ipa
     runs-on: macos-15
-    # 发 Release 要写权限：GITHUB_TOKEN 默认只读，不给就是 403
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: 补执行位（文件是从 Windows 侧推上去的，模式全是 100644）
         run: |
@@ -288,6 +294,54 @@ jobs:
           mkdir -p Payload
           cp -R "$APP" Payload/
           zip -qry AndaXin-unsigned.ipa Payload
+          # Read the declared settings with macOS Ruby's standard YAML/JSON libraries.
+          ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV.fetch(0)).fetch("targets").fetch("AndaXin").fetch("settings").fetch("base"))' iosApp/project.yml > "$RUNNER_TEMP/ios-package-settings.json"
+          python3 - "$APP" AndaXin-unsigned.ipa "$RUNNER_TEMP/ios-package-settings.json" <<'PY'
+          import json
+          import plistlib
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+
+          app = Path(sys.argv[1])
+          settings = json.loads(Path(sys.argv[3]).read_text())
+          require(app.is_dir(), f"Missing built app: {app}")
+          for name in ("Info.plist", "Assets.car"):
+              path = app / name
+              require(path.is_file() and path.stat().st_size > 0, f"Missing or empty built {name}")
+          with (app / "Info.plist").open("rb") as source:
+              info = plistlib.load(source)
+          for key, setting in (("CFBundleShortVersionString", "MARKETING_VERSION"),
+                               ("CFBundleVersion", "CURRENT_PROJECT_VERSION")):
+              expected = str(settings[setting])
+              require(info.get(key) == expected, f"{key}: expected {expected}, got {info.get(key)!r}")
+          executable = info.get("CFBundleExecutable")
+          require(isinstance(executable, str) and executable not in ("", ".", "..")
+                  and Path(executable).name == executable, "Missing or invalid CFBundleExecutable")
+          binary = app / executable
+          require(binary.is_file() and binary.stat().st_size > 0, f"Missing or empty executable: {executable}")
+          icon = settings.get("ASSETCATALOG_COMPILER_APPICON_NAME")
+          require(isinstance(icon, str) and bool(icon), "Missing AppIcon build setting")
+          require("CFBundleIcons" in info, "Missing primary app icon declaration")
+          for key in ("CFBundleIcons", "CFBundleIcons~ipad"):
+              if key in info:
+                  primary = info[key].get("CFBundlePrimaryIcon", {})
+                  require(primary.get("CFBundleIconName") == icon, f"{key}: expected primary app icon {icon}")
+          with zipfile.ZipFile(sys.argv[2]) as ipa:
+              prefix = f"Payload/{app.name}/"
+              for name in ("Info.plist", executable, "Assets.car"):
+                  member = prefix + name
+                  require(member in ipa.namelist(), f"Missing IPA entry: {member}")
+                  entry = ipa.getinfo(member)
+                  require(not entry.is_dir() and entry.file_size > 0, f"Empty IPA entry: {member}")
+              require(plistlib.loads(ipa.read(prefix + "Info.plist")) == info,
+                      "IPA Info.plist differs from the built app")
+          print(f"Validated unsigned IPA: {info['CFBundleShortVersionString']}/{info['CFBundleVersion']}, icon {icon}")
+          PY
           unzip -l AndaXin-unsigned.ipa | head -5
           # 拆过 60c026a 那发：包里带 Payload/AndaXin.app/Frameworks/shared.framework/shared，
           # 一个 33,128 字节的空壳 —— 而符号早在主二进制里（47,891,544 字节、一次都没有 @rpath）。
@@ -330,18 +384,31 @@ jobs:
             shared-framework.zip
           if-no-files-found: warn
 
-      - name: 发一版 Release（每次提交都挂上这一发的无签名 ipa）
-        if: success()
+  publish:
+    name: Publish iOS prerelease
+    needs: build
+    if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.publish == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-artifacts
+          path: release-artifact
+
+      - name: 发一版 Release（仅显式 publish=true 时发布无签名 ipa）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # 只用 curl + shell 内建，不引第三方 action：
           # 上一轮连着三发都栽在"探针没在目标环境验过"，这里能少一个依赖就少一个。
           API=https://api.github.com/repos/$GITHUB_REPOSITORY
-          SHORT=$(git rev-parse --short HEAD)
-          TAG="ios-$SHORT"
-          IPA="AndaXin-$SHORT-unsigned.ipa"
-          cp AndaXin-unsigned.ipa "$IPA"
+          SHORT="${GITHUB_SHA:0:7}"
+          # Full SHA avoids reusing old short tags that may target another commit.
+          TAG="ios-${{ github.sha }}"
+          IPA="AndaXin-$SHORT-${{ github.run_id }}-${{ github.run_attempt }}-unsigned.ipa"
+          cp release-artifact/AndaXin-unsigned.ipa "$IPA"
           echo "这一发的包：$IPA（$(wc -c < "$IPA") 字节）"
           # 发版这步连着四发都回 400 "Problems parsing JSON"。上一发拿到了硬证据：
           # 我这边按同样内容算出来 275 字节，runner 上 wc -c 报 267 —— 那串中文经
@@ -349,7 +416,7 @@ jobs:
           # printf 一行出 JSON，没有 heredoc、没有多字节字符、没有跨引号续行。
           BODY="Unsigned ipa for commit $SHORT. Re-sign it on Windows (Sideloadly / i4Tools, free Apple ID) and install. Simulator screenshots and console capture are in the ios-artifacts package of this run."
           printf '{"tag_name":"%s","name":"iOS build %s","target_commitish":"%s","prerelease":true,"body":"%s"}' \
-            "$TAG" "$SHORT" "$GITHUB_REF_NAME" "$BODY" > rel_body.json
+            "$TAG" "$SHORT" "${{ github.sha }}" "$BODY" > rel_body.json
           # 自证：非 ASCII 字节必须为 0，且这串必须能被 JSON 解析器读过去
           echo "payload 字节: $(wc -c < rel_body.json)"
           LC_ALL=C grep -q '[^ -~]' rel_body.json && echo "里面有非 ASCII 字节（不该发生）" || echo "纯 ASCII：过"

@@ -135,6 +135,9 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 
+val Player.shouldPauseOnToggle: Boolean
+    get() = playWhenReady && playbackState != Player.STATE_ENDED
+
 @UnstableApi
 @AndroidEntryPoint
 class MusicService : MediaLibraryService(),
@@ -186,6 +189,7 @@ class MusicService : MediaLibraryService(),
     private var periodicSnapshotJob: Job? = null
     private var playbackRestoreJob: Job? = null
     private lateinit var playbackPersistence: PlaybackPersistence
+    private var playbackSaveSequence = 0L
     private var isRestoringPlayback = true
     private lateinit var connectivityManager: ConnectivityManager
     val currentMediaMetadata = MutableStateFlow<MediaMetadata?>(null)
@@ -522,7 +526,7 @@ class MusicService : MediaLibraryService(),
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CANCEL_SLEEP_TIMER -> sleepTimer.clear()
-            ACTION_TOGGLE_PLAYBACK -> if (player.isPlaying) player.pause() else player.play()
+            ACTION_TOGGLE_PLAYBACK -> if (player.shouldPauseOnToggle) player.pause() else player.play()
             ACTION_PREVIOUS -> if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() else player.seekTo(0L)
             ACTION_NEXT -> if (player.hasNextMediaItem()) player.seekToNextMediaItem()
         }
@@ -623,22 +627,26 @@ class MusicService : MediaLibraryService(),
             queueAutoplayStartEntryId = queueManager.queueAutoplayStartEntryId.value,
             sourceContentContext = queueManager.captureSourceContentContext(),
         )
+        val sequence = ++playbackSaveSequence
         withContext(NonCancellable) {
-            runCatching { playbackPersistence.save(snapshot) }
+            runCatching { playbackPersistence.save(snapshot, sequence) }
                 .onFailure { Timber.tag("MusicService").w(it, "Unable to save playback snapshot") }
         }
     }
 
     private fun persistPlaybackSnapshotBlocking() {
-        if (isRestoringPlayback || !::playbackPersistence.isInitialized) return
+        if (!::playbackPersistence.isInitialized) return
+        // A populated live queue takes precedence over a suspended startup restore.
+        if (isRestoringPlayback && player.mediaItemCount == 0) return
         val snapshot = playbackPersistence.capture(
             player, queueTitle, queueManager.isFmMode, queueManager.playlistSource,
             queueManager.similarFmSourceIds,
             queueManager.queueAutoplayEnabled.value, queueManager.queueAutoplayStartEntryId.value,
             queueManager.captureSourceContentContext(),
         )
+        val sequence = ++playbackSaveSequence
         runCatching {
-            runBlocking(Dispatchers.IO) { playbackPersistence.save(snapshot) }
+            runBlocking(Dispatchers.IO) { playbackPersistence.save(snapshot, sequence) }
         }.onFailure { Timber.tag("MusicService").w(it, "Unable to save final playback snapshot") }
     }
 
@@ -1300,6 +1308,9 @@ class MusicService : MediaLibraryService(),
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        // 划掉最近任务即视为退出：先暂停再落盘，重开时停在那一秒等用户按播放。
+        // 否则前台服务活着，用户「大退」后重开看到的还是正在放。
+        if (player.playWhenReady) player.pause()
         persistPlaybackSnapshotBlocking()
         super.onTaskRemoved(rootIntent)
     }

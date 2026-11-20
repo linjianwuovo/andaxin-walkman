@@ -11,6 +11,7 @@ import platform.MediaPlayer.MPMediaItemPropertyTitle
 import platform.MediaPlayer.MPNowPlayingInfoCenter
 import platform.MediaPlayer.MPNowPlayingInfoPropertyElapsedPlaybackTime
 import platform.MediaPlayer.MPNowPlayingInfoPropertyPlaybackRate
+import platform.MediaPlayer.MPRemoteCommand
 import platform.MediaPlayer.MPRemoteCommandCenter
 import platform.MediaPlayer.MPRemoteCommandHandlerStatusSuccess
 import platform.UIKit.UIImage
@@ -31,18 +32,23 @@ import platform.UIKit.UIImage
 internal class NowPlaying(
     private val onPlay: () -> Unit,
     private val onPause: () -> Unit,
+    private val onToggle: () -> Unit,
     private val onNext: () -> Unit,
     private val onPrevious: () -> Unit,
     private val onSeek: (Double) -> Unit,
 ) {
-    private var cover: UIImage? = null
+    private var lastInfo: Map<Any?, Any?>? = null
+    private var artwork: MPMediaItemArtwork? = null
+    private val targets = mutableListOf<Pair<MPRemoteCommand, Any>>()
 
     init {
         register()
     }
 
     fun setCover(image: UIImage?) {
-        cover = image
+        artwork = image?.let { cover ->
+            MPMediaItemArtwork(boundsSize = CGSizeMake(300.0, 300.0)) { _ -> cover }
+        }
     }
 
     fun update(title: String, artist: String, duration: Double, elapsed: Double, rate: Double) {
@@ -53,16 +59,22 @@ internal class NowPlaying(
             MPNowPlayingInfoPropertyElapsedPlaybackTime to elapsed,
             MPNowPlayingInfoPropertyPlaybackRate to rate,
         )
-        cover?.let { image ->
-            info[MPMediaItemPropertyArtwork] =
-                MPMediaItemArtwork(boundsSize = CGSizeMake(300.0, 300.0)) { _ -> image }
-        }
+        artwork?.let { info[MPMediaItemPropertyArtwork] = it }
+        if (rate == 0.0 && info == lastInfo) return
         MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = info
+        lastInfo = info
     }
 
     fun clear() {
-        cover = null
+        lastInfo = null
+        artwork = null
         MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = null
+    }
+
+    fun dispose() {
+        targets.forEach { (command, target) -> command.removeTarget(target) }
+        targets.clear()
+        clear()
     }
 
     // K/N 把 ObjC 的 "-isEnabled" 映射成属性 enabled（getter 叫 isEnabled()），写成 isEnabled = true 会报
@@ -83,27 +95,27 @@ internal class NowPlaying(
         //   fun addTargetWithHandler(handler: Function1<MPRemoteCommandEvent?, Long>): Any
         // ），所以既没有枚举成员，也不该写 MPRemoteCommandHandlerStatus.xxx。
         val ok = MPRemoteCommandHandlerStatusSuccess
-        center.playCommand.addTargetWithHandler {
+        targets += center.playCommand to center.playCommand.addTargetWithHandler {
             onPlay()
             ok
         }
-        center.pauseCommand.addTargetWithHandler {
+        targets += center.pauseCommand to center.pauseCommand.addTargetWithHandler {
             onPause()
             ok
         }
-        center.togglePlayPauseCommand.addTargetWithHandler {
-            onPlay()
+        targets += center.togglePlayPauseCommand to center.togglePlayPauseCommand.addTargetWithHandler {
+            onToggle()
             ok
         }
-        center.nextTrackCommand.addTargetWithHandler {
+        targets += center.nextTrackCommand to center.nextTrackCommand.addTargetWithHandler {
             onNext()
             ok
         }
-        center.previousTrackCommand.addTargetWithHandler {
+        targets += center.previousTrackCommand to center.previousTrackCommand.addTargetWithHandler {
             onPrevious()
             ok
         }
-        center.changePlaybackPositionCommand.addTargetWithHandler { event ->
+        targets += center.changePlaybackPositionCommand to center.changePlaybackPositionCommand.addTargetWithHandler { event ->
             val position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime
             if (position != null) onSeek(position)
             ok

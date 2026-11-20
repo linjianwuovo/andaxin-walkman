@@ -126,7 +126,7 @@ private fun parseLyricColor(raw: String?): Color {
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun MusicScreen() {
-    val controller = remember { MusicController() }
+    val controller = remember { MusicController.shared }
     val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
     var showLogin by remember { mutableStateOf(false) }
@@ -138,9 +138,11 @@ fun MusicScreen() {
     if (showLogin) {
         NeteaseLoginScreen(
             onDone = { token ->
-                controller.setMusicU(token)
-                controller.message = "已登录网易云（MUSIC_U 已保存）"
-                showLogin = false
+                if (showLogin) {
+                    controller.setMusicU(token)
+                    controller.message = "已登录网易云（MUSIC_U 已保存）"
+                    showLogin = false
+                }
             },
             onCancel = { showLogin = false },
         )
@@ -161,7 +163,14 @@ fun MusicScreen() {
     val visibleTabs = remember(controller.tabOrder, controller.tabVisibility) {
         controller.tabOrder.filter { controller.tabVisibility[it] != false }
     }
-    val selectedIndex = visibleTabs.indexOf(selectedLabel).coerceAtLeast(0)
+    // 当前 tab 被隐藏时不能静默留在第 0 个：把选中项一起挪到第一个可见页并写回。
+    LaunchedEffect(visibleTabs) {
+        if (visibleTabs.isNotEmpty() && selectedLabel !in visibleTabs) {
+            selectedLabel = visibleTabs.first()
+            controller.setSelectedTab(selectedLabel)
+        }
+    }
+    val selectedIndex = visibleTabs.indexOf(selectedLabel).takeIf { it >= 0 } ?: 0
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val topTabs = maxWidth > 768.dp
         Column(Modifier.fillMaxSize()) {
@@ -470,21 +479,21 @@ private fun SearchField(
 
 @Composable
 private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
-    var bitrateVersion by remember { mutableIntStateOf(0) }
-    var lyricVersion by remember { mutableIntStateOf(0) }
-    val bitrate = remember(bitrateVersion) { controller.bitrate }
-    val lyricsVisible = remember(lyricVersion) { controller.lyricsVisible }
+    // controller.bitrate / lyricsVisible 本身就是 mutableStateOf，直接读就会重组；
+    // 之前用 remember(version) + 手动 ++ 是多余的影子状态，外部一改就与界面脱同步。
+    val bitrate = controller.bitrate
+    val lyricsVisible = controller.lyricsVisible
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle("播放与歌词")
         SettingRow("播放音质") {
-            FilterChip(selected = bitrate == 128000, onClick = { controller.setBitrate(128000); bitrateVersion++ }, label = { Text("128k") })
+            FilterChip(selected = bitrate == 128000, onClick = { controller.setBitrate(128000) }, label = { Text("128k") })
             Spacer(Modifier.width(8.dp))
-            FilterChip(selected = bitrate == 320000, onClick = { controller.setBitrate(320000); bitrateVersion++ }, label = { Text("320k") })
+            FilterChip(selected = bitrate == 320000, onClick = { controller.setBitrate(320000) }, label = { Text("320k") })
         }
         SettingRow("歌词显示") {
-            FilterChip(selected = lyricsVisible, onClick = { controller.setLyricsVisible(true); lyricVersion++ }, label = { Text("开") })
+            FilterChip(selected = lyricsVisible, onClick = { controller.setLyricsVisible(true) }, label = { Text("开") })
             Spacer(Modifier.width(8.dp))
-            FilterChip(selected = !lyricsVisible, onClick = { controller.setLyricsVisible(false); lyricVersion++ }, label = { Text("关") })
+            FilterChip(selected = !lyricsVisible, onClick = { controller.setLyricsVisible(false) }, label = { Text("关") })
         }
         SectionTitle("页面与切换")
         SettingRow("页面顺序") {
@@ -512,9 +521,13 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("主色", modifier = Modifier.weight(1f))
-            listOf(0xFFE8666A, 0xFF64B5F6, 0xFFFFD54F).forEach { color ->
-                val hex = "#" + color.toString(16).padStart(6, '0').uppercase()
-                FilterChip(selected = controller.lyricColor.equals(hex, ignoreCase = true), onClick = { controller.setLyricColor(hex) }, label = { Text("色") })
+            listOf(
+                0xFFE8666A to "红",
+                0xFF64B5F6 to "蓝",
+                0xFFFFD54F to "黄",
+            ).forEach { (color, label) ->
+                val hex = "#" + (color and 0xFFFFFF).toString(16).padStart(6, '0').uppercase()
+                FilterChip(selected = controller.lyricColor.equals(hex, ignoreCase = true), onClick = { controller.setLyricColor(hex) }, label = { Text(label) })
             }
         }
         SettingRow("翻译歌词") {
@@ -722,7 +735,7 @@ private fun SongRow(song: MusicSong, controller: MusicController, showLike: Bool
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable { onDetail(MusicDetail.Album(song.albumId)) },
+                modifier = if (song.albumId > 0L) Modifier.clickable { onDetail(MusicDetail.Album(song.albumId)) } else Modifier,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -731,7 +744,7 @@ private fun SongRow(song: MusicSong, controller: MusicController, showLike: Bool
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable { if (song.artistId > 0L) onDetail(MusicDetail.Artist(song.artistId)) },
+                    modifier = if (song.artistId > 0L) Modifier.clickable { onDetail(MusicDetail.Artist(song.artistId)) } else Modifier,
                 )
                 if (song.album.isNotEmpty()) {
                     Text(" · ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -741,7 +754,7 @@ private fun SongRow(song: MusicSong, controller: MusicController, showLike: Bool
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable { if (song.albumId > 0L) onDetail(MusicDetail.Album(song.albumId)) },
+                        modifier = if (song.albumId > 0L) Modifier.clickable { onDetail(MusicDetail.Album(song.albumId)) } else Modifier,
                     )
                 }
             }

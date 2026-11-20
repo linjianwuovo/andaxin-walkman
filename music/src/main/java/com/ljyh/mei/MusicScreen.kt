@@ -240,6 +240,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import io.github.neoruaa.glasmio.core.GlassAppearance
+import io.github.neoruaa.glasmio.core.nativeControlLensUnsupported
 import io.github.neoruaa.glasmio.core.IosTypography
 import io.github.neoruaa.glasmio.core.LocalGlassAppearance
 import io.github.neoruaa.glasmio.core.LocalGlassColors
@@ -612,7 +613,7 @@ fun MusicScreen(
         CompositionLocalProvider(
             LocalGlassBackdrop provides glassBackdrop,
             LocalGlassColors provides glassColors,
-            LocalGlassAppearance provides GlassAppearance(liquidGlassEnabled, reduceTransparency),
+            LocalGlassAppearance provides GlassAppearance(liquidGlassEnabled, reduceTransparency || nativeControlLensUnsupported),
             LocalBlurBackdrop provides bottomControlsBackdrop,
             LocalAccentSeedColor provides accentSeedColor,
             LocalPageAppearance provides registerPageAppearance,

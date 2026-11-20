@@ -73,7 +73,7 @@ val CloudShuffleEnabledKey = booleanPreferencesKey("playback.cloudShuffleEnabled
 val RepeatModeKey = intPreferencesKey("repeatMode")
 val PlaybackSnapshotKey = stringPreferencesKey("playback.snapshot")
 val RestorePlaybackPositionKey = booleanPreferencesKey("playback.restorePosition")
-val RestorePlaybackStateKey = booleanPreferencesKey("playback.restoreState")
+// 「恢复播放状态」开关已删除：回来一律停在暂停态，见 PlaybackPersistence.withRestorePreferences。
 val NotificationLeftActionKey = stringPreferencesKey("notification.leftAction")
 val NotificationRightActionKey = stringPreferencesKey("notification.rightAction")
 val AutoMixEnabledKey = booleanPreferencesKey("autoMix.enabled")

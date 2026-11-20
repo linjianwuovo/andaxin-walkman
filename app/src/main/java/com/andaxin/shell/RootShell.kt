@@ -3,6 +3,11 @@ package com.andaxin.shell
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,9 +35,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.IntOffset
@@ -335,6 +344,18 @@ private class ShelfSelection {
         meSelected = shelf == Shelf.Me
         if (shelf != Shelf.Me) barKey = shelf
     }
+
+    companion object {
+        val Saver = listSaver<ShelfSelection, Any>(
+            save = { listOf(it.barKey.name, it.meSelected) },
+            restore = { saved ->
+                ShelfSelection().apply {
+                    barKey = Shelf.valueOf(saved[0] as String)
+                    meSelected = saved[1] as Boolean
+                }
+            },
+        )
+    }
 }
 
 /** 横屏侧栏宽度。库默认 320dp 在 2560 宽的板上占掉近两成，太宽（他 11-14 提的）。 */
@@ -355,7 +376,7 @@ fun RootShell() {
     val adaptiveNavigation = rememberGlasmioAdaptiveNavigationState()
     val navigationLayout = glasmioNavigationLayout()
     val wideLayout = navigationLayout == GlasmioNavigationLayout.TopTabs
-    val shelfNav = remember { ShelfSelection() }
+    val shelfNav = rememberSaveable(saver = ShelfSelection.Saver) { ShelfSelection() }
     // 顶栏里库只画 label、不画 symbol，但侧栏那几行要用 symbol，两处共用这一份。
     // 库里 GlasmioTabBar 会在末尾强制追加一格放大镜，T 只能取 Any（Shelf 与 String 混在一条上）。
     val labels = Shelf.entries.map { androidx.compose.ui.res.stringResource(it.labelRes) }
@@ -476,6 +497,11 @@ fun RootShell() {
             }
         },
     ) {
+        DetailSidebarFrame(
+            showToggle = sidebarEnabled && route != null && route != Route.SHELF &&
+                route != Route.LOGIN && route != Route.WELCOME && !adaptiveNavigation.sidebarExpanded,
+            onExpand = { adaptiveNavigation.sidebarExpanded = true },
+        ) {
         // 底栏和整屏共用同一份 Appearance：明暗在最外层（MainActivity）决定
         NavHost(
             navController = nav,
@@ -635,8 +661,42 @@ fun RootShell() {
                 WebScreen(e.arguments?.getString("u").orEmpty(), "", onBack = { nav.popBackStack() })
             }
         }
+        }
     }
 
+}
+
+@Composable
+private fun DetailSidebarFrame(
+    showToggle: Boolean,
+    onExpand: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().then(
+            if (showToggle) {
+                Modifier.windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+                )
+            } else Modifier,
+        ),
+    ) {
+        if (showToggle) {
+            // 独占一行，不叠在二级页自己的返回钮、标题或工具按钮上。
+            GlasmioSidebarToolbar(
+                modifier = Modifier.glasmioAdaptiveContent().padding(horizontal = 10.dp),
+                leading = {
+                    GlasmioIconButton(
+                        onClick = onExpand,
+                        modifier = Modifier.semantics { contentDescription = "展开侧栏" },
+                    ) {
+                        GlasmioSidebarToggleIcon()
+                    }
+                },
+            )
+        }
+        Box(Modifier.weight(1f)) { content() }
+    }
 }
 
 /**

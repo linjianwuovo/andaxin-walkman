@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.ljyh.mei.playback.MusicService
+import com.ljyh.mei.playback.shouldPauseOnToggle
 import com.ljyh.mei.ui.component.player.MiniPlayerBar
 
 /**
@@ -56,7 +57,7 @@ class MusicBarState {
 
     internal fun togglePlay() {
         val player = player ?: return
-        if (player.isPlaying) player.pause() else player.play()
+        if (player.shouldPauseOnToggle) player.pause() else player.play()
     }
 
     internal fun next() {
@@ -69,7 +70,7 @@ class MusicBarState {
         title = metadata?.title?.toString()?.takeIf { it.isNotBlank() }
         artist = metadata?.artist?.toString().orEmpty()
         coverUrl = metadata?.artworkUri?.toString()
-        playing = player.playWhenReady && player.playbackState != Player.STATE_ENDED
+        playing = player.shouldPauseOnToggle
         canSkipNext = player.hasNextMediaItem()
     }
 }

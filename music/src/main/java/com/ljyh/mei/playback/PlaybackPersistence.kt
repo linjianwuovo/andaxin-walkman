@@ -15,7 +15,6 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import com.ljyh.mei.constants.PlaybackSnapshotKey
 import com.ljyh.mei.constants.RestorePlaybackPositionKey
-import com.ljyh.mei.constants.RestorePlaybackStateKey
 import com.ljyh.mei.data.model.MediaMetadata
 import com.ljyh.mei.data.model.PLACEHOLDER_URI
 import com.ljyh.mei.data.model.createPlaceholder
@@ -72,7 +71,8 @@ internal fun PlaybackSnapshot.withCheckpoint(checkpoint: PlaybackCheckpoint?): P
 
 internal fun PlaybackSnapshot.withRestorePreferences(preferences: Preferences): PlaybackSnapshot = copy(
     positionMs = if (preferences[RestorePlaybackPositionKey] != false) positionMs.coerceAtLeast(0L) else 0L,
-    playWhenReady = playWhenReady && preferences[RestorePlaybackStateKey] != false,
+    // 回到 App 一律停在原处等用户按播放：杀进程/划掉卡片后重开不该自己出声。
+    playWhenReady = false,
 )
 
 data class PlaybackSnapshot(
@@ -152,6 +152,7 @@ class PlaybackPersistence(
     private var cachedOrder: List<Int>? = null
     private var savedQueue: PlaybackSnapshot? = null
     private var savedCheckpoint: PlaybackCheckpoint? = null
+    private var latestSaveSequence = 0L
     private val saveMutex = Mutex()
 
     fun invalidateQueue() {
@@ -202,9 +203,12 @@ class PlaybackPersistence(
         )
     }
 
-    suspend fun save(snapshot: PlaybackSnapshot) {
+    suspend fun save(snapshot: PlaybackSnapshot, sequence: Long) {
         withContext(Dispatchers.IO) {
             saveMutex.withLock {
+                // IO dispatch can let a final checkpoint overtake an older capture.
+                if (sequence <= latestSaveSequence) return@withLock
+                latestSaveSequence = sequence
                 val previous = savedQueue
                 val sameQueue = previous != null && previous.items === snapshot.items &&
                     previous.shuffleOrder === snapshot.shuffleOrder && previous.queueTitle == snapshot.queueTitle &&
