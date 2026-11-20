@@ -196,7 +196,7 @@ import androidx.compose.ui.unit.dp
                     KaraokeLyricsView(
                         controller, lines, lyricModifier,
                         onFixtureLayout = if (lyricsVisualCase == null) null else {{ layout -> lyricLayout = layout }},
-                        onFixtureFollowSettled = if (lyricsVisualCase == null) null else {{
+                        onFixtureFollowSettled = if (lyricsVisualCase == null) null else {{ ->
                             if (!followSettled) {{
                                 platform.Foundation.NSLog("{MARKER}:FOLLOW_SETTLED:$lyricsVisualCase")
                                 followSettled = true
