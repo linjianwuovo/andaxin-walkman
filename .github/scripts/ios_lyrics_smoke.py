@@ -53,6 +53,70 @@ def require(condition, message):
         raise SmokeError(message)
 
 
+RUNTIME_PHASES = {"isolation", "simulator-details", "xcode-version", "framework-seed", "xcodegen", "xcodebuild",
+                  "bundle-validation", "simulator-setup", "capture", "capture-cleanup", "simulator-cleanup"}
+RUNTIME_OPERATIONS = {"source-isolation", "list-devices", "xcode-version", "framework-seed", "xcodegen", "xcodebuild",
+                      "bundle-validation", "prepare", "launch", "readiness", "screenshot", "liveness", "png-validation",
+                      "bootstatus", "uninstall", "install", "appearance", "status-bar-override", "status-bar-clear",
+                      "terminate", "process-stop", "simulator-cleanup", "validation"}
+
+
+def runtime_failure(exc, phase, operation):
+    selected_phase = getattr(exc, "smoke_phase", phase)
+    selected_operation = getattr(exc, "smoke_operation", operation)
+    record = {"phase": selected_phase if isinstance(selected_phase, str) and selected_phase in RUNTIME_PHASES else "capture",
+              "operation": selected_operation if isinstance(selected_operation, str) and selected_operation in RUNTIME_OPERATIONS else "validation"}
+    code = getattr(exc, "returncode", None)
+    has_code = type(code) is int and -(1 << 31) <= code < (1 << 32) and code != 0
+    if isinstance(exc, subprocess.TimeoutExpired):
+        kind = "timeout"
+    elif isinstance(exc, OSError):
+        kind = "os-error"
+    elif has_code:
+        kind = "command-exit"
+    elif isinstance(exc, subprocess.SubprocessError):
+        kind = "subprocess-error"
+    elif isinstance(exc, ValueError):
+        kind = "value-error"
+    elif isinstance(exc, SmokeError):
+        kind = "validation"
+    else:
+        kind = "unexpected-error"
+    record["kind"] = kind
+    if has_code:
+        record["exit_code"] = code
+    return record
+
+
+def runtime_cleanup_failures(exc):
+    errors = getattr(exc, "smoke_cleanup_errors", [])
+    return [runtime_failure(error, "simulator-cleanup", "simulator-cleanup") for error in errors[:8]]
+
+
+def cleanup_actions(actions, primary=None):
+    errors = []
+    for phase, operation, action in actions:
+        try:
+            action()
+        except Exception as exc:
+            nested = getattr(exc, "smoke_cleanup_errors", [])
+            if nested:
+                errors.extend(nested[:8])
+            else:
+                exc.smoke_phase, exc.smoke_operation = phase, operation
+                errors.append(exc)
+    if errors:
+        existing = getattr(primary, "smoke_cleanup_errors", []) if primary is not None else []
+        combined = []
+        for error in (*existing, *errors):
+            if not any(error is item for item in combined):
+                combined.append(error)
+        target = primary if primary is not None else errors[0]
+        target.smoke_cleanup_errors = combined[:8]
+        if primary is None:
+            raise target
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -356,7 +420,10 @@ def apply_overlay(checkout):
 
 def run(argv, cwd, timeout=30):
     result = subprocess.run(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
-    require(result.returncode == 0, f"{argv[0]} {argv[1]} failed (exit {result.returncode})")
+    if result.returncode != 0:
+        error = SmokeError(f"Checked command failed (exit {result.returncode})")
+        error.returncode = result.returncode
+        raise error
     return result.stdout
 
 
@@ -609,7 +676,18 @@ class Simulator:
         self.udid = udid
 
     def sim(self, command, *args, timeout=30):
-        return run(["xcrun", "simctl", command, self.udid, *args], self.cwd, timeout)
+        operation = command if command in ("bootstatus", "uninstall", "install", "terminate") else "validation"
+        if command == "status_bar":
+            operation = {"override": "status-bar-override", "clear": "status-bar-clear"}.get(args[0] if args else None, "validation")
+        elif command == "ui":
+            operation = "appearance"
+        elif command == "io":
+            operation = "screenshot"
+        try:
+            return run(["xcrun", "simctl", command, self.udid, *args], self.cwd, timeout)
+        except Exception as exc:
+            exc.smoke_operation = operation
+            raise
 
     def details(self):
         listing = json.loads(run(["xcrun", "simctl", "list", "devices", "available", "--json"], self.cwd))
@@ -626,7 +704,7 @@ class Simulator:
         self.sim("install", str(app))
         self.sim("ui", "appearance", "light")
         self.sim("status_bar", "override", "--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active",
-                 "--wifiBars", "3", "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "unplugged",
+                 "--wifiBars", "3", "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "charged",
                  "--batteryLevel", "100")
 
     def launch(self, case, output):
@@ -642,35 +720,52 @@ class Simulator:
         self.sim("terminate", BUNDLE)
 
     def cleanup(self):
-        try:
-            self.sim("status_bar", "clear")
-        finally:
-            self.sim("uninstall", BUNDLE)
+        cleanup_actions([
+            ("simulator-cleanup", "status-bar-clear", lambda: self.sim("status_bar", "clear")),
+            ("simulator-cleanup", "uninstall", lambda: self.sim("uninstall", BUNDLE)),
+        ])
 
 
 def capture(sim, case, work, artifacts, timeout=READY_SECONDS):
     console = work / f"{case}.raw"
     image = work / f"{case}.png"
     report = {"case": case, "status": "failed"}
+    operation = "launch"
     try:
         with console.open("wb") as output:
             process = sim.launch(case, output)
+            primary = None
             try:
+                operation = "readiness"
                 report["ready"] = wait_ready(case, console, lambda: process.poll() is None, timeout)
+                operation = "screenshot"
                 sim.screenshot(image)
+                operation = "liveness"
                 require(process.poll() is None, "Fixture app exited during screenshot")
+                operation = "png-validation"
                 report["png"] = inspect_png(image)
                 shutil.copyfile(image, artifacts / image.name)
+            except Exception as exc:
+                primary = exc
+                exc.smoke_phase = "capture"
+                if not getattr(exc, "smoke_operation", None):
+                    exc.smoke_operation = operation
+                raise
             finally:
-                try:
-                    if process.poll() is None:
-                        sim.terminate()
-                finally:
-                    stop(process)
+                cleanup_actions([
+                    ("capture-cleanup", "terminate", lambda: sim.terminate() if process.poll() is None else None),
+                    ("capture-cleanup", "process-stop", lambda: stop(process)),
+                ], primary)
         report["status"] = "passed"
         return report
-    except (SmokeError, OSError, subprocess.SubprocessError) as exc:
-        report["error"] = str(exc) if isinstance(exc, SmokeError) else type(exc).__name__
+    except Exception as exc:
+        report["failure"] = runtime_failure(exc, "capture", operation)
+        report["error"] = report["failure"]["kind"]
+        cleanup = runtime_cleanup_failures(exc)
+        if cleanup:
+            report["cleanup_failures"] = cleanup
+        exc.smoke_phase = report["failure"]["phase"]
+        exc.smoke_operation = report["failure"]["operation"]
         raise
     finally:
         # Only fixture protocol records (never the raw app console) leave the disposable directory.
@@ -684,6 +779,7 @@ def capture(sim, case, work, artifacts, timeout=READY_SECONDS):
 def collect(repo, sha, executable, temp, artifacts, udid):
     before = production_snapshot(repo, sha, executable)
     evidence = {"production_before": before, "cases": []}
+    phase, operation = "isolation", "source-isolation"
     artifacts.mkdir()
 
     def build(phase, argv, cwd, log, timeout, env=None):
@@ -697,35 +793,55 @@ def collect(repo, sha, executable, temp, artifacts, udid):
             raise SmokeError(f"Isolated {phase} failed; see sanitized build diagnostics") from None
 
     def build_and_capture(work, checkout, manifest):
+        nonlocal phase, operation
         evidence.update(manifest)
+        phase, operation = "simulator-details", "list-devices"
         sim = Simulator(checkout, udid)
         evidence["simulator"] = sim.details()
+        phase, operation = "xcode-version", "xcode-version"
         evidence["xcode"] = run(["xcodebuild", "-version"], checkout).decode().strip()
+        phase, operation = "framework-seed", "framework-seed"
         copy_seed(repo, checkout)
+        phase, operation = "xcodegen", "xcodegen"
         build("xcodegen", ["xcodegen", "-s", "project.yml"], checkout / "iosApp", work / "xcodegen.raw", 60)
         derived = work / "DerivedData"
         env = dict(os.environ)
         env["GRADLE_OPTS"] = f'{env.get("GRADLE_OPTS", "")} -Dorg.gradle.daemon=false -Dorg.gradle.caching=false'
+        phase, operation = "xcodebuild", "xcodebuild"
         build("xcodebuild", ["xcodebuild", "-project", PROJECT, "-scheme", "AndaXin", "-configuration", "Debug",
                              "-destination", f"platform=iOS Simulator,id={udid}", "-derivedDataPath", str(derived),
                              "CODE_SIGNING_ALLOWED=NO", "build"], checkout, work / "xcodebuild.raw", BUILD_SECONDS, env)
+        phase, operation = "bundle-validation", "bundle-validation"
         app = derived / "Build/Products/Debug-iphonesimulator/AndaXin.app"
         with (app / "Info.plist").open("rb") as source:
             require(plistlib.load(source).get("CFBundleIdentifier") == BUNDLE, "Unexpected fixture bundle identifier")
+        primary = None
         try:
+            phase, operation = "simulator-setup", "prepare"
             sim.prepare(app)
             for case in CASES:
+                phase, operation = "capture", "launch"
                 evidence["cases"].append(capture(sim, case, work, artifacts))
+        except Exception as exc:
+            primary = exc
+            raise
         finally:
-            sim.cleanup()
+            cleanup_actions([("simulator-cleanup", "simulator-cleanup", sim.cleanup)], primary)
 
     try:
         isolated_fixture(repo, sha, executable, temp, before, build_and_capture)
         evidence["production_after"] = before
         evidence["status"] = "passed"
-    except (SmokeError, OSError, subprocess.SubprocessError, ValueError) as exc:
+    except Exception as exc:
         evidence["status"] = "failed"
-        evidence["failure_type"] = type(exc).__name__
+        kinds = (SmokeError, subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError, subprocess.SubprocessError)
+        evidence["failure_type"] = next((kind.__name__ for kind in kinds if isinstance(exc, kind)), "Exception")
+        evidence["failure"] = runtime_failure(exc, phase, operation)
+        cleanup = runtime_cleanup_failures(exc)
+        if cleanup:
+            evidence["cleanup_failures"] = cleanup
+        exc.smoke_phase = evidence["failure"]["phase"]
+        exc.smoke_operation = evidence["failure"]["operation"]
         raise
     finally:
         (artifacts / "manifest.json").write_bytes(json_bytes(evidence))
@@ -801,8 +917,15 @@ def main():
         else:
             require(sys.platform == "darwin", "Native capture requires macOS; use dry-run for source checks")
             collect(repo, args.sha, args.git, outside(args.temp.resolve(), repo), outside(args.artifacts.resolve(), repo), args.udid)
-    except (SmokeError, OSError, ValueError, subprocess.SubprocessError, tarfile.TarError, zipfile.BadZipFile) as exc:
-        print(f"iOS lyrics visual validation: {exc}", file=sys.stderr)
+    except Exception as exc:
+        if args.command == "capture":
+            failure = {"failure": runtime_failure(exc, "capture", "validation")}
+            cleanup = runtime_cleanup_failures(exc)
+            if cleanup:
+                failure["cleanup_failures"] = cleanup
+            print("iOS lyrics visual validation: " + json.dumps(failure, sort_keys=True), file=sys.stderr)
+        else:
+            print(f"iOS lyrics visual validation: {exc}", file=sys.stderr)
         return 1
     return 0
 
