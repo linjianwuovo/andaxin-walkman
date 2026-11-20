@@ -515,7 +515,7 @@ class MusicController(
         } catch (e: Throwable) {
             null
         }
-        return direct ?: neteaseOuterUrl(song.id)
+        return direct?.takeIf { it.isNotBlank() } ?: neteaseOuterUrl(song.id)
     }
 
     /** 恢复队列和位置，并返回上次是否正在播放。 */

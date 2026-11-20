@@ -19,6 +19,7 @@ import io.ktor.http.content.TextContent
 import io.ktor.client.request.forms.FormDataContent
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.writeFully
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -59,6 +60,7 @@ private class KtorEngine(private val config: HttpEngineConfig) : HttpEngine {
             ?.let { store -> store.load(host!!, pathOf(call.url)).takeIf { it.isNotEmpty() } }
             ?.joinToString("; ") { "${it.name}=${it.value}" }
 
+        val startedAt = nowMillis()
         val response: HttpResponse = try {
             withContext(Dispatchers.Default) {
                 client.request(call.url) {
@@ -97,8 +99,10 @@ private class KtorEngine(private val config: HttpEngineConfig) : HttpEngine {
                     if (timeoutMs != null) timeout { requestTimeoutMillis = timeoutMs }
                 }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (t: Throwable) {
-            throw compactNetError(call.url, t)
+            throw compactNetError(t, "request", nowMillis() - startedAt)
         }
 
         if (host != null) {
@@ -167,39 +171,57 @@ private class KtorEngine(private val config: HttpEngineConfig) : HttpEngine {
         return epochSec * 1000
     }
 
-    /**
-     * NSURLSession 抛回来的是**整段 NSError 描述**（他 08:23 那张截图糊满一屏的就是那个），
-     * 原样当"错误原因"画到界面上，谁都读不动。这里压成一行：一句人话 + 两个码 + 主机名。
-     *
-     * 码对照 `<Security/SecureTransport.h>`：外层 -1200 = "TLS 没谈成"；里层那个才是原因 ——
-     * **-9816 = errSSLClosedNoNotify，服务器一个字没告就把连接关了**。证书那类是 -9813/-9814/-9815，
-     * 版本/套件谈不拢是 -9824/-9836。所以这一条既不是我们证书装错，也不是 ATS 拦的：
-     * 10-27 凌晨我从这台机对着 `ywlz.aiit.edu.cn` 现打了一遍，TLS 1.2 通、1.1 与 1.3 都被它拒
-     * （拒 1.3 时回的是干净的 alert 70，不是掐连接）—— 客户端同时带 1.2/1.3 时落 1.2 没问题，
-     * 所以真机上那次 -9816 是**它主动断的**，不是版本谈不拢。
-     */
-    private fun compactNetError(url: String, t: Throwable): Exception {
-        val text = buildString {
-            append(t.message.orEmpty()).append(' ')
-            var c: Throwable? = t.cause
-            while (c != null) { append(c.message.orEmpty()).append(' '); c = c.cause }
+    /** Public diagnostics contain only bounded metadata; the original failure stays in the cause. */
+    private fun compactNetError(t: Throwable, phase: String, elapsedMs: Long): Exception {
+        val seen = mutableListOf<Throwable>()
+        val types = mutableListOf<String>()
+        var current: Throwable? = t
+        var outer: String? = null
+        var inner: String? = null
+        var streamDomain: String? = null
+        var traversal = "end"
+        // No typed NSError accessor is verified here; these numeric hints are message-derived only.
+        fun code(text: String, key: String): String? =
+            Regex("""(?:^|[\s,{;])_?$key=(-?[0-9]{1,10})(?=$|[^0-9A-Za-z_])""")
+                .find(text)?.groupValues?.get(1)?.toIntOrNull()?.toString()
+
+        while (current != null) {
+            val node = current
+            if (seen.any { it === node }) { traversal = "cycle"; break }
+            if (seen.size == 8) { traversal = "limit"; break }
+            seen.add(node)
+            val type = runCatching { node::class.simpleName }.getOrNull()
+                ?.takeIf { it.matches(Regex("[A-Za-z_][A-Za-z0-9_]{0,63}")) } ?: "Throwable"
+            types.add(type)
+            val text = runCatching { node.message }.getOrNull().orEmpty().take(2048)
+            if (outer == null) outer = code(text, "Code")
+            if (inner == null) inner = code(text, "kCFStreamErrorCodeKey")
+            if (streamDomain == null) streamDomain = code(text, "kCFStreamErrorDomainKey")
+            val cause = runCatching { node.cause }
+            if (cause.isFailure) { traversal = "unavailable"; break }
+            current = cause.getOrNull()
         }
-        val outer = Regex("""Code=(-?\d+)""").find(text)?.groupValues?.get(1)
-        val inner = Regex("""kCFStreamErrorCodeKey=(-?\d+)""").find(text)?.groupValues?.get(1)
-        val why = when (inner) {
-            "-9816" -> "服务器在 TLS 中途把连接掐了（没告而终）"
-            "-9813", "-9814", "-9815" -> "校方那张证书系统不认（链或有效期）"
-            "-9824", "-9836" -> "TLS 版本/加密套件谈不拢"
-            "-1009", "-1003" -> "这台设备现在连不上那台服务器"
-            "-1001" -> "那台服务器没在限时内答话"
-            else -> null
+        val why = when (inner ?: outer) {
+            "-9816" -> "TLS 连接提前结束"
+            "-9813", "-9814", "-9815" -> "TLS 证书校验失败"
+            "-9824", "-9836" -> "TLS 协商失败"
+            "-1009", "-1003" -> "设备或服务器暂不可达"
+            "-1001" -> "请求超时"
+            "-1200" -> "TLS 连接失败"
+            else -> "网络请求失败"
         }
-        val host = hostOf(url).orEmpty()
-        val parts = listOfNotNull(
+        val safePhase = if (phase == "request") "request" else "unknown"
+        val parts = listOf(
             why,
-            "码 ${outer ?: "?"}/${inner ?: "-"}",
-            host.ifBlank { null },
+            "phase=$safePhase",
+            "elapsedMs=${elapsedMs.coerceIn(0L, 86_400_000L)}",
+            "type=${types.first()}",
+            "cause=${types.drop(1).joinToString(">").ifEmpty { "none" }}",
+            "chain=$traversal",
+            "native=message-regex",
+            "code=${outer ?: "?"}/${inner ?: "-"}",
+            "streamDomain=${streamDomain ?: "?"}",
         )
-        return Exception("这一发请求没成：" + parts.joinToString(" · "))
+        return Exception(("这一发请求没成：" + parts.joinToString(" · ")).take(768), t)
     }
 }

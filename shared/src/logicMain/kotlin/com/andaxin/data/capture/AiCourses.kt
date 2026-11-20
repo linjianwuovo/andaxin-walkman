@@ -1,5 +1,9 @@
 package com.andaxin.data.capture
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+
 /*
  * AI 课堂"有哪几门课"。
  *
@@ -19,13 +23,24 @@ class AiCourseFeed(
     private var cached: List<AiCourse>? = null
 
     suspend fun courses(force: Boolean = false): Result<List<AiCourse>> {
+        currentCoroutineContext().ensureActive()
         val hit = cached
         if (!force && hit != null) return Result.success(hit)
-        return fif.ensure().mapCatching {
+        return try {
+            fif.ensure().getOrThrow()
             val terms = api.terms()
+            currentCoroutineContext().ensureActive()
             val term = terms.firstOrNull { it.selected } ?: terms.firstOrNull()
-                ?: throw Exception("学期列表是空的（那条接口回了数据但一条学期都没有）")
-            api.courses(term.year, term.num).also { cached = it }
+                ?: throw Exception("没能取得 AI 课堂学期，请重试。")
+            val courses = api.courses(term.year, term.num)
+            currentCoroutineContext().ensureActive()
+            cached = courses
+            Result.success(courses)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            currentCoroutineContext().ensureActive()
+            Result.failure(error)
         }
     }
 

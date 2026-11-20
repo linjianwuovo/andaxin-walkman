@@ -6,6 +6,7 @@ import com.andaxin.core.store.SessionStore
 import java.io.File
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
@@ -282,6 +283,8 @@ class School(private val session: SessionStore) {
                     }
                     Result.success(root)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(Exception("连不上学校：${e.message ?: e.javaClass.simpleName}"))
             }

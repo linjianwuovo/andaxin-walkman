@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -35,6 +36,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
@@ -49,22 +51,31 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
@@ -75,6 +86,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -82,6 +94,10 @@ import androidx.compose.ui.unit.sp
 import com.andaxin.shared.IosImages
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlin.math.abs
+import platform.Foundation.NSUserDefaults
 
 private enum class MusicTab(val label: String) {
     Home("首页"), Discover("发现"), Podcast("播客"), Library("音乐库"), Search("搜索"), Setting("设置"),
@@ -111,16 +127,23 @@ private data class DetailUiState(
 )
 
 @Composable
-private fun parseLyricColor(raw: String?): Color {
-    val fallback = MaterialTheme.colorScheme.primary
-    val value = raw?.trim().orEmpty().removePrefix("#")
+private fun effectiveLyricFontSize(controller: MusicController): Int {
+    val storedSize = controller.lyricFontSize
+    val hasStoredSize = remember(controller, storedSize) {
+        NSUserDefaults.standardUserDefaults.objectForKey("music.lyricFont") != null
+    }
+    return if (hasStoredSize) storedSize else 28
+}
+
+private fun parseLyricColor(raw: String): Color {
+    val value = raw.trim().removePrefix("#")
     return runCatching {
         when (value.length) {
             6 -> Color((0xFF000000u + value.toULong(16)).toLong())
             8 -> Color(value.toULong(16).toLong())
-            else -> fallback
+            else -> Color.White
         }
-    }.getOrDefault(fallback)
+    }.getOrDefault(Color.White)
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -514,10 +537,11 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
             }
         }
         SectionTitle("歌词外观")
+        val lyricFontSize = effectiveLyricFontSize(controller)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("字号 " + controller.lyricFontSize, modifier = Modifier.weight(1f))
-            TextButton(onClick = { controller.setLyricFontSize(controller.lyricFontSize - 2) }) { Text("减小") }
-            TextButton(onClick = { controller.setLyricFontSize(controller.lyricFontSize + 2) }) { Text("增大") }
+            Text("字号 " + lyricFontSize, modifier = Modifier.weight(1f))
+            TextButton(onClick = { controller.setLyricFontSize(lyricFontSize - 2) }) { Text("减小") }
+            TextButton(onClick = { controller.setLyricFontSize(lyricFontSize + 2) }) { Text("增大") }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("主色", modifier = Modifier.weight(1f))
@@ -838,103 +862,188 @@ private fun PlayerPanel(
 ) {
     val song = controller.current ?: return
     var showLyrics by remember { mutableStateOf(controller.lyricsVisible) }
-    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            TextButton(onClick = onBack) { Text("← 收起") }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { showLyrics = !showLyrics; controller.setLyricsVisible(showLyrics) }) { Text(if (showLyrics) "歌词" else "封面") }
-            TextButton(onClick = onQueue) { Text("队列") }
-        }
-        Spacer(Modifier.height(10.dp))
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            if (showLyrics) KaraokeLyricsView(controller, Modifier.fillMaxSize())
-            else AlbumArt(song.cover, Modifier.size(minOf(maxWidth, maxHeight)), RoundedCornerShape(20.dp))
-        }
-        Spacer(Modifier.height(14.dp))
-        Text(song.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(song.artist + if (song.album.isEmpty()) "" else " · " + song.album, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("点歌词跳转 · " + clock(controller.position), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(clock(controller.duration), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            TransportIcon(Transport.Mode, MaterialTheme.colorScheme.onSurface, Modifier.size(30.dp), onClick = { controller.cyclePlayMode() })
-            IconButton(onClick = { controller.previous() }, modifier = Modifier.size(52.dp)) { TransportIcon(Transport.Prev, MaterialTheme.colorScheme.onSurface, Modifier.size(26.dp)) }
-            FilledIconButton(
-                onClick = { controller.toggle() },
-                modifier = Modifier.size(64.dp),
-                shape = CircleShape,
-                colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
-            ) { TransportIcon(if (controller.playing) Transport.Pause else Transport.Play, MaterialTheme.colorScheme.onPrimary, Modifier.size(30.dp)) }
-            IconButton(onClick = { controller.next() }, modifier = Modifier.size(52.dp)) { TransportIcon(Transport.Next, MaterialTheme.colorScheme.onSurface, Modifier.size(26.dp)) }
-            TransportIcon(Transport.Queue, MaterialTheme.colorScheme.onSurface, Modifier.size(30.dp), onClick = onQueue)
-        }
-        Text(when (controller.playMode) { 1 -> "单曲循环"; 2 -> "随机播放"; else -> "列表循环" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (controller.musicU == null) "未登录" else "已登录", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            TextButton(onClick = if (controller.musicU == null) onLogin else onLogout) { Text(if (controller.musicU == null) "登录" else "退出") }
+    val artwork = rememberAlbumBitmap(song.cover)
+    val foreground = if (showLyrics) Color.White else MaterialTheme.colorScheme.onSurface
+    val secondary = if (showLyrics) Color.White.copy(alpha = 0.78f) else MaterialTheme.colorScheme.onSurfaceVariant
+    val actionColors = if (showLyrics) ButtonDefaults.textButtonColors(contentColor = foreground) else ButtonDefaults.textButtonColors()
+    val playColor = if (showLyrics) Color(0xFF1A181C) else MaterialTheme.colorScheme.onPrimary
+    val playBackground = if (showLyrics) Color.White else MaterialTheme.colorScheme.primary
+
+    Box(Modifier.fillMaxSize()) {
+        if (showLyrics) LyricsBackdrop(artwork, Modifier.matchParentSize())
+        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onBack, colors = actionColors) { Text("← 收起") }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { showLyrics = !showLyrics; controller.setLyricsVisible(showLyrics) }, colors = actionColors) { Text(if (showLyrics) "歌词" else "封面") }
+                TextButton(onClick = onQueue, colors = actionColors) { Text("队列") }
+            }
+            Spacer(Modifier.height(10.dp))
+            if (showLyrics) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    AlbumArtImage(artwork, Modifier.size(48.dp), RoundedCornerShape(8.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(song.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = foreground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(song.artist, style = MaterialTheme.typography.bodyMedium, color = secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                val lines = controller.lyrics
+                val lyricModifier = Modifier.weight(1f).fillMaxWidth()
+                key(song.id, lines) { KaraokeLyricsView(controller, lines, lyricModifier) }
+            } else {
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    AlbumArtImage(artwork, Modifier.size(minOf(maxWidth, maxHeight)), RoundedCornerShape(20.dp))
+                }
+                Spacer(Modifier.height(14.dp))
+                Text(song.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(song.artist + if (song.album.isEmpty()) "" else " · " + song.album, style = MaterialTheme.typography.bodyMedium, color = secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("点歌词跳转 · " + clock(controller.position), style = MaterialTheme.typography.labelSmall, color = secondary)
+                Text(clock(controller.duration), style = MaterialTheme.typography.labelSmall, color = secondary)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                TransportIcon(Transport.Mode, foreground, Modifier.size(30.dp), onClick = { controller.cyclePlayMode() })
+                IconButton(onClick = { controller.previous() }, modifier = Modifier.size(52.dp)) { TransportIcon(Transport.Prev, foreground, Modifier.size(26.dp)) }
+                FilledIconButton(
+                    onClick = { controller.toggle() },
+                    modifier = Modifier.size(64.dp),
+                    shape = CircleShape,
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = playBackground, contentColor = playColor),
+                ) { TransportIcon(if (controller.playing) Transport.Pause else Transport.Play, playColor, Modifier.size(30.dp)) }
+                IconButton(onClick = { controller.next() }, modifier = Modifier.size(52.dp)) { TransportIcon(Transport.Next, foreground, Modifier.size(26.dp)) }
+                TransportIcon(Transport.Queue, foreground, Modifier.size(30.dp), onClick = onQueue)
+            }
+            Text(when (controller.playMode) { 1 -> "单曲循环"; 2 -> "随机播放"; else -> "列表循环" }, style = MaterialTheme.typography.labelSmall, color = secondary, modifier = Modifier.padding(top = 4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (controller.musicU == null) "未登录" else "已登录", style = MaterialTheme.typography.labelSmall, color = secondary, modifier = Modifier.weight(1f))
+                TextButton(onClick = if (controller.musicU == null) onLogin else onLogout, colors = actionColors) { Text(if (controller.musicU == null) "登录" else "退出") }
+            }
         }
     }
 }
 
 @Composable
-private fun KaraokeLyricsView(controller: MusicController, modifier: Modifier) {
-    val state = rememberLazyListState()
-    val activeIndex = remember(controller.lyrics, controller.position) {
-        val nowMs = (controller.position * 1000.0).toLong()
-        var active = -1
-        for (i in controller.lyrics.indices) {
-            if (controller.lyrics[i].timeMs <= nowMs) active = i else break
+private fun LyricsBackdrop(artwork: ImageBitmap?, modifier: Modifier) {
+    Box(modifier.background(Color(0xFF242226))) {
+        if (artwork != null) {
+            Image(artwork, contentDescription = null, modifier = Modifier.matchParentSize().blur(36.dp), contentScale = ContentScale.Crop)
+            Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(
+                Color.Black.copy(alpha = 0.72f),
+                Color.Black.copy(alpha = 0.76f),
+                Color.Black.copy(alpha = 0.87f),
+            ))))
         }
-        active
     }
-    LaunchedEffect(activeIndex) {
-        if (activeIndex >= 0) state.animateScrollToItem(activeIndex, scrollOffset = -120)
-    }
-    if (controller.lyrics.isEmpty()) {
-        val hint = if (controller.current == null) "播放歌曲后这里会显示逐字歌词" else "正在获取歌词…如果一直为空，请检查网络或重试"
+}
+
+@Composable
+private fun KaraokeLyricsView(controller: MusicController, lines: List<LyricLine>, modifier: Modifier) {
+    if (lines.isEmpty()) {
+        val hint = if (controller.current == null) "播放歌曲后这里会显示逐字歌词" else "暂未获取到歌词，可重试"
         Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(hint, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-            TextButton(onClick = { controller.reloadLyrics() }) { Text("重试歌词") }
+            Text(hint, style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.78f), textAlign = TextAlign.Center)
+            TextButton(onClick = { controller.reloadLyrics() }, colors = ButtonDefaults.textButtonColors(contentColor = Color.White)) { Text("重试歌词") }
         }
         return
     }
-    LazyColumn(
-        state = state,
-        modifier = modifier.padding(horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(vertical = 120.dp),
-    ) {
-        items(controller.lyrics.size) { index ->
-            val line = controller.lyrics[index]
-            val active = index == activeIndex
-            val activeColor = parseLyricColor(controller.lyricColor)
-            Text(
-                text = if (active) karaokeLine(line, controller.position, activeColor) else AnnotatedString(line.text),
-                style = if (active) MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, fontSize = controller.lyricFontSize.sp) else MaterialTheme.typography.bodyLarge.copy(fontSize = (controller.lyricFontSize - 2).sp),
-                color = if (active) activeColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().clickable { controller.seekTo(line.timeMs / 1000.0) },
-            )
+
+    val activeIndex by remember(controller, lines) {
+        derivedStateOf { activeLyricIndex(lines, (controller.position * 1000.0).toLong()) }
+    }
+    val state = rememberLazyListState(initialFirstVisibleItemIndex = activeIndex.coerceAtLeast(0))
+    val dragging by state.interactionSource.collectIsDraggedAsState()
+    var browsing by remember { mutableStateOf(false) }
+    LaunchedEffect(dragging, browsing) {
+        if (dragging) {
+            browsing = true
+        } else if (browsing) {
+            snapshotFlow { state.isScrollInProgress }.collectLatest { scrolling ->
+                if (!scrolling) {
+                    delay(2_500L)
+                    browsing = false
+                }
+            }
+        }
+    }
+    LaunchedEffect(activeIndex, dragging, browsing) {
+        if (!dragging && !browsing) state.animateScrollToItem(activeIndex.coerceAtLeast(0))
+    }
+
+    val color = remember(controller.lyricColor) { parseLyricColor(controller.lyricColor) }
+    val fontSize = effectiveLyricFontSize(controller)
+    val lyricStyle = MaterialTheme.typography.titleLarge.copy(
+        fontWeight = FontWeight.Bold,
+        fontSize = fontSize.sp,
+        lineHeight = (fontSize * 1.2f).sp,
+        textDirection = TextDirection.Content,
+    )
+    BoxWithConstraints(modifier) {
+        val anchor = minOf(72.dp, maxHeight * 0.26f)
+        LazyColumn(
+            state = state,
+            modifier = Modifier.fillMaxSize().lyricEdgeFade(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(top = anchor, bottom = maxHeight - anchor),
+        ) {
+            items(lines.size, key = { index -> index }) { index ->
+                val line = lines[index]
+                val active = index == activeIndex
+                val distance = abs(index - activeIndex.coerceAtLeast(0))
+                val inactiveAlpha = when (distance) { 0, 1 -> 0.72f; 2 -> 0.60f; else -> 0.52f }
+                Text(
+                    text = if (active) karaokeLine(line, controller.position, color) else AnnotatedString(line.text),
+                    style = lyricStyle,
+                    color = if (active) color else Color.White.copy(alpha = inactiveAlpha),
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        controller.seekTo(line.timeMs / 1000.0)
+                        browsing = false
+                    }.padding(horizontal = 4.dp, vertical = 6.dp),
+                )
+            }
         }
     }
 }
 
-@Composable
+private fun Modifier.lyricEdgeFade(): Modifier = graphicsLayer {
+    compositingStrategy = CompositingStrategy.Offscreen
+}.drawWithCache {
+    val mask = Brush.verticalGradient(
+        0f to Color.Transparent,
+        0.14f to Color.Black,
+        0.80f to Color.Black,
+        1f to Color.Transparent,
+    )
+    onDrawWithContent {
+        drawContent()
+        drawRect(mask, blendMode = BlendMode.DstIn)
+    }
+}
+
+private fun activeLyricIndex(lines: List<LyricLine>, positionMs: Long): Int {
+    var left = 0
+    var right = lines.size
+    while (left < right) {
+        val middle = left + (right - left) / 2
+        if (lines[middle].timeMs <= positionMs) left = middle + 1 else right = middle
+    }
+    return left - 1
+}
+
 private fun karaokeLine(line: LyricLine, positionSeconds: Double, activeColor: Color): AnnotatedString {
-    val primary = activeColor
-    val dim = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+    val dim = Color.White.copy(alpha = 0.62f)
     val nowMs = (positionSeconds * 1000.0).toLong() - line.timeMs
     return buildAnnotatedString {
         if (line.wordTimes.size == line.text.length && line.text.isNotEmpty()) {
             line.text.forEachIndexed { i, ch ->
-                val style = if (nowMs >= line.wordTimes[i]) SpanStyle(color = primary, fontWeight = FontWeight.Bold) else SpanStyle(color = dim)
-                withStyle(style) { append(ch) }
+                val color = if (nowMs >= line.wordTimes[i]) activeColor else dim
+                withStyle(SpanStyle(color = color)) { append(ch) }
             }
-        } else withStyle(SpanStyle(color = primary, fontWeight = FontWeight.Bold)) { append(line.text) }
+        } else withStyle(SpanStyle(color = activeColor)) { append(line.text) }
     }
 }
 
@@ -969,11 +1078,20 @@ private fun QueueSheet(controller: MusicController, onClose: () -> Unit) {
 }
 
 @Composable
+private fun rememberAlbumBitmap(url: String?): ImageBitmap? {
+    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(url) { bitmap = if (url.isNullOrBlank()) null else IosImages.load(url) }
+    return bitmap
+}
+
+@Composable
 private fun AlbumArt(url: String?, modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(10.dp)) {
-    var bmp by remember(url) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(url) { bmp = if (url.isNullOrBlank()) null else IosImages.load(url) }
-    val b = bmp
-    if (b != null) Image(b, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier.clip(shape))
+    AlbumArtImage(rememberAlbumBitmap(url), modifier, shape)
+}
+
+@Composable
+private fun AlbumArtImage(bitmap: ImageBitmap?, modifier: Modifier, shape: Shape) {
+    if (bitmap != null) Image(bitmap, contentDescription = null, contentScale = ContentScale.Crop, modifier = modifier.clip(shape))
     else BoxWithConstraints(modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
         Text("♪", fontSize = (maxWidth.value * 0.4f).sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
     }

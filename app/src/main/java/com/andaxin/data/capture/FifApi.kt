@@ -1,5 +1,6 @@
 package com.andaxin.data.capture
 
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -51,20 +52,36 @@ class FifApi(private val fif: FifSession) {
      * 这发有 A 级实样 —— 所以课程列表不必再拿课表的 `jxbh` 去猜 FIF 的班号了。
      */
     suspend fun courses(termYear: String, term: String): List<AiCourse> {
-        val root = post(
+        val body = fif.postForm(
             "$STTP/studycenter/mobile/student/myClassroom",
             listOf("termYear" to termYear, "term" to term),
-        ) ?: return emptyList()
-        return objs(data(root).opt("dataList")).map { o ->
+            fif.authHeader(),
+        )
+        val root = try {
+            JSONObject(body)
+        } catch (_: Exception) {
+            throw Exception("AI 课堂课程响应格式不正确，请重试。")
+        }
+        if (!passed(root)) throw Exception("AI 课堂课程加载失败，请稍后重试。")
+        val list = root.optJSONObject("data")?.optJSONArray("dataList")
+            ?: throw Exception("AI 课堂课程响应格式不正确，请重试。")
+        return (0 until list.length()).map { index ->
+            val o = list.optJSONObject(index)
+                ?: throw Exception("AI 课堂课程响应格式不正确，请重试。")
+            fun text(key: String): String = if (o.isNull(key)) "" else o.optString(key)
+            if (text("id").isBlank() || text("courseId").isBlank() ||
+                text("classId").isBlank() ||
+                text("courseName").ifBlank { text("name") }.isBlank()
+            ) throw Exception("AI 课堂课程信息不完整，请重试。")
             AiCourse(
-                id = o.optString("id"),
-                name = o.optString("courseName").ifBlank { o.optString("name") },
-                teacher = o.optString("teacherName"),
-                courseId = o.optString("courseId"),
+                id = text("id"),
+                name = text("courseName").ifBlank { text("name") },
+                teacher = text("teacherName"),
+                courseId = text("courseId"),
                 // 19 位那个班号，课程条目里给的是 classId；mirrorTeachClassId 是另一个，别混
-                teachClassId = o.optString("classId"),
-                courseRecordId = o.optString("courseRecordId"),
-                cover = o.optString("cover"),
+                teachClassId = text("classId"),
+                courseRecordId = text("courseRecordId"),
+                cover = text("cover"),
             )
         }
     }
@@ -834,6 +851,7 @@ class FifApi(private val fif: FifSession) {
 
     private suspend fun post(url: String, form: List<Pair<String, String>>): JSONObject? =
         runCatching { JSONObject(fif.postForm(url, form, fif.authHeader())) }
+            .onFailure { if (it is CancellationException) throw it }
             .getOrNull()?.let { if (passed(it)) it else null }
 
     /**

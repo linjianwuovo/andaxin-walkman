@@ -57,7 +57,14 @@ class MusicBarState {
 
     internal fun togglePlay() {
         val player = player ?: return
-        if (player.shouldPauseOnToggle) player.pause() else player.play()
+        if (player.shouldPauseOnToggle) {
+            player.pause()
+        } else {
+            if (player.playbackState == Player.STATE_IDLE && player.mediaItemCount > 0) {
+                player.prepare()
+            }
+            player.play()
+        }
     }
 
     internal fun next() {

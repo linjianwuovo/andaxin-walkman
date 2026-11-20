@@ -446,11 +446,16 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val ink = LocalInk.current
     var courses by remember { mutableStateOf<List<AiCourse>>(emptyList()) }
     var why by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
-        graph.aiCourses.courses().fold(
+    var loading by remember { mutableStateOf(true) }
+    var retry by remember { mutableIntStateOf(0) }
+    LaunchedEffect(retry) {
+        loading = true
+        why = null
+        graph.aiCourses.courses(force = retry > 0).fold(
             onSuccess = { courses = it },
             onFailure = { why = whyOf(it) },
         )
+        loading = false
     }
 
     /*
@@ -529,10 +534,6 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Hairline()
         Spacer(Modifier.height(Gap.lg))
 
-        if (why != null) {
-            LoadWhy(why)
-            Spacer(Modifier.height(Gap.sm))
-        }
         // 公开课和"我选的课"不是一回事，但入口放这儿最顺：都是 FIF 那侧，同一个单点登录
         Sheet(modifier = Modifier.pressClick { open("opencourse") }) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -547,6 +548,19 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Spacer(Modifier.height(Gap.sm))
         Hairline()
         Spacer(Modifier.height(Gap.lg))
+        when {
+            loading -> Text("正在加载 AI 课堂课程…", fontSize = Type.body, color = ink.faint)
+            why != null -> {
+                LoadWhy(why)
+                Spacer(Modifier.height(Gap.sm))
+                GlasmioButton(onClick = {
+                    loading = true
+                    why = null
+                    retry++
+                }) { Text("重试", fontSize = Type.body) }
+            }
+            courses.isEmpty() -> Text("当前学期没有 AI 课堂课程。", fontSize = Type.body, color = ink.faint)
+        }
         courses.forEach { c ->
             Sheet(
                 modifier = Modifier
@@ -574,7 +588,6 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 }
             }
         }
-        if (courses.isEmpty() && why == null) Text("本周课表里没有课。", fontSize = Type.body, color = ink.faint)
 
         Spacer(Modifier.height(Gap.md))
     }

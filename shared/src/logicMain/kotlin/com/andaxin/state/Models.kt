@@ -14,6 +14,9 @@ import com.andaxin.data.NoticeFeed
 import com.andaxin.data.NoticeItem
 import com.andaxin.data.TimetableFeed
 import com.andaxin.data.TimetableSlot
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -157,16 +160,28 @@ class TimetableModel(private val feed: TimetableFeed, private val store: Store) 
 
     /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
     suspend fun refresh(offset: Int = _state.value.weekOffset) {
-        val r = try { feed.week(offset) } catch (e: Exception) { Result.failure(e) }
+        val r = try {
+            feed.week(offset)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+        val failure = r.exceptionOrNull()
+        if (failure is CancellationException) throw failure
+        val context = currentCoroutineContext()
+        context.ensureActive()
         val slots = r.getOrDefault(_state.value.slots)
         // 用 copy：整份 new 会把刚拿到的周次表冲掉，那一行会闪回「本周/下周」两颗
-        _state.value = _state.value.copy(
+        val updated = _state.value.copy(
             firstLoad = false,
             weekOffset = offset,
             slots = slots,
             courseColors = withNewCourses(slots.map { it.course }),
-            error = r.exceptionOrNull()?.message,
+            error = failure?.message,
         )
+        context.ensureActive()
+        _state.value = updated
     }
 
     /**

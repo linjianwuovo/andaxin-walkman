@@ -30,10 +30,7 @@ jobs:
           # run 43718278933 的命：这一步后面 ./gradlew: Permission denied 三连，
           # 整发红在「链真机 release framework」。根因不是 Gradle，是 gradlew 在索引里没有 +x
           # （git 在 Windows 上不记执行位，API 建 blob 时也只能给 100644）。
-          # 所以不靠索引，运行前统一补：gradlew 与仓库里任何 .sh 都补一遍。
-          chmod +x gradlew || true
-          find . -name '*.sh' -type f -exec chmod +x {} + 2>/dev/null || true
-          ls -l gradlew
+          chmod +x gradlew
 
       - uses: actions/setup-java@v4
         with:
@@ -55,6 +52,9 @@ jobs:
           key: mac-gradle-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', 'gradle.properties') }}
           restore-keys: |
             mac-gradle-
+
+      - name: Verify committed production inputs
+        run: python3 .github/scripts/ios_lyrics_smoke.py guard write "$RUNNER_TEMP/ios-production-source.json"
 
       - name: 链真机 release framework（本机做不了的那步，在这出证据）
         run: |
@@ -141,6 +141,9 @@ jobs:
         run: |
           brew install xcodegen xcbeautify
           cd iosApp && xcodegen -s project.yml
+
+      - name: Record production inputs after XcodeGen
+        run: python3 .github/scripts/ios_lyrics_smoke.py guard write "$RUNNER_TEMP/ios-production-inputs.json"
 
       - name: 选一台模拟器（构建和截图共用这一台）
         run: |
@@ -276,6 +279,22 @@ jobs:
           echo "--- 产物里的 Info.plist 关键键"
           plutil -p "$APP/Info.plist" 2>/dev/null | grep -iE "UILaunchScreen|UISupportedInterfaceOrientations|UIRequiresFullScreen|CFBundleIdentifier|MinimumOSVersion|NSExceptionDomains" || echo "读不到 $APP/Info.plist"
 
+      - name: Capture deterministic native iOS lyrics
+        timeout-minutes: 25
+        run: |
+          python3 .github/scripts/ios_lyrics_smoke.py capture \
+            --temp "$RUNNER_TEMP" --artifacts "$RUNNER_TEMP/ios-lyrics-visual"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-lyrics-visual
+          path: ${{ runner.temp }}/ios-lyrics-visual/
+          if-no-files-found: warn
+
+      - name: Verify production inputs before device packaging
+        run: python3 .github/scripts/ios_lyrics_smoke.py guard compare "$RUNNER_TEMP/ios-production-inputs.json"
+
       - name: 无签名真机 ipa（Sideloadly/爱思在 PC 上重签用）
         run: |
           set -o pipefail
@@ -357,6 +376,11 @@ jobs:
             exit 1
           fi
           echo "OK：只链接未嵌入，包里没有 Frameworks/"
+          if ! python3 .github/scripts/ios_lyrics_smoke.py guard compare "$RUNNER_TEMP/ios-production-inputs.json" ||
+             ! python3 .github/scripts/ios_lyrics_smoke.py scan-package "$APP" AndaXin-unsigned.ipa; then
+            rm -f AndaXin-unsigned.ipa
+            exit 1
+          fi
 
       - name: 打包 framework 产物
         if: always()

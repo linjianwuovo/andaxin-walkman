@@ -10,6 +10,7 @@ import com.andaxin.core.store.SchoolIdentity
 import com.andaxin.core.store.SessionStore
 import com.andaxin.core.json.JSONArray
 import com.andaxin.core.json.JSONObject
+import kotlinx.coroutines.CancellationException
 
 /**
  * 校方业务接口的公共外壳：身份参数怎么带、表单怎么发、JSON 怎么钻。
@@ -251,6 +252,7 @@ class School(private val session: SessionStore) {
                 timeoutMs = timeoutMs,
             )
         }.getOrElse { e ->
+            if (e is CancellationException) throw e
             return Result.failure(Exception("连不上学校：${e.message ?: e::class.simpleName}"))
         }
         if (!reply.isSuccessful) {
