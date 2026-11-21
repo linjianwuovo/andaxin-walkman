@@ -58,7 +58,7 @@ jobs:
       - name: Link iOS ARM64 release framework
         run: |
           set -o pipefail
-          ./gradlew :shared:linkReleaseFrameworkIosArm64 --console=plain |& tee "$RUNNER_TEMP/ios-owner-validation/framework-build.log"
+          ./gradlew :shared:linkReleaseFrameworkIosArm64 --console=plain 2>&1 | tee "$RUNNER_TEMP/ios-owner-validation/framework-build.log"
           shasum -a 256 shared/build/bin/iosArm64/releaseFramework/shared.framework/shared > "$RUNNER_TEMP/ios-owner-validation/framework-sha256.txt"
 
       - name: Generate Xcode project
@@ -79,7 +79,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/ios-owner-derived-data" \
             -resultBundlePath "$RUNNER_TEMP/ios-owner-validation/build.xcresult" \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO \
-            build |& tee "$RUNNER_TEMP/ios-owner-validation/xcode-build.log"
+            build 2>&1 | tee "$RUNNER_TEMP/ios-owner-validation/xcode-build.log"
 
       - name: Verify production sources after build
         if: always()
