@@ -16,7 +16,7 @@ jobs:
   build:
     if: github.ref == 'refs/heads/fix/ios-owner-about-sync-20261121'
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -81,17 +81,95 @@ jobs:
             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO \
             build 2>&1 | tee "$RUNNER_TEMP/ios-owner-validation/xcode-build.log"
 
+      - name: Build unsigned device application without launching
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/AndaXin.xcodeproj -scheme AndaXin \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/ios-owner-device-derived-data" \
+            -resultBundlePath "$RUNNER_TEMP/ios-owner-validation/device-build.xcresult" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee "$RUNNER_TEMP/ios-owner-validation/device-build.log"
+
       - name: Verify production sources after build
         if: always()
         run: |
           set -o pipefail
           shasum -a 256 -c "$RUNNER_TEMP/ios-owner-validation/source-sha256.txt" | tee "$RUNNER_TEMP/ios-owner-validation/source-after.log"
 
+      - name: Package unsigned IPA and record artifact metadata
+        run: |
+          set -o pipefail
+          APP="$RUNNER_TEMP/ios-owner-device-derived-data/Build/Products/Release-iphoneos/AndaXin.app"
+          PACKAGE="$RUNNER_TEMP/ios-owner-validation/unsigned-ipa"
+          test -d "$APP"
+          test ! -d "$APP/Frameworks/shared.framework"
+          mkdir -p "$PACKAGE/Payload"
+          cp -R "$APP" "$PACKAGE/Payload/"
+          ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV.fetch(0)).fetch("targets").fetch("AndaXin").fetch("settings").fetch("base"))' iosApp/project.yml > "$RUNNER_TEMP/ios-owner-validation/package-settings.json"
+          cd "$PACKAGE"
+          zip -qry AndaXin-unsigned.ipa Payload
+          python3 - "$APP" "$RUNNER_TEMP/ios-owner-validation" "$GITHUB_SHA" <<'PY'
+          import hashlib
+          import json
+          import plistlib
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          app, evidence, commit = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+          settings = json.loads((evidence / "package-settings.json").read_text())
+          info = plistlib.loads((app / "Info.plist").read_bytes())
+          for key, setting in (("CFBundleShortVersionString", "MARKETING_VERSION"),
+                               ("CFBundleVersion", "CURRENT_PROJECT_VERSION")):
+              assert info[key] == str(settings[setting]), key
+          executable = info["CFBundleExecutable"]
+          assert executable and executable not in (".", "..") and Path(executable).name == executable
+          assert (evidence / "commit.txt").read_text().strip() == commit
+          ipa = Path("AndaXin-unsigned.ipa")
+          with zipfile.ZipFile(ipa) as archive:
+              assert archive.testzip() is None
+              for name in ("Info.plist", executable, "Assets.car"):
+                  entry = archive.getinfo("Payload/AndaXin.app/" + name)
+                  assert entry.file_size > 0, name
+              assert not any(n.startswith("Payload/AndaXin.app/Frameworks/shared.framework/") for n in archive.namelist())
+          notice = "Unsigned IPA. Re-sign with your own credentials before installation. This is not a signed IPA or TestFlight build."
+          Path("README.txt").write_text(notice + "\n", encoding="utf-8")
+          manifest = {
+              "commit": commit,
+              "bundle_identifier": info["CFBundleIdentifier"],
+              "bundle_version": info["CFBundleVersion"],
+              "short_version": info["CFBundleShortVersionString"],
+              "signing": "unsigned; CODE_SIGNING_ALLOWED=NO",
+              "installation": notice,
+              "ipa": {"file": ipa.name, "bytes": ipa.stat().st_size,
+                      "sha256": hashlib.sha256(ipa.read_bytes()).hexdigest()},
+              "framework_sha256": (evidence / "framework-sha256.txt").read_text().strip(),
+              "production_source_sha256": (evidence / "source-sha256.txt").read_text(),
+          }
+          Path("manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
+          rm -rf Payload
+
+      - name: Upload unsigned IPA for user re-signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-owner-unsigned-ipa-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios-owner-validation/unsigned-ipa/AndaXin-unsigned.ipa
+            ${{ runner.temp }}/ios-owner-validation/unsigned-ipa/manifest.json
+            ${{ runner.temp }}/ios-owner-validation/unsigned-ipa/README.txt
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ios-owner-validation-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ios-owner-validation/
+          path: |
+            ${{ runner.temp }}/ios-owner-validation/
+            !${{ runner.temp }}/ios-owner-validation/unsigned-ipa/
           if-no-files-found: error
           retention-days: 7
