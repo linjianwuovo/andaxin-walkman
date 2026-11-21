@@ -2,6 +2,9 @@
 
 package com.andaxin.shell
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -226,16 +229,7 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/**
- * 一行列表条目 —— 全仓所有"左边一句主话、右边一个状态"的形状都走它。
- *
- * 三条硬规矩，都是这次改出来的：
- * ① 右栏最多占 [Rhythm.rightMax]：以前右栏不限宽，长状态（"记录可看 · 登记没接"）
- *    会把左边挤成两行竖排，整行看着就散了；
- * ② 主文字最多两行、副文字一行，超了就省略号 —— 不许把行高撑开；
- * ③ 副文字和主文字之间只留 2dp，行内上下 padding 走 [Rhythm.rowV]，
- *    这样一屏能多塞三四条，滚动距离少一半。
- */
+/** 窄屏和大字体下将状态移到正文下方。 */
 @Composable
 fun RowLine(
     title: String,
@@ -246,59 +240,71 @@ fun RowLine(
     leading: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val ink = LocalInk.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (onClick != null) Modifier.pressClick(onClick = onClick, shrink = false) else Modifier)
-            .padding(vertical = Rhythm.rowV),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (leading != null) {
-            leading()
-            Spacer(Modifier.width(Gap.md))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                fontSize = Type.title,
-                lineHeight = Type.bodyLine,
-                fontWeight = FontWeight.Medium,
-                color = ink.strong,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (sub.isNotBlank()) {
-                Spacer(Modifier.height(Gap.xxs))
+    val fontScale = LocalDensity.current.fontScale
+    val statusColor = when (flag) {
+        Flag.Ok -> if (ink.dark) Palette.NightTeal else Palette.TealInk
+        Flag.Bad -> MaterialTheme.colorScheme.error
+        Flag.Warn -> if (ink.dark) Palette.NightAmber else Palette.AmberInk
+        Flag.Unread -> MaterialTheme.colorScheme.primary
+        Flag.None -> ink.faint
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val stacked = fontScale > 1.3f || maxWidth < 280.dp
+        val rightWidth = minOf(150.dp, maxWidth * Rhythm.rightMax)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (onClick != null) Modifier.heightIn(min = 48.dp).pressClick(onClick = onClick, shrink = false) else Modifier)
+                .padding(vertical = Rhythm.rowV),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (leading != null) {
+                leading()
+                Spacer(Modifier.width(Gap.md))
+            }
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = sub,
-                    fontSize = Type.meta,
-                    lineHeight = Type.metaLine,
-                    color = ink.muted,
-                    maxLines = 1,
+                    text = title,
+                    fontSize = Type.title,
+                    lineHeight = Type.bodyLine,
+                    fontWeight = FontWeight.Medium,
+                    color = ink.strong,
+                    maxLines = if (stacked) Int.MAX_VALUE else 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (sub.isNotBlank()) {
+                    Spacer(Modifier.height(Gap.xxs))
+                    Text(
+                        text = sub,
+                        fontSize = Type.meta,
+                        lineHeight = Type.metaLine,
+                        color = ink.muted,
+                        maxLines = if (stacked) Int.MAX_VALUE else 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (stacked && right.isNotBlank()) {
+                    Spacer(Modifier.height(Gap.xs))
+                    Text(right, fontSize = Type.meta, lineHeight = Type.metaLine, color = statusColor)
+                }
             }
-        }
-        if (right.isNotBlank()) {
-            Spacer(Modifier.width(Gap.sm))
-            Text(
-                text = right,
-                fontSize = Type.meta,
-                lineHeight = Type.metaLine,
-                color = when (flag) {
-                    // 状态字是 12sp，吃"写字那一档"的状态色（见 `Palette` 里 TealInk/AmberInk 那段）；
-                    // 夜间本来就浅，直接吃亮档。
-                    Flag.Ok -> if (ink.dark) Palette.NightTeal else Palette.TealInk
-                    Flag.Bad -> MaterialTheme.colorScheme.error
-                    Flag.Warn -> if (ink.dark) Palette.NightAmber else Palette.AmberInk
-                    Flag.Unread -> MaterialTheme.colorScheme.primary
-                    Flag.None -> ink.faint
-                },
-                textAlign = TextAlign.End,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 150.dp),
-            )
+            if (!stacked && right.isNotBlank()) {
+                Spacer(Modifier.width(Gap.sm))
+                Text(
+                    text = right,
+                    fontSize = Type.meta,
+                    lineHeight = Type.metaLine,
+                    color = statusColor,
+                    textAlign = TextAlign.End,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = rightWidth),
+                )
+            }
+            if (onClick != null) {
+                Spacer(Modifier.width(Gap.xs))
+                Text("›", fontSize = Type.title, color = ink.faint)
+            }
         }
     }
 }
@@ -318,7 +324,7 @@ fun MetricCell(
     modifier: Modifier = Modifier,
 ) {
     val ink = LocalInk.current
-    Column(modifier, horizontalAlignment = Alignment.Start) {
+    Column(modifier.heightIn(min = 48.dp), horizontalAlignment = Alignment.Start) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 text = value,
@@ -346,7 +352,7 @@ fun MetricCell(
             }
         }
         Spacer(Modifier.height(Gap.xxs))
-        Text(label, fontSize = Type.micro, color = ink.faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, fontSize = Type.micro, lineHeight = Type.microLine, color = ink.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -381,39 +387,39 @@ fun Chip(text: String, picked: Boolean, modifier: Modifier = Modifier, onClick: 
     )
 }
 
-/**
- * 一行两列的键值对，明细类界面到处要用。
- *
- * 值那一栏限宽（210dp 上限）并且右对齐 ——
- * 不限的话长值会把左边标签挤到换行，一屏明细看着像两栏没对齐。
- */
+/** 明细字段随可用宽度和字体缩放换行。 */
 @Composable
 fun Labeled(label: String, value: String, modifier: Modifier = Modifier) {
     val ink = LocalInk.current
-    BasicComponent(
-        modifier = modifier.fillMaxWidth(),
-        title = label,
-        titleColor = BasicComponentDefaults.titleColor(
-            color = ink.muted,
-            disabledColor = ink.faint,
-        ),
-        insideMargin = PaddingValues(horizontal = 0.dp, vertical = Gap.xs),
-        endActions = {
-            Text(
-                text = value,
-                fontSize = Type.body,
-                lineHeight = Type.bodyLine,
-                color = ink.strong,
-                textAlign = TextAlign.End,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .widthIn(max = 210.dp)
-                    .fillMaxHeight()
-                    .wrapContentHeight(),
-            )
-        },
-    )
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(modifier.fillMaxWidth().padding(vertical = Gap.xs)) {
+        if (fontScale > 1.3f || maxWidth < 280.dp) {
+            Column {
+                Text(label, fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
+                Spacer(Modifier.height(Gap.xxs))
+                Text(value, fontSize = Type.body, lineHeight = Type.bodyLine, color = ink.strong)
+            }
+        } else {
+            Row(verticalAlignment = Alignment.Top) {
+                Text(
+                    text = label,
+                    fontSize = Type.body,
+                    lineHeight = Type.bodyLine,
+                    color = ink.muted,
+                    modifier = Modifier.weight(Rhythm.rightMax),
+                )
+                Spacer(Modifier.width(Gap.md))
+                Text(
+                    text = value,
+                    fontSize = Type.body,
+                    lineHeight = Type.bodyLine,
+                    color = ink.strong,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f - Rhythm.rightMax),
+                )
+            }
+        }
+    }
 }
 
 @Composable

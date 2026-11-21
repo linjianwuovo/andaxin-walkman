@@ -1,5 +1,18 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.andaxin.feature.aiclass
 
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -419,7 +432,12 @@ private fun SignCounts(a: AiAttendance) {
         "旷课" to a.absent,
         "请假" to a.leave,
     )
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.xs)) {
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        maxItemsInEachRow = if (LocalDensity.current.fontScale > 1.3f) 2 else 5,
+        horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+        verticalArrangement = Arrangement.spacedBy(Gap.sm),
+    ) {
         cells.forEach { (name, n) ->
             Column(
                 Modifier
@@ -471,93 +489,115 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
     var codeOk by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    val accent = MaterialTheme.colorScheme.primary
+    val controlHeight = maxOf(48.dp, 24.dp * LocalDensity.current.fontScale + 24.dp)
     ScaffoldPage(title = "AI 课堂", onBack = onBack) {
         Sheet {
-            Text("签到码", fontSize = Type.title, color = ink.strong)
-            Spacer(Modifier.height(Gap.xs))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                MiuixTextField(
-                    value = code,
-                    onValueChange = { raw ->
-                        code = raw.filter { it.isDigit() }.take(6)
-                        codeMsg = null
-                    },
-                    label = "老师报的 6 位数字",
-                    useLabelAsPlaceholder = true,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(Gap.sm))
-                MiuixButton(
-                    onClick = {
-                        codeBusy = true
-                        codeMsg = null
-                        codeOk = false
-                        scope.launch {
-                            graph.fifApi.signByCode(code).fold(
-                                onSuccess = { codeOk = true; codeMsg = it },
-                                onFailure = { codeOk = false; codeMsg = it.message ?: "没签上" },
-                            )
-                            codeBusy = false
-                        }
-                    },
-                    enabled = !codeBusy && code.length == 6,
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Gap.md)) {
+                Box(
+                    Modifier.size(40.dp).clip(Radius.field).background(accent.copy(alpha = 0.10f)),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(if (codeBusy) "签…" else "签到", fontSize = Type.body)
+                    Text("123", fontSize = Type.meta, fontWeight = FontWeight.SemiBold, color = accent)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("课堂签到", fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = ink.strong)
+                    Text("输入老师提供的 6 位数字", fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
                 }
             }
+            Spacer(Modifier.height(Gap.lg))
+            MiuixTextField(
+                value = code,
+                onValueChange = { raw ->
+                    code = raw.filter { it.isDigit() }.take(6)
+                    codeMsg = null
+                },
+                label = "输入 6 位签到码",
+                useLabelAsPlaceholder = true,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth().heightIn(min = controlHeight),
+            )
+            Spacer(Modifier.height(Gap.md))
+            val codeReady = !codeBusy && code.length == 6
+            androidx.compose.material3.Button(
+                onClick = {
+                    codeBusy = true
+                    codeMsg = null
+                    codeOk = false
+                    scope.launch {
+                        graph.fifApi.signByCode(code).fold(
+                            onSuccess = { codeOk = true; codeMsg = it },
+                            onFailure = { codeOk = false; codeMsg = it.message ?: "没签上" },
+                        )
+                        codeBusy = false
+                    }
+                },
+                enabled = codeReady,
+
+                modifier = Modifier.fillMaxWidth().heightIn(min = controlHeight),
+            ) {
+                Text(
+                    if (codeBusy) "正在签到…" else "确认签到",
+                    fontSize = Type.body,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    color = if (codeReady) MaterialTheme.colorScheme.onPrimary else ink.faint,
+                )
+            }
             codeMsg?.let {
-                Spacer(Modifier.height(Gap.xs))
+                Spacer(Modifier.height(Gap.md))
                 Text(
                     it,
                     fontSize = Type.meta,
+                    lineHeight = Type.metaLine,
                     color = if (codeOk) (if (ink.dark) Palette.NightTeal else Palette.TealInk)
                     else MaterialTheme.colorScheme.error,
                 )
             }
         }
-        Spacer(Modifier.height(Gap.sm))
-        Sheet(modifier = Modifier.pressClick { open("aiclass/scan") }) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(Modifier.weight(1f)) {
-                    Text("扫码签到", fontSize = Type.title, color = ink.strong)
-                    Spacer(Modifier.height(Gap.xs))
-                    Text("对着课堂上的二维码", fontSize = Type.meta, color = ink.muted)
+        Spacer(Modifier.height(Gap.md))
+        val fontScale = LocalDensity.current.fontScale
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (maxWidth < 320.dp || fontScale > 1.3f) {
+                Column(verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                    AiClassShortcut("扫码签到", "扫描课堂二维码", "qrcode.viewfinder", { open("aiclass/scan") })
+                    AiClassShortcut("公开课", "浏览开放课程", "book.closed", { open("opencourse") })
                 }
-                Text("去扫码", fontSize = Type.meta, color = MaterialTheme.colorScheme.primary)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(Gap.md)) {
+                    AiClassShortcut("扫码签到", "扫描课堂二维码", "qrcode.viewfinder", { open("aiclass/scan") }, Modifier.weight(1f))
+                    AiClassShortcut("公开课", "浏览开放课程", "book.closed", { open("opencourse") }, Modifier.weight(1f))
+                }
             }
         }
-        Spacer(Modifier.height(Gap.sm))
-        Hairline()
-        Spacer(Modifier.height(Gap.lg))
-
-        // 公开课和"我选的课"不是一回事，但入口放这儿最顺：都是 FIF 那侧，同一个单点登录
-        Sheet(modifier = Modifier.pressClick { open("opencourse") }) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(Modifier.weight(1f)) {
-                    Text("公开课", fontSize = Type.title, color = ink.strong)
-                    Spacer(Modifier.height(Gap.xs))
-                    Text("平台上开着的课，没选也能看目录", fontSize = Type.meta, color = ink.muted)
-                }
-                Text("去看", fontSize = Type.meta, color = MaterialTheme.colorScheme.primary)
-            }
-        }
-        Spacer(Modifier.height(Gap.sm))
-        Hairline()
-        Spacer(Modifier.height(Gap.lg))
+        Spacer(Modifier.height(Gap.xl))
+        Text("我的课程", fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = ink.strong)
+        Spacer(Modifier.height(Gap.md))
         when {
-            loading -> Text("正在加载 AI 课堂课程…", fontSize = Type.body, color = ink.faint)
-            why != null -> {
-                LoadWhy(why, BriefEnv.session)
-                Spacer(Modifier.height(Gap.sm))
-                MiuixButton(onClick = {
-                    loading = true
-                    why = null
-                    retry++
-                }) { Text("重试", fontSize = Type.body) }
+            loading -> Sheet {
+                Text("正在加载课程…", fontSize = Type.body, lineHeight = Type.bodyLine, color = ink.muted)
             }
-            courses.isEmpty() -> Text("当前学期没有 AI 课堂课程。", fontSize = Type.body, color = ink.faint)
+            why != null -> Sheet {
+                Text("课程暂不可用", fontSize = Type.body, fontWeight = FontWeight.Medium, color = ink.strong)
+                Spacer(Modifier.height(Gap.xs))
+                LoadWhy(why, BriefEnv.session, wide = false)
+                Spacer(Modifier.height(Gap.sm))
+                androidx.compose.material3.Button(
+                    onClick = {
+                        loading = true
+                        why = null
+                        retry++
+                    },
+
+                    modifier = Modifier.heightIn(min = controlHeight),
+                ) { Text("重新加载", fontSize = Type.body, color = ink.strong) }
+            }
+            courses.isEmpty() -> Sheet {
+                Text("暂无课程", fontSize = Type.body, fontWeight = FontWeight.Medium, color = ink.strong)
+                Spacer(Modifier.height(Gap.xs))
+                Text("当前学期没有 AI 课堂课程。", fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
+            }
         }
         courses.forEach { c ->
             Sheet(
@@ -570,24 +610,62 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
                         RemotePhoto(
                             url = c.cover,
                             description = c.name,
-                            unavailable = "这张封面没取到",
-                            modifier = Modifier.size(width = 56.dp, height = 40.dp),
+                            unavailable = "封面暂不可用",
                             fit = true,
+                            modifier = Modifier.size(width = 56.dp, height = 56.dp).clip(Radius.field),
                         )
                         Spacer(Modifier.width(Gap.md))
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(c.name, fontSize = Type.title, color = ink.strong)
+                        Text(c.name, fontSize = Type.title, lineHeight = Type.bodyLine, fontWeight = FontWeight.Medium, color = ink.strong)
                         if (c.teacher.isNotBlank()) {
                             Spacer(Modifier.height(Gap.xs))
-                            Text(c.teacher, fontSize = Type.meta, color = ink.muted)
+                            Text(c.teacher, fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
                         }
                     }
-                    Text("进课", fontSize = Type.meta, color = ink.faint)
+                    Spacer(Modifier.width(Gap.sm))
+                    Text("›", fontSize = Type.title, color = ink.faint)
                 }
             }
         }
-
         Spacer(Modifier.height(Gap.md))
+    }
+}
+
+
+@Composable
+private fun AiClassShortcut(
+    title: String,
+    subtitle: String,
+    symbol: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val ink = LocalInk.current
+    val accent = MaterialTheme.colorScheme.primary
+    Sheet(modifier = modifier.pressClick(onClick = onClick)) {
+        AiClassGlyph(symbol)
+        Spacer(Modifier.height(Gap.md))
+        Text(title, fontSize = Type.title, fontWeight = FontWeight.Medium, color = ink.strong)
+        Spacer(Modifier.height(Gap.xs))
+        Text(subtitle, fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
+    }
+}
+
+@Composable
+private fun AiClassGlyph(symbol: String) {
+    val color = MaterialTheme.colorScheme.primary
+    Canvas(Modifier.size(24.dp)) {
+        val stroke = Stroke(width = 2.dp.toPx())
+        if (symbol.startsWith("qrcode")) {
+            val cell = size.width * 0.34f
+            for ((x, y) in listOf(0f to 0f, size.width - cell to 0f, 0f to size.height - cell)) {
+                drawRect(color, Offset(x, y), Size(cell, cell), style = stroke)
+            }
+            drawRect(color, Offset(size.width * 0.62f, size.height * 0.62f), Size(size.width * 0.38f, size.height * 0.38f), style = stroke)
+        } else {
+            drawRoundRect(color, cornerRadius = CornerRadius(2.dp.toPx()), style = stroke)
+            drawLine(color, Offset(size.width / 2, 0f), Offset(size.width / 2, size.height), strokeWidth = 2.dp.toPx())
+        }
     }
 }

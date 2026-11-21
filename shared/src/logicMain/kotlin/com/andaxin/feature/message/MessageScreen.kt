@@ -1,5 +1,7 @@
 package com.andaxin.feature.message
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -151,63 +153,55 @@ fun MessageScreen(deps: MessageDeps, modifier: Modifier = Modifier) {
 @Composable
 private fun MessageRow(item: MessageItem, armed: Boolean = false, onClick: () -> Unit) {
     val ink = LocalInk.current
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .pressClick(shrink = false, onClick = onClick)
-            .padding(vertical = Rhythm.rowV),
-    ) {
-        // 未读那个点放在最左边：原来它在最右边，跟正文挤在一起，扫的时候看不见
-        if (item.unread) {
-            Box(
-                Modifier
-                    .padding(top = 7.dp)
-                    .size(6.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape),
-            )
-            Spacer(Modifier.width(Gap.sm))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                item.title,
-                fontSize = Type.title,
-                lineHeight = Type.bodyLine,
-                fontWeight = if (item.unread) FontWeight.Medium else FontWeight.Normal,
-                color = ink.strong,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (item.brief.isNotBlank()) {
-                Spacer(Modifier.height(Gap.xxs))
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val stacked = fontScale > 1.3f || maxWidth < 280.dp
+        Row(
+            Modifier.fillMaxWidth().pressClick(shrink = false, onClick = onClick)
+                .heightIn(min = 48.dp).padding(vertical = Rhythm.rowV),
+        ) {
+            if (item.unread) {
+                Box(Modifier.padding(top = 7.dp).size(6.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+                Spacer(Modifier.width(Gap.sm))
+            }
+            Column(Modifier.weight(1f)) {
                 Text(
-                    item.brief,
-                    fontSize = Type.meta,
-                    lineHeight = Type.metaLine,
-                    color = ink.muted,
-                    maxLines = 2,
+                    item.title,
+                    fontSize = Type.title,
+                    lineHeight = Type.bodyLine,
+                    fontWeight = if (item.unread) FontWeight.Medium else FontWeight.Normal,
+                    color = ink.strong,
+                    maxLines = if (stacked) Int.MAX_VALUE else 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (item.brief.isNotBlank()) {
+                    Spacer(Modifier.height(Gap.xxs))
+                    Text(item.brief, fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted,
+                        maxLines = if (stacked) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (stacked) {
+                    Spacer(Modifier.height(Gap.sm))
+                    MessageTime(item, armed)
+                }
             }
-        }
-        Spacer(Modifier.width(Gap.sm))
-        // 时间挪到右边那一栏：它以前占整行第三行，一行消息要三行才说完
-        Column(Modifier.widthIn(max = 96.dp), horizontalAlignment = Alignment.End) {
-            if (armed) {
-                // arm 起来的那一下必须当场看得见，不然人只会以为"点了没反应"
-                Text(
-                    text = "再按一次标已读",
-                    fontSize = Type.micro,
-                    lineHeight = Type.metaLine,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(bottom = 2.dp),
-                )
+            if (!stacked) {
+                Spacer(Modifier.width(Gap.md))
+                Column(Modifier.widthIn(max = 96.dp), horizontalAlignment = Alignment.End) {
+                    MessageTime(item, armed)
+                }
             }
-            Text(
-                text = item.sentAt.substringAfter(' ').ifBlank { item.sentAt },
-                fontSize = Type.micro,
-                color = ink.ghost,
-                textAlign = TextAlign.End,
-            )
         }
     }
+}
+
+
+@Composable
+private fun MessageTime(item: MessageItem, armed: Boolean) {
+    val ink = LocalInk.current
+    if (armed) {
+        Text("再按一次标已读", fontSize = Type.micro, lineHeight = Type.metaLine,
+            color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = Gap.xxs))
+    }
+    Text(item.sentAt.substringAfter(' ').ifBlank { item.sentAt },
+        fontSize = Type.micro, lineHeight = Type.microLine, color = ink.muted)
 }

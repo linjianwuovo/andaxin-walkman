@@ -1,5 +1,10 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.andaxin.feature.home
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -371,7 +376,7 @@ fun HomeScreen(deps: HomeDeps, open: (String) -> Unit = {}, modifier: Modifier =
 
             Spacer(Modifier.height(Gap.md))
             Sheet(modifier = Modifier.enterFade(session.generation)) {
-                Row(Modifier.fillMaxWidth()) {
+                FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = if (LocalDensity.current.fontScale > 1.3f) 1 else 3, horizontalArrangement = Arrangement.spacedBy(Gap.md), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                     MetricCell("今天有课", d?.todayLessons?.let { "$it" } ?: "—", "节", modifier = Modifier.weight(1f))
                     MetricCell("未读消息", d?.let { "${it.unreadMessages}" } ?: "—", "条", modifier = Modifier.weight(1f))
                     /*
@@ -395,7 +400,7 @@ fun HomeScreen(deps: HomeDeps, open: (String) -> Unit = {}, modifier: Modifier =
                 Spacer(Modifier.height(Gap.md))
                 Hairline()
                 Spacer(Modifier.height(Gap.md))
-                Row(Modifier.fillMaxWidth()) {
+                FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = if (LocalDensity.current.fontScale > 1.3f) 1 else 2, horizontalArrangement = Arrangement.spacedBy(Gap.md), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                     // 两格各占一半。以前后面还挂了一个 `Spacer(weight(1f))`，
                     // 为的是跟上面那行三格对齐 —— 代价是这两格各只有三分之一宽，
                     // "51.34 公里" 放不下，数字被掐成 "51 …"。那个省略号不是"没数"，
@@ -463,7 +468,7 @@ fun HomeScreen(deps: HomeDeps, open: (String) -> Unit = {}, modifier: Modifier =
              */
             SectionBlock("待办事务")
             Sheet(modifier = Modifier.enterFade(if (todoCounts == null) 0 else 1)) {
-                Row(Modifier.fillMaxWidth()) {
+                FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = if (LocalDensity.current.fontScale > 1.3f) 2 else 4, horizontalArrangement = Arrangement.spacedBy(Gap.md), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                     todoTabs.forEachIndexed { i, name ->
                         val v = todoCounts?.getOrNull(i) ?: "—"
                         MetricCell(
@@ -506,8 +511,8 @@ fun HomeScreen(deps: HomeDeps, open: (String) -> Unit = {}, modifier: Modifier =
 @Composable
 private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, modifier: Modifier = Modifier) {
     val lastPeriod = slot.startPeriod + slot.periodCount - 1
-    val startMin = LessonPeriods.startMinute(slot.startPeriod)
-    val endMin = LessonPeriods.endMinute(lastPeriod)
+    val startMin = Periods.startMinute(slot.startPeriod)
+    val endMin = Periods.endMinute(lastPeriod)
         ?: startMin?.plus(45)
         ?: 0
     val inClass = startMin != null && nowMinute in startMin until endMin
@@ -516,7 +521,7 @@ private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, mo
     val pill = when {
         inClass -> "还有 ${(endMin - nowMinute).coerceAtLeast(1)} 分钟下课"
         toStart in 0..90 -> "还有 $toStart 分钟"
-        else -> LessonPeriods.rangeText(slot.startPeriod, slot.periodCount).orEmpty()
+        else -> Periods.rangeText(slot.startPeriod, slot.periodCount).orEmpty()
     }
 
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
@@ -525,48 +530,41 @@ private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, mo
     } else {
         Brush.linearGradient(listOf(Color(0xFF2F6BFF), Color(0xFF1E44C9)))
     }
-    Row(
+    Column(
         modifier
             .fillMaxWidth()
             .clip(shape)
             .background(bg, shape)
-            .padding(horizontal = Gap.lg, vertical = Gap.lg),
-        verticalAlignment = Alignment.CenterVertically,
+            .glassEdge(shape)
+            .padding(Gap.lg),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = if (inClass) "正在上课" else "下一节",
-                fontSize = Type.micro,
-                color = Palette.Cream.copy(alpha = 0.72f),
-            )
+        Text(
+            text = if (inClass) "正在上课" else "下一节",
+            fontSize = Type.micro,
+            color = Palette.Cream.copy(alpha = 0.82f),
+        )
+        Spacer(Modifier.height(Gap.xs))
+        Text(
+            text = slot.course,
+            fontSize = (Type.title.value + 2).sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            lineHeight = Type.bodyLine,
+        )
+        if (slot.room.isNotBlank()) {
             Spacer(Modifier.height(Gap.xs))
-            Text(
-                text = slot.course,
-                fontSize = (Type.title.value + 2).sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-                maxLines = 2,
-                lineHeight = Type.bodyLine,
-            )
-            if (slot.room.isNotBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = shortRoom(slot.room),
-                    fontSize = Type.meta,
-                    color = Palette.Cream.copy(alpha = 0.82f),
-                    maxLines = 1,
-                )
-            }
+            Text(shortRoom(slot.room), fontSize = Type.meta, lineHeight = Type.metaLine, color = Palette.Cream.copy(alpha = 0.82f))
         }
         if (pill.isNotBlank()) {
-            Spacer(Modifier.width(Gap.md))
+            Spacer(Modifier.height(Gap.md))
             Box(
                 Modifier
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                    .clip(Radius.field)
                     .background(Color.White.copy(alpha = if (dark) 0.14f else 0.18f))
+                    .glassEdge(Radius.field)
                     .padding(horizontal = Gap.md, vertical = Gap.sm),
             ) {
-                Text(pill, fontSize = Type.meta, color = Color.White, fontWeight = FontWeight.Medium)
+                Text(pill, fontSize = Type.meta, lineHeight = Type.metaLine, color = Color.White, fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -604,11 +602,11 @@ private fun HeroWallpaper(
     Box(
         modifier
             .fillMaxWidth()
-            .height(168.dp)
+            .heightIn(min = 168.dp)
             .clip(shape),
     ) {
         if (art != null) {
-            art(picture)
+            Box(Modifier.matchParentSize()) { art(picture) }
         } else {
             // 占位：没有图的那一端给一块和日卡同族的渐变，白字照样读得清。
             // 三档各一段（晨雾偏青蓝、金树偏暖、月夜偏暗蓝）——「主题 → 首页壁纸」那排

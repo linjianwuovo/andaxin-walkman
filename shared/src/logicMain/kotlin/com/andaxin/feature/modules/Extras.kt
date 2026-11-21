@@ -1,5 +1,10 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.andaxin.feature.modules
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,11 +54,11 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(150.dp)
+                .heightIn(min = 150.dp)
                 .background(if (ink.dark) Palette.NightCardBlue else Palette.Blue, Radius.card)
                 .padding(Gap.lg),
         ) {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Gap.lg)) {
                 Text("安徽信息工程学院 · 校园卡", fontSize = Type.body, color = Palette.Cream)
                 Column {
                     Text(
@@ -127,7 +132,7 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
          * 「点了没用的主按钮比少一颗按钮坏得多」这条规矩，对哑按钮同样成立。
          */
         Box(
-            Modifier.fillMaxWidth().height(46.dp).background(ink.offFill, Radius.field)
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).background(ink.offFill, Radius.field)
                 .pressClick { open("card/flows") }.padding(Gap.md),
             contentAlignment = Alignment.Center,
         ) { Text("流水", fontSize = Type.body, color = ink.body) }
@@ -206,7 +211,7 @@ fun CardFlowsScreen(onBack: () -> Unit) {
         card?.flows?.forEach { f ->
             Sheet {
                 Column(Modifier.fillMaxWidth()) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.md), verticalArrangement = Arrangement.spacedBy(Gap.xs)) {
                         Text(f.at.take(16), fontSize = Type.body, color = ink.muted)
                         Text(
                             money(f), fontSize = Type.body,

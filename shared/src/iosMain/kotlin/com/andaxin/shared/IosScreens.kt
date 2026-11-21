@@ -211,14 +211,14 @@ fun IosAppGraph.messageViewController(): UIViewController =
     )
 
 /** 公告。 */
-fun IosAppGraph.noticeViewController(): UIViewController =
-    navigated(
-        ComposeUIViewController {
-            IosTopInset { NoticeScreen(deps = NoticeDeps(model = noticeModel), open = {}) }
-        },
-        "公告",
-        bar = false,
-    )
+fun IosAppGraph.noticeViewController(): UIViewController {
+    var host: UIViewController? = null
+    val child = ComposeUIViewController {
+        IosTopInset { NoticeScreen(deps = NoticeDeps(model = noticeModel), open = { key -> push(host, key) }) }
+    }
+    host = child
+    return navigated(child, "公告", bar = false)
+}
 
 /** 我的。 */
 fun IosAppGraph.meViewController(): UIViewController {
@@ -305,7 +305,7 @@ internal class IosRoute(val title: String, val screen: @Composable () -> Unit)
 internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute? {
     // 列表行、那颗「＋ 发起请假」都靠它往下推，推的就是我脚下这条 nav
     val open: (String) -> Unit = { push(host, it) }
-    val detailId = if (key.endsWith("/form") || !key.contains("/detail/")) "" else key.substringAfter("/detail/")
+    val detailId = if (key.endsWith("/form") || !key.contains("/detail/")) "" else decodeUrl(key.substringAfter("/detail/"))
     return when {
         key == "more" -> IosRoute("更多功能") { MoreScreen(open = open, onBack = {}) }
 
@@ -354,9 +354,7 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
             DormTaskScreen(dateId = key.substringAfter("dorm/task/"), onBack = {})
         }
 
-        // 10-26 第二批：查寝看板、校园卡、AI 课堂这三块屏本身搬进共享层了（它们脚下那批
-        // capture 类早就在共享层）。这三扇之内的行要是再往"扫码 / 播放器 / 任务详情"里跳，
-        // iOS 这边开不动（相机、AVPlayer、DormTask 都还没接），点了不动是预期的，不是又坏了。
+        // 平台相机、播放器和任务详情复用下方的路由。
         key == "dorm" -> IosRoute("查寝签到") { DormBoardScreen(open = open, onBack = {}) }
         key == "card" -> IosRoute("校园卡") { CampusCardScreen(open = open, onBack = {}) }
         key == "card/flows" -> IosRoute("校园卡流水") { CardFlowsScreen(onBack = {}) }
@@ -371,7 +369,7 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
             OpenCourseDetailScreen(uid = detailId, onBack = {})
         }
         key == "group" -> IosRoute("班级群") { GroupScreen(onBack = {}) }
-        key == "notice" -> IosRoute("公告") { NoticeScreen(deps = NoticeDeps(model = noticeModel), open = {}) }
+        key == "notice" -> IosRoute("公告") { NoticeScreen(deps = NoticeDeps(model = noticeModel), open = open) }
         key == "about" -> IosRoute("关于安大信") { AboutScreen(open = open, onBack = {}) }
         key == "licenses" -> IosRoute("开源许可") { LicenseScreen(onBack = {}) }
         // 10-27 新开的这一扇：之前 routeOf 认不出 "theme"，「我的」那格里根本不会画这一行
