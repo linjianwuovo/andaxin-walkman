@@ -48,6 +48,7 @@ import com.andaxin.core.concurrency.currentHour
 import com.andaxin.core.concurrency.nowMillis
 import com.andaxin.core.design.MascotBall
 import kotlinx.coroutines.launch
+import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Palette
@@ -511,8 +512,8 @@ fun HomeScreen(deps: HomeDeps, open: (String) -> Unit = {}, modifier: Modifier =
 @Composable
 private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, modifier: Modifier = Modifier) {
     val lastPeriod = slot.startPeriod + slot.periodCount - 1
-    val startMin = Periods.startMinute(slot.startPeriod)
-    val endMin = Periods.endMinute(lastPeriod)
+    val startMin = LessonPeriods.startMinute(slot.startPeriod)
+    val endMin = LessonPeriods.endMinute(lastPeriod)
         ?: startMin?.plus(45)
         ?: 0
     val inClass = startMin != null && nowMinute in startMin until endMin
@@ -521,7 +522,7 @@ private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, mo
     val pill = when {
         inClass -> "还有 ${(endMin - nowMinute).coerceAtLeast(1)} 分钟下课"
         toStart in 0..90 -> "还有 $toStart 分钟"
-        else -> Periods.rangeText(slot.startPeriod, slot.periodCount).orEmpty()
+        else -> LessonPeriods.rangeText(slot.startPeriod, slot.periodCount).orEmpty()
     }
 
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
@@ -535,7 +536,6 @@ private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, mo
             .fillMaxWidth()
             .clip(shape)
             .background(bg, shape)
-            .glassEdge(shape)
             .padding(Gap.lg),
     ) {
         Text(
@@ -561,7 +561,6 @@ private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, mo
                 Modifier
                     .clip(Radius.field)
                     .background(Color.White.copy(alpha = if (dark) 0.14f else 0.18f))
-                    .glassEdge(Radius.field)
                     .padding(horizontal = Gap.md, vertical = Gap.sm),
             ) {
                 Text(pill, fontSize = Type.meta, lineHeight = Type.metaLine, color = Color.White, fontWeight = FontWeight.Medium)

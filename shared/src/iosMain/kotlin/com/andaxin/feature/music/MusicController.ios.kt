@@ -88,6 +88,10 @@ class MusicController(
         private set
     var scrubbing = false
 
+    var resolvingDownloads by mutableStateOf<Set<Long>>(emptySet())
+        private set
+    private var librarySongs = MusicStore.loadLibrarySongs()
+
     private var index = -1
     private var loaded = false
     private var endHandled = false
@@ -141,6 +145,7 @@ class MusicController(
     }
 
     fun toggleLike(song: MusicSong) {
+        rememberSong(song)
         likedIds = if (likedIds.contains(song.id)) likedIds - song.id else likedIds + song.id
         MusicStore.saveLikedIds(likedIds)
     }
@@ -283,16 +288,64 @@ class MusicController(
     fun createPlaylist(name: String) {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
+        if (trimmed in customPlaylists) { message = "歌单已存在"; return }
         customPlaylists = customPlaylists + (trimmed to emptyList())
         MusicStore.saveCustomPlaylists(customPlaylists)
         message = "已创建本地歌单：$trimmed"
     }
 
     fun addSongToPlaylist(name: String, song: MusicSong) {
+        rememberSong(song)
         val ids = (customPlaylists[name].orEmpty() + song.id).distinct()
         customPlaylists = customPlaylists + (name to ids)
         MusicStore.saveCustomPlaylists(customPlaylists)
         message = "已加入本地歌单：$name"
+    }
+
+    private fun rememberSong(song: MusicSong) {
+        librarySongs = listOf(song) + librarySongs.filterNot { it.id == song.id }
+        MusicStore.saveLibrarySongs(librarySongs)
+    }
+
+    fun localLibrarySongs(): List<MusicSong> = (librarySongs + history + queue + songs + IosMusicDownloads.songs).distinctBy { it.id }
+
+    suspend fun loadLibrarySongs(ids: List<Long>): List<MusicSong> {
+        val known = localLibrarySongs().associateBy { it.id }.toMutableMap()
+        ids.filterNot { it in known }.chunked(100).forEach { batch ->
+            parseSongArray(fetchText(neteaseSongDetailCall(batch, musicU))).forEach { song ->
+                known[song.id] = song
+                rememberSong(song)
+            }
+        }
+        return ids.mapNotNull { known[it] }
+    }
+
+    fun removePlaylist(name: String) {
+        customPlaylists = customPlaylists - name
+        MusicStore.saveCustomPlaylists(customPlaylists)
+    }
+
+    fun removeSongFromPlaylist(name: String, songId: Long) {
+        customPlaylists = customPlaylists + (name to customPlaylists[name].orEmpty().filterNot { it == songId })
+        MusicStore.saveCustomPlaylists(customPlaylists)
+    }
+
+    fun download(song: MusicSong) {
+        if (song.id in resolvingDownloads || song.id in IosMusicDownloads.progress || IosMusicDownloads.localUrl(song.id) != null) return
+        resolvingDownloads = resolvingDownloads + song.id
+        rememberSong(song)
+        scope.launch {
+            try {
+                val url = resolve(song, bitrate)
+                IosMusicDownloads.enqueue(song, url)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                message = error.message ?: "无法获取下载地址"
+            } finally {
+                resolvingDownloads = resolvingDownloads - song.id
+            }
+        }
     }
 
     fun playModeLabel(): String = when (playMode) {
@@ -508,6 +561,7 @@ class MusicController(
     }
 
     private suspend fun resolve(song: MusicSong, br: Int): String {
+        IosMusicDownloads.localUrl(song.id)?.let { return it }
         val direct = try {
             parseSongUrl(engine.execute(neteaseSongUrlCall(song.id, br = br, musicU = musicU)).bodyText)
         } catch (e: CancellationException) {

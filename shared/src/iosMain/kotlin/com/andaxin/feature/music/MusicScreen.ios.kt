@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.andaxin.feature.music
 
 import androidx.compose.animation.AnimatedContent
@@ -12,6 +14,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -108,7 +113,7 @@ private enum class Transport { Play, Pause, Next, Prev, Mode, Queue, Heart }
 
 private enum class LibrarySection(val label: String) { Recent("最近播放"), Liked("我喜欢的"), Queue("播放队列") }
 
-private sealed interface MusicDetail {
+internal sealed interface MusicDetail {
     data class Playlist(val id: Long) : MusicDetail
     data class TopList(val id: Long) : MusicDetail
     data class Album(val id: Long) : MusicDetail
@@ -240,12 +245,12 @@ private fun MusicPage(
     when (label) {
         "首页" -> HomeTab(controller, onSearch = onSearch, onDetail = onDetail)
         "发现" -> DiscoverTab(controller, onSearch = onSearch, onDetail = onDetail)
-        "播客" -> PodcastTab()
-        "音乐库" -> LibraryTab(controller, onDetail = onDetail)
+        "播客" -> PodcastCatalogTab(controller, onDetail)
+        "音乐库" -> LocalMusicLibraryTab(controller, onDetail)
         "搜索" -> SearchTab(controller, onSearch = onSearchRemembered, onDetail = onDetail)
         "设置" -> SettingTab(controller, onLogin = onLogin)
-        "下载" -> ShellPage("下载", "匿名网页接口不提供稳定下载签名；这里保留入口，真正下载需要登录态与签名接口。")
-        "云盘" -> ShellPage("云盘", "云盘需要登录账号和签名接口；iOS 当前只提供匿名能力，不显示虚构数据。")
+        "下载" -> DownloadedMusicTab(controller, onDetail)
+        "云盘" -> CloudMusicTab(controller, onLogin, onDetail)
         "历史" -> HistoryTab(controller, onDetail = onDetail)
         else -> ShellPage("页面", "这个页面暂未开放。")
     }
@@ -392,43 +397,9 @@ private fun DiscoverTab(controller: MusicController, onSearch: (String) -> Unit,
     }
 }
 
-@Composable
-private fun PodcastTab() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("播客", style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.height(8.dp))
-            Text("播客列表依赖登录态歌单同步，本轮只用匿名接口，先放本地占位。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-        }
-    }
-}
 
-@Composable
-private fun LibraryTab(controller: MusicController, onDetail: (MusicDetail) -> Unit) {
-    var section by remember { mutableIntStateOf(0) }
-    val sections = LibrarySection.entries
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(sections.size) { index ->
-                FilterChip(
-                    selected = section == index,
-                    onClick = { section = index },
-                    label = { Text(sections[index].label) },
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        val songs = when (sections[section.coerceIn(0, sections.lastIndex)]) {
-            LibrarySection.Recent -> controller.history
-            LibrarySection.Liked -> controller.history.filter { controller.likedIds.contains(it.id) }
-            LibrarySection.Queue -> controller.queue
-        }
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(songs, key = { it.id }) { SongRow(it, controller, showLike = true, onDetail = onDetail) }
-            if (songs.isEmpty()) item { EmptyHint("这一格还是空的。最近听的歌、收藏、队列会出现在这里。") }
-        }
-    }
-}
+
+
 
 @Composable
 private fun SearchTab(controller: MusicController, onSearch: () -> Unit, onDetail: (MusicDetail) -> Unit) {
@@ -506,7 +477,7 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
     // 之前用 remember(version) + 手动 ++ 是多余的影子状态，外部一改就与界面脱同步。
     val bitrate = controller.bitrate
     val lyricsVisible = controller.lyricsVisible
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle("播放与歌词")
         SettingRow("播放音质") {
             FilterChip(selected = bitrate == 128000, onClick = { controller.setBitrate(128000) }, label = { Text("128k") })
@@ -531,7 +502,7 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
             )
         }
         SectionTitle("定时关闭")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             listOf(0, 15, 30, 60, 120).forEach { minutes ->
                 FilterChip(selected = controller.sleepMinutes == minutes, onClick = { controller.setSleepMinutes(minutes) }, label = { Text(if (minutes == 0) "关闭" else minutes.toString() + "分") })
             }
@@ -572,7 +543,7 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
         SettingRow("清空搜索历史") { Button(onClick = { controller.clearSearchHistory() }) { Text("清空") } }
         SettingRow("清空我的喜欢") { Button(onClick = { controller.clearLikes() }) { Text("清空") } }
         SectionTitle("关于")
-        Text("多 tab、队列、逐字歌词、本地收藏。只用匿名 netease web 接口，不接官方 API。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("支持网易云歌曲、播客、云盘、本地歌单与离线下载；受账号权限限制的内容需要登录。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -585,17 +556,17 @@ private fun SettingRow(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SectionTitle(text: String) {
+internal fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
 }
 
 @Composable
-private fun EmptyHint(text: String) {
+internal fun EmptyHint(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp))
 }
 
 @Composable
-private fun CatalogRow(item: MusicCatalogItem, onClick: () -> Unit) {
+internal fun CatalogRow(item: MusicCatalogItem, onClick: () -> Unit) {
     Surface(onClick = onClick, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             AlbumArt(item.cover, Modifier.size(46.dp))
@@ -610,7 +581,7 @@ private fun CatalogRow(item: MusicCatalogItem, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ProgressRow() {
+internal fun ProgressRow() {
     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center) {
         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
     }
@@ -618,7 +589,8 @@ private fun ProgressRow() {
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun MusicDetailSheet(target: MusicDetail, controller: MusicController, onClose: () -> Unit) {
+private fun MusicDetailSheet(initialTarget: MusicDetail, controller: MusicController, onClose: () -> Unit) {
+    var target by remember(initialTarget) { mutableStateOf(initialTarget) }
     var state by remember(target) { mutableStateOf(DetailUiState()) }
     var loading by remember(target) { mutableStateOf(true) }
     var failed by remember(target) { mutableStateOf(false) }
@@ -718,7 +690,7 @@ private fun MusicDetailSheet(target: MusicDetail, controller: MusicController, o
                         SectionTitle(state.relatedKind.ifEmpty { "相关" })
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(state.related) { related ->
-                                Surface(onClick = { /* 当前页已展示真实专辑条目 */ }, shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                                Surface(onClick = { target = MusicDetail.Album(related.id) }, shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                                     Column(Modifier.width(120.dp).padding(8.dp)) {
                                         AlbumArt(related.cover, Modifier.size(104.dp))
                                         Text(related.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -730,7 +702,7 @@ private fun MusicDetailSheet(target: MusicDetail, controller: MusicController, o
                     Spacer(Modifier.height(8.dp))
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(state.songs, key = { it.id }) { song ->
-                            SongRow(song, controller, showLike = true, onDetail = { _ -> /* 详情页内不再叠加弹层 */ })
+                            SongRow(song, controller, showLike = true, onDetail = { target = it })
                         }
                         if (state.songs.isEmpty()) item { EmptyHint("还没解析到歌曲。") }
                     }
@@ -741,7 +713,7 @@ private fun MusicDetailSheet(target: MusicDetail, controller: MusicController, o
 }
 
 @Composable
-private fun SongRow(song: MusicSong, controller: MusicController, showLike: Boolean, onDetail: (MusicDetail) -> Unit) {
+internal fun SongRow(song: MusicSong, controller: MusicController, showLike: Boolean, onDetail: (MusicDetail) -> Unit) {
     val selected = controller.current?.id == song.id
     var actionsOpen by remember { mutableStateOf(false) }
     var addTarget by remember { mutableStateOf<String?>(null) }
@@ -761,7 +733,7 @@ private fun SongRow(song: MusicSong, controller: MusicController, showLike: Bool
                 overflow = TextOverflow.Ellipsis,
                 modifier = if (song.albumId > 0L) Modifier.clickable { onDetail(MusicDetail.Album(song.albumId)) } else Modifier,
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Column {
                 Text(
                     song.artist.ifEmpty { "未知歌手" },
                     style = MaterialTheme.typography.bodySmall,
@@ -771,7 +743,6 @@ private fun SongRow(song: MusicSong, controller: MusicController, showLike: Bool
                     modifier = if (song.artistId > 0L) Modifier.clickable { onDetail(MusicDetail.Artist(song.artistId)) } else Modifier,
                 )
                 if (song.album.isNotEmpty()) {
-                    Text(" · ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         song.album,
                         style = MaterialTheme.typography.bodySmall,
@@ -783,20 +754,19 @@ private fun SongRow(song: MusicSong, controller: MusicController, showLike: Bool
                 }
             }
         }
-        FilledIconButton(onClick = { controller.playFromUi(song) }, modifier = Modifier.size(32.dp)) {
+        FilledIconButton(onClick = { controller.playFromUi(song) }, modifier = Modifier.size(48.dp)) {
             TransportIcon(Transport.Play, MaterialTheme.colorScheme.onPrimary, Modifier.size(16.dp))
         }
         TextButton(onClick = { actionsOpen = !actionsOpen }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("···") }
     }
     if (actionsOpen) {
-        Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        FlowRow(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(onClick = { controller.addToQueue(song, playNext = true); actionsOpen = false }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("下一首", style = MaterialTheme.typography.labelSmall) }
             TextButton(onClick = { controller.addToQueue(song); actionsOpen = false }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("入队", style = MaterialTheme.typography.labelSmall) }
             TextButton(onClick = { addTarget = controller.customPlaylists.keys.firstOrNull().orEmpty() }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("存歌单", style = MaterialTheme.typography.labelSmall) }
             TextButton(onClick = { controller.toggleLike(song); actionsOpen = false }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text(if (controller.likedIds.contains(song.id)) "取消喜欢" else "喜欢", style = MaterialTheme.typography.labelSmall) }
-            Text("下载壳", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
+            TextButton(onClick = { controller.download(song); actionsOpen = false }, enabled = song.id !in controller.resolvingDownloads && song.id !in IosMusicDownloads.progress, contentPadding = PaddingValues(horizontal = 4.dp)) { Text(if (IosMusicDownloads.localUrl(song.id) != null) "已下载" else "下载", style = MaterialTheme.typography.labelSmall) }
         }
-        Text("下载需要登录态与签名接口，这里只保留入口，不提供假下载。", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     addTarget?.let { name ->
         var draft by remember { mutableStateOf(name) }
@@ -804,6 +774,7 @@ private fun SongRow(song: MusicSong, controller: MusicController, showLike: Bool
             onDismissRequest = { addTarget = null },
             title = { Text("加入本地歌单") },
             text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = draft, onValueChange = { draft = it }, singleLine = true, placeholder = { Text("歌单名称") })
                 if (controller.customPlaylists.isNotEmpty()) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -811,6 +782,7 @@ private fun SongRow(song: MusicSong, controller: MusicController, showLike: Bool
                             FilterChip(selected = draft == existing, onClick = { draft = existing }, label = { Text(existing) })
                         }
                     }
+                }
                 }
             },
             confirmButton = {

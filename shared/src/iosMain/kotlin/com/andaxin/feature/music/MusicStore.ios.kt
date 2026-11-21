@@ -190,4 +190,15 @@ internal object MusicStore {
         }
         defaults.setObject(raw, forKey = KEY_CUSTOM_PLAYLISTS)
     }
+    fun loadDownloadedSongs(): List<MusicSong> = decodeQueue(defaults.stringForKey("music.download.songs").orEmpty())
+    fun saveDownloadedSongs(songs: List<MusicSong>) { defaults.setObject(encodeQueue(songs), forKey = "music.download.songs") }
+    fun loadDownloadPaths(): Map<Long, String> = (defaults.dictionaryForKey("music.download.paths") ?: emptyMap<Any?, Any?>()).entries.mapNotNull { (key, value) ->
+        val id = (key as? String)?.toLongOrNull() ?: return@mapNotNull null
+        val name = value as? String ?: return@mapNotNull null
+        id to name
+    }.toMap()
+    fun saveDownloadPaths(paths: Map<Long, String>) { defaults.setObject(paths.mapKeys { it.key.toString() }, forKey = "music.download.paths") }
+    fun loadLibrarySongs(): List<MusicSong> = decodeQueue(defaults.stringForKey("music.library.songs").orEmpty())
+    fun saveLibrarySongs(songs: List<MusicSong>) { defaults.setObject(encodeQueue(songs), forKey = "music.library.songs") }
+
 }
