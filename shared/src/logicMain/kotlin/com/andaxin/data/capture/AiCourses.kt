@@ -1,5 +1,6 @@
 package com.andaxin.data.capture
 
+import com.andaxin.core.concurrency.Lock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -20,22 +21,27 @@ class AiCourseFeed(
     private val api: FifApi,
 ) {
 
-    private var cached: List<AiCourse>? = null
+    private data class Cached(val owner: String, val courses: List<AiCourse>)
+    private val cacheLock = Lock()
+    private var cached: Cached? = null
 
     suspend fun courses(force: Boolean = false): Result<List<AiCourse>> {
         currentCoroutineContext().ensureActive()
-        val hit = cached
-        if (!force && hit != null) return Result.success(hit)
         return try {
+            val owner = fif.owner() ?: return Result.failure(IllegalStateException("校内还没登录"))
+            val hit = fif.withOwner(owner) { cacheLock.withLock { cached?.takeIf { it.owner == owner }?.courses } }
+            if (!force && hit != null) return Result.success(hit)
             fif.ensure().getOrThrow()
+            fif.withOwner(owner) { }
             val terms = api.terms()
-            currentCoroutineContext().ensureActive()
+            fif.withOwner(owner) { }
             val term = terms.firstOrNull { it.selected } ?: terms.firstOrNull()
                 ?: throw Exception("没能取得 AI 课堂学期，请重试。")
             val courses = api.courses(term.year, term.num)
-            currentCoroutineContext().ensureActive()
-            cached = courses
-            Result.success(courses)
+            fif.withOwner(owner) {
+                cacheLock.withLock { cached = Cached(owner, courses) }
+                Result.success(courses)
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -47,9 +53,16 @@ class AiCourseFeed(
     suspend fun find(id: String): AiCourse? = courses().getOrNull()?.firstOrNull { it.id == id }
 
     /** 当前学期。直录播那发要它的 `id` 当 `termId`。 */
-    suspend fun currentTerm(): AiTerm? = fif.ensure().getOrNull()?.let { api.terms().selected() }
+    suspend fun currentTerm(): AiTerm? {
+        currentCoroutineContext().ensureActive()
+        val owner = fif.owner() ?: return null
+        if (fif.ensure().getOrNull() == null) return null
+        fif.withOwner(owner) { }
+        val terms = api.terms()
+        return fif.withOwner(owner) { terms.selected() }
+    }
 
     private fun List<AiTerm>.selected(): AiTerm? = firstOrNull { it.selected } ?: firstOrNull()
 
-    fun invalidate() { cached = null }
+    fun invalidate() { cacheLock.withLock { cached = null } }
 }

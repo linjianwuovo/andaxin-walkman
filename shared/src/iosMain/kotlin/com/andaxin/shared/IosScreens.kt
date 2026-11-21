@@ -372,7 +372,7 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
         }
         key == "group" -> IosRoute("班级群") { GroupScreen(onBack = {}) }
         key == "notice" -> IosRoute("公告") { NoticeScreen(deps = NoticeDeps(model = noticeModel), open = {}) }
-        key == "about" -> IosRoute("关于安大信") { AboutScreen(onBack = {}) }
+        key == "about" -> IosRoute("关于安大信") { AboutScreen(open = open, onBack = {}) }
         key == "licenses" -> IosRoute("开源许可") { LicenseScreen(onBack = {}) }
         // 10-27 新开的这一扇：之前 routeOf 认不出 "theme"，「我的」那格里根本不会画这一行
         // （入口是按 canOpen 决定画不画的），所以 iOS 上一直没有换颜色的地方。
