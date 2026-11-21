@@ -1,6 +1,10 @@
 package com.andaxin.core.store
 
 import androidx.compose.runtime.Immutable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -87,8 +91,13 @@ class SessionStore(private val store: Store) {
      * 所以留一个纯计数器性质的时间戳在这儿，谁要"重登之后重新拉一次"就 key 在它上面。
      * 存的是毫秒时间戳，不含任何凭据。
      */
-    suspend fun save(token: com.andaxin.data.capture.TokenBundle) {
+    suspend fun save(token: com.andaxin.data.capture.TokenBundle) = aiMutex.withLock {
+        val previous = aiOwner()
+        val principal = aiPrincipal(token.userCode, token.userType)
+        val owner = previous?.takeIf { it.substringBefore(':') == principal }
+            ?: "$principal:${java.util.UUID.randomUUID()}"
         store.setMany(
+            KEY_AI_OWNER to owner,
             Store.KEY_TOKEN to token.accessToken,
             KEY_REFRESH to token.refreshToken,
             Store.KEY_USER_CODE to token.userCode,
@@ -164,7 +173,9 @@ class SessionStore(private val store: Store) {
      * 那时候清掉口令就等于把自己锁在门外（`refresh.do` 服务端是死的，重登只能靠口令）。
      * 他自己按「退出登录」走的是默认 false —— 人都要退了，不该继续存着钥匙。
      */
-    suspend fun signOut(keepPassword: Boolean = false) = store.setMany(
+    suspend fun signOut(keepPassword: Boolean = false) = aiMutex.withLock {
+        store.setMany(
+        KEY_AI_OWNER to null,
         Store.KEY_TOKEN to null,
         // 学号跟着口令走：留了口令却把学号擦掉，那份密文就成了解不开的孤儿 ——
         // `reloginFromVault()` 第一步要的就是学号。10-21 凌晨装机撞中的正是这个：
@@ -177,9 +188,36 @@ class SessionStore(private val store: Store) {
         KEY_EXPIRES_AT to null,
         KEY_BROWSING to null,
         KEY_PW_BLOB to if (keepPassword) store.peekString(store.snapshot(), KEY_PW_BLOB) else null,
-    )
+        )
+    }
+
+    internal suspend fun aiOwner(): String? {
+        currentCoroutineContext().ensureActive()
+        val p = store.snapshot()
+        currentCoroutineContext().ensureActive()
+        val code = store.peekString(p, Store.KEY_USER_CODE)
+        if (store.peekString(p, Store.KEY_TOKEN).isNullOrBlank() || code.isNullOrBlank()) return null
+        val principal = aiPrincipal(code, store.peekString(p, KEY_USER_TYPE) ?: "1")
+        return store.peekString(p, KEY_AI_OWNER)?.takeIf { it.substringBefore(':') == principal }
+            ?: "$principal:legacy"
+    }
+
+    internal suspend fun <T> withAiOwner(owner: String, block: suspend () -> T): T = aiMutex.withLock {
+        check(aiOwner() == owner) { "AI 课堂登录状态已变化，请重试。" }
+        currentCoroutineContext().ensureActive()
+        val result = block()
+        currentCoroutineContext().ensureActive()
+        result
+    }
+
+    private fun aiPrincipal(code: String, type: String): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest("${code.length}:$code$type".toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     private companion object {
+        val aiMutex = Mutex()
+        const val KEY_AI_OWNER = "auth.aiOwner"
         const val KEY_ONBOARDED = "app.onboarded"
         const val KEY_BROWSING = "app.browsing"
         const val KEY_DORM = "profile.dorm"

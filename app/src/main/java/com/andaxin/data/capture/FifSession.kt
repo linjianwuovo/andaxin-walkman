@@ -6,6 +6,9 @@ import com.andaxin.core.store.Store
 import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -118,30 +121,30 @@ class FifSession(
      * 服务端既然不发，这条检查就永远不成立 —— 后果不是报错，是**每进一栏都重跑一遍完整 SSO**，
      * 白多三个来回。cookie 罐留着不删：官方那侧确实带，我们带着也无害。
      */
-    suspend fun isSessionValid(): Boolean {
-        val token = store.peekString(store.snapshot(), KEY_FIF_TOKEN).orEmpty()
-        if (token.isBlank()) return false
-        return jwtExpiresAt(token)?.let { System.currentTimeMillis() / 1000 + SKEW < it } ?: true
-    }
+    internal suspend fun owner(): String? = school.aiOwner()
 
-    suspend fun ids(): FifIds? {
+    internal suspend fun <T> withOwner(owner: String, block: suspend () -> T): T =
+        school.withAiOwner(owner, block)
+
+    private suspend fun ownedIds(owner: String): FifIds? = withOwner(owner) {
         val p = store.snapshot()
+        if (store.peekString(p, KEY_OWNER) != owner) return@withOwner null
+        val token = store.peekString(p, KEY_FIF_TOKEN).orEmpty()
+        if (token.isBlank() || jwtExpiresAt(token)?.let { System.currentTimeMillis() / 1000 + SKEW >= it } == true) {
+            return@withOwner null
+        }
         val student = store.peekString(p, KEY_STUDENT_ID).orEmpty()
         val user = store.peekString(p, KEY_USER_NAME).orEmpty()
-        val schoolId = store.peekString(p, KEY_SCHOOL_ID).orEmpty()
-        if (student.isBlank() && user.isBlank()) return null
-        return FifIds(
-            studentId = student,
-            userName = user,
-            schoolId = schoolId,
-            memberUserId = store.peekString(p, KEY_MEMBER_ID).orEmpty(),
-        )
+        if (student.isBlank() && user.isBlank()) return@withOwner null
+        FifIds(student, user, store.peekString(p, KEY_SCHOOL_ID).orEmpty(), store.peekString(p, KEY_MEMBER_ID).orEmpty())
     }
 
+    suspend fun isSessionValid(): Boolean = owner()?.let { ownedIds(it) != null } ?: false
+
+    suspend fun ids(): FifIds? = owner()?.let { ownedIds(it) }
+
     /** 主站那套的头：`authorization: Basic <jwt>` + `Visit-Type: mobile`。 */
-    suspend fun authHeader(): String? = store.peekString(store.snapshot(), KEY_FIF_TOKEN)
-        ?.takeIf { it.isNotBlank() }
-        ?.let { "Basic $it" }
+    suspend fun authHeader(): String? = bareJwt()?.let { "Basic $it" }
 
     /**
      * 把这一跳攒下来的 cookie 拼成一条 `name=value; name=value`，给 WebView 用。
@@ -161,8 +164,15 @@ class FifSession(
      * 资源中心（`resc.fifedu.com`）那发要的是**裸 JWT**：带 `Basic ` 前缀它不认，
      * 而且不能带 `Visit-Type`。主站的习惯直接搬过去，回的是 200 + `data:null`。
      */
-    suspend fun bareJwt(): String? = store.peekString(store.snapshot(), KEY_FIF_TOKEN)
-        ?.takeIf { it.isNotBlank() }
+    suspend fun bareJwt(): String? {
+        val owner = owner() ?: return null
+        return withOwner(owner) {
+            val p = store.snapshot()
+            store.peekString(p, KEY_FIF_TOKEN)?.takeIf {
+                it.isNotBlank() && store.peekString(p, KEY_OWNER) == owner
+            }
+        }
+    }
 
     /**
      * 保证有一把能用的 FIF 会话。已经有效就一个字节都不发。
@@ -170,18 +180,30 @@ class FifSession(
      * 拿锁之后**还要再查一遍**：首页预热和进页面加载曾经同一秒各跑了一遍完整 SSO，白多花 800ms。
      */
     suspend fun ensure(): Result<FifIds> {
-        if (isSessionValid()) ids()?.let { return Result.success(it) }
-        return mutex.withLock {
-            if (isSessionValid()) {
-                ids()?.let { return@withLock Result.success(it) }
+        currentCoroutineContext().ensureActive()
+        val owner = owner() ?: return Result.failure(IOException("校内还没登录"))
+        return try {
+            ownedIds(owner)?.let { return Result.success(it) }
+            mutex.withLock {
+                ownedIds(owner)?.let { return@withLock Result.success(it) }
+                performSso(owner)
             }
-            performSso()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            currentCoroutineContext().ensureActive()
+            Result.failure(error)
         }
     }
 
     /** 三跳。任何一跳失败都回 failure，带得上原因就带上，不静默降级。 */
     suspend fun performSso(): Result<FifIds> {
-        val inner = school.identity()
+        val owner = owner() ?: return Result.failure(IOException("校内还没登录"))
+        return mutex.withLock { performSso(owner) }
+    }
+
+    private suspend fun performSso(owner: String): Result<FifIds> {
+        val inner = withOwner(owner) { school.identity() }
             ?: return Result.failure(IOException("校内还没登录，FIF 的单点登录第一步就没有 access_token"))
 
         // 第一跳：aiitpass 换 FIF 的 JWT。token 值在 302 的 Location 的 query 里。
@@ -196,7 +218,12 @@ class FifSession(
             "&returnFromIscToAppFunc=ReturnDefault"
         val location = runCatching {
             get(ssoUrl, "Location")
-        }.getOrElse { return Result.failure(it) }
+        }.getOrElse {
+            if (it is CancellationException) throw it
+            currentCoroutineContext().ensureActive()
+            return Result.failure(it)
+        }
+        withOwner(owner) { }
 
         /*
          * 这里有个坑值得单独写一行：`?token=` 值为空时，query 解析出来是**空串不是 null**，
@@ -208,27 +235,34 @@ class FifSession(
 
         // 第二跳：只为让服务器 Set-Cookie 出 SESSION
         runCatching { getRaw("$HOST_STTP/studycenter-nh5/?token=${urlEnc(jwt)}&app=axx") }
+            .onFailure { if (it is CancellationException) throw it }
+        withOwner(owner) { }
 
         // 第三跳：换三个 id。失败不致命 —— 课程列表照样能拉，只是签到/小组那几发没身份
         val ids = runCatching { fetchIds(jwt) }.getOrElse {
-            store.setText(KEY_FIF_TOKEN, jwt)
-            saveIdentityCookies(jwt, ids = null)
+            if (it is CancellationException) throw it
+            currentCoroutineContext().ensureActive()
+            withOwner(owner) { }
             return Result.failure(IOException("FIF 身份接口没通：${it.message ?: it.javaClass.simpleName}"))
         }
-        store.setMany(
-            KEY_FIF_TOKEN to jwt,
-            KEY_STUDENT_ID to ids.studentId,
-            KEY_USER_NAME to ids.userName,
-            KEY_SCHOOL_ID to ids.schoolId,
-            KEY_MEMBER_ID to ids.memberUserId,
-        )
-        saveIdentityCookies(jwt, ids)
+        withOwner(owner) {
+            store.setMany(
+                KEY_OWNER to owner,
+                KEY_FIF_TOKEN to jwt,
+                KEY_STUDENT_ID to ids.studentId,
+                KEY_USER_NAME to ids.userName,
+                KEY_SCHOOL_ID to ids.schoolId,
+                KEY_MEMBER_ID to ids.memberUserId,
+            )
+            saveIdentityCookies(jwt, ids)
+        }
         return Result.success(ids)
     }
 
     suspend fun clear() {
         jar.clear()
         store.setMany(
+            KEY_OWNER to null,
             KEY_FIF_TOKEN to null,
             KEY_STUDENT_ID to null,
             KEY_USER_NAME to null,
@@ -256,7 +290,11 @@ class FifSession(
                     schoolId = data.optString("schoolId"),
                     memberUserId = memberFromJwt(jwt).orEmpty(),
                 )
-            }.onSuccess { return it }.onFailure { last = it }
+            }.onSuccess { return it }.onFailure {
+                if (it is CancellationException) throw it
+                currentCoroutineContext().ensureActive()
+                last = it
+            }
         }
         throw last ?: IOException("身份接口三次都没通")
     }
@@ -534,6 +572,7 @@ class FifSession(
 
         const val SKEW = 60L
 
+        const val KEY_OWNER = "fif.owner"
         const val KEY_FIF_TOKEN = "fif.token"
         const val KEY_STUDENT_ID = "fif.studentId"
         const val KEY_USER_NAME = "fif.userName"
