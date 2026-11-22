@@ -1,14 +1,20 @@
 package com.andaxin.feature.sport
 
+import com.andaxin.core.design.safeGlassSurface
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -27,6 +33,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -188,6 +197,7 @@ fun SportStartScreen(open: (String) -> Unit, onBack: () -> Unit) {
  * 数字全是可选：缺哪条就把那一格写成"—"，**不拿 0 冒充**（0 是这个学期真的没跑，
  * 和"没拉到"是两件事）。进度条只在计划里程 > 0 时画。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlanCard(plan: SportPlan?, ink: InkSet) {
     val primary = MaterialTheme.colorScheme.primary
@@ -199,11 +209,11 @@ private fun PlanCard(plan: SportPlan?, ink: InkSet) {
     val left = plan?.leftKm ?: if (planKm != null && doneKm != null) (planKm - doneKm) else null
 
     Sheet {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+        FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = if (LocalDensity.current.fontScale > 1.3f) 1 else 2, horizontalArrangement = Arrangement.spacedBy(Gap.md), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
             Column(Modifier.weight(1f)) {
                 Text("本学期跑步", fontSize = Type.micro, color = ink.faint)
                 Spacer(Modifier.height(Gap.xs))
-                Row(verticalAlignment = Alignment.Bottom) {
+                FlowRow(verticalArrangement = Arrangement.spacedBy(Gap.xs)) {
                     Text(
                         text = km2(doneKm),
                         style = Type.tabular,
@@ -335,7 +345,7 @@ private fun TodayCell(label: String, value: String, date: String, modifier: Modi
     Column(modifier) {
         Text(label, fontSize = Type.micro, color = ink.faint)
         Spacer(Modifier.height(2.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
+        Column {
             Text(
                 text = if (value == "—") "—" else "$value km",
                 fontSize = Type.title,
@@ -343,7 +353,7 @@ private fun TodayCell(label: String, value: String, date: String, modifier: Modi
                 color = ink.strong,
             )
             if (date.isNotBlank()) {
-                Spacer(Modifier.width(Gap.xs))
+                Spacer(Modifier.height(Gap.xs))
                 Text(date, fontSize = Type.tinier, color = ink.faint, modifier = Modifier.padding(bottom = 3.dp))
             }
         }
@@ -389,6 +399,7 @@ private fun md(s: String?): String =
 
 /* ───────────────────────── ② 运动中 ───────────────────────── */
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SportRunScreen(onBack: () -> Unit) {
     val graph = LocalAppGraph.current
@@ -450,7 +461,7 @@ fun SportRunScreen(onBack: () -> Unit) {
             }
             Spacer(Modifier.height(Gap.lg))
             Sheet {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.lg), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                     Stat("距离", "%.2f km".format(done.km))
                     Stat("时长", "%d:%02d".format(done.seconds / 60, done.seconds % 60))
                     Stat(
@@ -555,7 +566,7 @@ fun SportRunScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(Gap.lg))
         Sheet {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.lg), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                 Stat("距离", "%.2f km".format(state.km))
                 Stat("时长", "%d:%02d".format(state.seconds / 60, state.seconds % 60))
                 Stat("配速", state.pacePerKm)
@@ -646,6 +657,7 @@ fun SportRunScreen(onBack: () -> Unit) {
 
 /* ───────────────────── ③ 记录 / ④ 明细 ───────────────────── */
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
@@ -668,7 +680,7 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 Spacer(Modifier.height(Gap.sm))
                 Hairline()
                 Spacer(Modifier.height(Gap.sm))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.lg), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                     Text(r.pacePerKm + " · " + "%.1f 分钟".format(r.minutes), fontSize = Type.meta, color = ink.faint)
                     Text(
                         text = if (r.valid) "有效" else r.invalidReason,
@@ -803,6 +815,7 @@ internal fun Page(title: String, onBack: () -> Unit, content: @Composable Column
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
 .statusBarsPadding()
             .padding(top = GlassBackInset)
 .padding(horizontal = Gap.screen),
@@ -833,12 +846,15 @@ private fun BigButton(text: String, onClick: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(52.dp)
-            .background(MaterialTheme.colorScheme.primary, Radius.card)
-            .pressClick(onClick = onClick),
+            .heightIn(min = 52.dp)
+            .clip(Radius.card)
+            .background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.90f), MaterialTheme.colorScheme.primary)), Radius.card)
+            .border(1.dp, MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.26f), Radius.card)
+            .pressClick(onClick = onClick)
+            .padding(horizontal = Gap.md, vertical = Gap.sm),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, fontSize = Type.title, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)
+        Text(text, fontSize = Type.title, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary, textAlign = TextAlign.Center)
     }
 }
 
@@ -847,12 +863,14 @@ internal fun androidx.compose.foundation.layout.RowScope.HalfButton(text: String
     Box(
         Modifier
             .weight(1f)
-            .height(48.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, Radius.field)
-            .pressClick(onClick = onClick),
+            .heightIn(min = 48.dp)
+            .clip(Radius.field)
+            .safeGlassSurface(Radius.field)
+            .pressClick(onClick = onClick)
+            .padding(horizontal = Gap.md, vertical = Gap.sm),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, fontSize = Type.body, color = LocalInk.current.body, maxLines = 1)
+        Text(text, fontSize = Type.body, color = LocalInk.current.body, textAlign = TextAlign.Center)
     }
 }
 

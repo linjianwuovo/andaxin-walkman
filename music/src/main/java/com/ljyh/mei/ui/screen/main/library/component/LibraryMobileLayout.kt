@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -956,24 +958,27 @@ private fun Playlist.matchesQuery(query: String): Boolean =
 
 @Composable
 internal fun EmptyState(text: String, symbol: SfSymbol, description: String? = null) {
-    Column(
-        Modifier.fillMaxWidth().padding(vertical = 52.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    val colors = LocalGlassColors.current
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 32.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        SfIcon(symbol, null, size = 38.dp, tint = LocalGlassColors.current.tertiaryContent)
-        Text(
-            text,
-            style = IosTypography.subheadline,
-            color = LocalGlassColors.current.secondaryContent,
-            modifier = Modifier.padding(top = 10.dp),
-        )
-        description?.let {
+        Column(
+            Modifier.widthIn(max = 340.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SfIcon(symbol, null, size = 32.dp, tint = colors.secondaryContent)
             Text(
-                text = it,
-                style = IosTypography.caption,
-                color = LocalGlassColors.current.tertiaryContent,
-                modifier = Modifier.padding(top = 6.dp),
+                text,
+                style = IosTypography.subheadline,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.content,
+                textAlign = TextAlign.Center,
             )
+            description?.let {
+                Text(it, style = IosTypography.caption, color = colors.secondaryContent, textAlign = TextAlign.Center)
+            }
         }
     }
 }

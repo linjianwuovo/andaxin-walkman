@@ -4,6 +4,10 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.widget.MediaController
 import android.widget.VideoView
+import com.andaxin.core.design.safeGlassSurface
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -56,6 +61,7 @@ import com.andaxin.shell.Sheet
  * 三条实测过的体积：学生机位 530,541,797 / 教师机位 530,874,284 / HDMI 16,969,733 字节。
  * 前两条是五十分钟一课的整堂录像，所以流量那一句话必须写在界面上。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
@@ -92,9 +98,10 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
         }
 
         if (sources.isNotEmpty()) {
-            Row(
+            FlowRow(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                verticalArrangement = Arrangement.spacedBy(Gap.sm),
             ) {
                 sources.forEachIndexed { i, s ->
                     val on = i == picked
@@ -103,10 +110,9 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
                         fontSize = Type.body,
                         color = if (on) MaterialTheme.colorScheme.primary else ink.muted,
                         modifier = Modifier
-                            .background(
-                                if (on) MaterialTheme.colorScheme.surfaceVariant else ink.hairline,
-                                Radius.pill,
-                            )
+                            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                            .clip(Radius.pill)
+                            .safeGlassSurface(Radius.pill, selected = on)
                             .pressClick { picked = i }
                             .padding(horizontal = Gap.md, vertical = Gap.sm),
                     )
@@ -117,7 +123,7 @@ fun RecordPlayScreen(resourceId: String, onBack: () -> Unit) {
             val cur = sources[picked.coerceIn(sources.indices)]
             Player(id = cur.extra["resourceId"].orEmpty().ifBlank { resourceId }, url = cur.extra["path"].orEmpty(), tag = resourceId)
             Spacer(Modifier.height(Gap.sm))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.md), verticalArrangement = Arrangement.spacedBy(Gap.xs)) {
                 Text(cur.sub, fontSize = Type.meta, color = ink.muted)
                 if (cur.extra["path"].isNullOrBlank()) {
                     Text("这条没给播放地址", fontSize = Type.meta, color = MaterialTheme.colorScheme.error)

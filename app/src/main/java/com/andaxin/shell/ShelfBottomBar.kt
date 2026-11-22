@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.glass.render.Backdrop
 import io.github.neoruaa.glasmio.icons.SfSymbol
@@ -67,27 +70,32 @@ internal fun ShelfBottomBar(
         ShelfBottomMarginFloor,
     )
 
-    GlasmioNavigationBarWithTrailingItem(
-        items = shelfTabItems(labels),
-        trailingItem = GlasmioTabItem(
-            key = Shelf.Me,
-            label = labels[Shelf.Me.ordinal],
-            symbol = SfSymbol.PersonFilled,
-        ),
-        selectedKey = selected,
-        onSelected = onSelected,
-        onExpand = onExpand,
-        compactProgress = compactProgress,
-        backdrop = backdrop,
-        trailingSelected = trailingSelected,
-        // 顺序照上游 MainActivity_main.kt:1690-1700：横向边距 → 提示缩放的 pivot → 底部离屏底。
-        // 反了会让提示缩放把底边距一起缩掉。
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .glasmioNavigationScrollHint(scrollHint)
-            .padding(bottom = bottomMargin),
-    )
+    val density = LocalDensity.current
+    CompositionLocalProvider(
+        LocalDensity provides Density(density.density, density.fontScale.coerceAtMost(1.3f)),
+    ) {
+        GlasmioNavigationBarWithTrailingItem(
+            items = shelfTabItems(labels),
+            trailingItem = GlasmioTabItem(
+                key = Shelf.Me,
+                label = labels[Shelf.Me.ordinal],
+                symbol = SfSymbol.PersonFilled,
+            ),
+            selectedKey = selected,
+            onSelected = onSelected,
+            onExpand = onExpand,
+            compactProgress = compactProgress,
+            backdrop = backdrop,
+            trailingSelected = trailingSelected,
+            // 顺序照上游 MainActivity_main.kt:1690-1700：横向边距 → 提示缩放的 pivot → 底部离屏底。
+            // 反了会让提示缩放把底边距一起缩掉。
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .glasmioNavigationScrollHint(scrollHint)
+                .padding(bottom = bottomMargin),
+        )
+    }
 }
 
 /**

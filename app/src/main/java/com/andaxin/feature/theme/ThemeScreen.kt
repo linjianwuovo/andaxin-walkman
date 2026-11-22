@@ -5,6 +5,10 @@ import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
 import io.github.neoruaa.glasmio.ui.GlasmioSwitch
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import com.andaxin.core.design.safeGlassSurface
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +19,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +48,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,6 +65,7 @@ import com.andaxin.core.design.AppIconTile
 import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Radius
+import com.andaxin.core.design.Rhythm
 import com.andaxin.core.launcher.LauncherIcon
 import com.andaxin.core.launcher.LauncherIcons
 import com.andaxin.core.settings.Appearance
@@ -66,6 +75,7 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.Sheet
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val graph = LocalAppGraph.current
@@ -111,99 +121,130 @@ fun ThemeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
          * 参考图里那句"壁纸是材质，不是一张贴图"：首页没课/课都上完时那一块用它。
          * 四档缩略图直接能看到长什么样，不用先选了再回首页试 —— 自动按早/中/晚挑。
          */
-        Sheet {
-            Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                HEROES.forEach { (label, style, res) ->
-                    val on = draft.hero == style
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .weight(1f)
-                            .pressClick { draft = draft.copy(hero = style); commit() },
+        BoxWithConstraints {
+            val tileWidth = 148.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+            val innerWidth = maxWidth - Rhythm.cardPad * 2f
+            val columns = when {
+                innerWidth >= tileWidth * 4 + Gap.sm * 3 -> 4
+                innerWidth >= tileWidth * 2 + Gap.sm -> 2
+                else -> 1
+            }
+            Sheet {
+                HEROES.chunked(columns).forEachIndexed { index, row ->
+                    if (index > 0) Spacer(Modifier.height(Gap.md))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Gap.sm),
                     ) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(52.dp)
-                                .clip(Radius.field)
-                                .then(
-                                    if (on) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, Radius.field)
-                                    else Modifier
-                                ),
-                        ) {
-                            if (res == null) {
-                                // 「自动」= 三张图并排各切一条：一看就知道它跟着时段换
-                                Row(Modifier.fillMaxSize()) {
-                                    listOf(R.drawable.hero_dawn, R.drawable.hero_dusk, R.drawable.hero_night)
-                                        .forEach { id ->
-                                            Image(
-                                                painter = painterResource(id),
-                                                contentDescription = null,
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .fillMaxHeight(),
-                                                contentScale = ContentScale.Crop,
-                                            )
+                        row.forEach { (label, style, res) ->
+                            val on = draft.hero == style
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .pressClick { draft = draft.copy(hero = style); commit() },
+                            ) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 52.dp)
+                                        .aspectRatio(1.8f)
+                                        .clip(Radius.field)
+                                        .then(
+                                            if (on) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, Radius.field)
+                                            else Modifier,
+                                        ),
+                                ) {
+                                    if (res == null) {
+                                        Row(Modifier.fillMaxSize()) {
+                                            listOf(R.drawable.hero_dawn, R.drawable.hero_dusk, R.drawable.hero_night)
+                                                .forEach { id ->
+                                                    Image(
+                                                        painter = painterResource(id),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                                                        contentScale = ContentScale.Crop,
+                                                    )
+                                                }
                                         }
+                                    } else {
+                                        Image(
+                                            painter = painterResource(res),
+                                            contentDescription = label,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                    }
                                 }
-                            } else {
-                                Image(
-                                    painter = painterResource(res),
-                                    contentDescription = label,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop,
+                                Spacer(Modifier.height(Gap.xs))
+                                Text(
+                                    text = label,
+                                    fontSize = Type.meta,
+                                    lineHeight = Type.metaLine,
+                                    textAlign = TextAlign.Center,
+                                    color = if (on) ink.strong else ink.muted,
+                                    fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
                                 )
                             }
                         }
-                        Spacer(Modifier.height(Gap.xs))
-                        Text(
-                            text = label,
-                            fontSize = Type.tiny,
-                            color = if (on) ink.strong else ink.faint,
-                            fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
-                        )
                     }
                 }
+                Text(
+                    text = "自动：早上晨雾、下午金树、夜里月亮。",
+                    fontSize = Type.meta,
+                    lineHeight = Type.metaLine,
+                    color = ink.muted,
+                    modifier = Modifier.padding(top = Gap.md),
+                )
             }
-            Text(
-                text = "只在首页那一块出现；自动：早上晨雾、下午金树、夜里月亮。",
-                fontSize = Type.micro,
-                color = ink.faint,
-                modifier = Modifier.padding(top = Gap.md),
-            )
         }
 
         Spacer(Modifier.height(Gap.xl))
         GroupTitle("强调色")
-        Sheet {
-            Row(horizontalArrangement = Arrangement.spacedBy(Gap.md)) {
-                ACCENTS.forEach { (name, hex) ->
-                    val on = hex == draft.accent
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.pressClick { draft = draft.copy(accent = hex); commit() },
-                    ) {
-                        Box(
-                            Modifier
-                                .size(30.dp)
-                                .background(
+        BoxWithConstraints {
+            val swatchWidth = 84.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+            val innerWidth = maxWidth - Rhythm.cardPad * 2f
+            val columns = when {
+                innerWidth >= swatchWidth * 6 + Gap.sm * 5 -> 6
+                innerWidth >= swatchWidth * 3 + Gap.sm * 2 -> 3
+                innerWidth >= swatchWidth * 2 + Gap.sm -> 2
+                else -> 1
+            }
+            Sheet {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    maxItemsInEachRow = columns,
+                    horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                    verticalArrangement = Arrangement.spacedBy(Gap.sm),
+                ) {
+                    ACCENTS.forEach { (name, hex) ->
+                        val on = hex == draft.accent
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                                .clip(Radius.field)
+                                .safeGlassSurface(Radius.field, selected = on)
+                                .pressClick { draft = draft.copy(accent = hex); commit() }
+                                .padding(horizontal = Gap.xs, vertical = Gap.sm),
+                        ) {
+                            Box(
+                                Modifier.size(30.dp).background(
                                     if (hex.isEmpty()) ink.hairline else Color(android.graphics.Color.parseColor(hex)),
                                     CircleShape,
-                                )
-                                .padding(Gap.xs),
-                        )
-                        Spacer(Modifier.height(Gap.xs))
-                        Text(
-                            name,
-                            fontSize = Type.tiny,
-                            color = if (on) ink.strong else ink.faint,
-                            fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
-                        )
+                                ),
+                            )
+                            Spacer(Modifier.height(Gap.xs))
+                            Text(
+                                name, fontSize = Type.meta, lineHeight = Type.metaLine,
+                                textAlign = TextAlign.Center,
+                                color = if (on) ink.strong else ink.muted,
+                                fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
+                            )
+                        }
                     }
                 }
+                Text("只换主色，底栏玻璃跟着走。", fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted, modifier = Modifier.padding(top = Gap.sm))
             }
-            Spacer(Modifier.height(Gap.sm))
-            Text("只换主色，底栏玻璃跟着走。", fontSize = Type.micro, color = ink.faint)
         }
 
         Spacer(Modifier.height(Gap.xl))
@@ -268,10 +309,9 @@ private fun LauncherIconSection() {
         now = LauncherIcons.currentOrNull(ctx)
     }
 
-    // 列数和上面那格入口一样按宽度算（3..6，一格约 180dp）：写死三列的话平板上一排图标
-        // 全挤在左边、右边空半屏。每列给 weight(1f) 等宽，最后一行不满时补空位对齐。
-        BoxWithConstraints {
-            val columns = (maxWidth / 180.dp).toInt().coerceIn(3, 6)
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints {
+            val columns = (maxWidth / (104.dp * fontScale)).toInt().coerceIn(1, 6)
             Sheet {
                 LauncherIcons.ALL.chunked(columns).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(Gap.lg)) {
@@ -295,8 +335,10 @@ private fun LauncherIconSection() {
                                 Spacer(Modifier.height(Gap.xs))
                                 Text(
                                     ic.label,
-                                    fontSize = Type.tiny,
-                                    color = if (on) ink.strong else ink.faint,
+                                    fontSize = Type.meta,
+                                    lineHeight = Type.metaLine,
+                                    textAlign = TextAlign.Center,
+                                    color = if (on) ink.strong else ink.muted,
                                     fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
                                 )
                             }
@@ -363,10 +405,11 @@ private fun GroupTitle(text: String) {
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun <T : Any> ChoiceRow(options: List<Pair<String, T>>, picked: T, onPick: (T) -> Unit) {
     val ink = LocalInk.current
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.sm), verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
         options.forEach { (label, value) ->
             val on = value == picked
             Text(
@@ -375,10 +418,9 @@ private fun <T : Any> ChoiceRow(options: List<Pair<String, T>>, picked: T, onPic
                 fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
                 color = if (on) MaterialTheme.colorScheme.primary else ink.muted,
                 modifier = Modifier
-                    .background(
-                        if (on) MaterialTheme.colorScheme.surfaceVariant else ink.hairline,
-                        Radius.pill,
-                    )
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    .clip(Radius.pill)
+                    .safeGlassSurface(Radius.pill, selected = on)
                     .pressClick { onPick(value) }
                     .padding(horizontal = Gap.lg, vertical = Gap.sm),
             )

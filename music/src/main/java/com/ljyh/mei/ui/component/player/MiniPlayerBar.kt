@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -101,6 +102,9 @@ fun MiniPlayerBar(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalGlassColors.current
+    val density = LocalDensity.current
+    val largeText = density.fontScale > 1.3f
+    val controlIconSize = with(density) { 22.dp.toSp() }
     val showNextButton by remember(compactProgress) {
         derivedStateOf { 1f - compactProgress.value.coerceIn(0f, 1f) > 0.001f }
     }
@@ -175,7 +179,7 @@ fun MiniPlayerBar(
                 modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
             ) {
                 Text(
-                    text = title,
+                    text = if (largeText && artist.isNotBlank()) "$title · $artist" else title,
                     color = colors.content,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -183,7 +187,7 @@ fun MiniPlayerBar(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.basicMarquee(),
                 )
-                if (artist.isNotBlank()) {
+                if (artist.isNotBlank() && !largeText) {
                     Text(
                         text = artist,
                         color = colors.secondaryContent,
@@ -202,6 +206,7 @@ fun MiniPlayerBar(
                         contentDescription = if (playing) "暂停" else "播放",
                         tint = colors.content,
                         size = 22.dp,
+                        fontSize = controlIconSize,
                         weight = FontWeight.SemiBold,
                     )
                 }
@@ -229,6 +234,7 @@ fun MiniPlayerBar(
                                 contentDescription = "下一首",
                                 tint = if (canSkipNext) colors.content else colors.secondaryContent.copy(alpha = 0.35f),
                                 size = 22.dp,
+                                fontSize = controlIconSize,
                                 weight = FontWeight.SemiBold,
                             )
                         }

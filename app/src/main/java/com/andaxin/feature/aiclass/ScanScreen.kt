@@ -10,8 +10,17 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -33,20 +42,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import io.github.neoruaa.glasmio.icons.GlasmioIcon
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.andaxin.shell.Chip
 import com.andaxin.shell.pressClick
 import kotlin.math.roundToInt
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.GlassBackButton
-import com.andaxin.core.design.GlassBackInset
 import androidx.compose.foundation.layout.statusBarsPadding
 import com.andaxin.core.design.Type
 import com.andaxin.core.design.LocalInk
@@ -84,55 +98,127 @@ fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
 
     LaunchedEffect(Unit) { if (!granted) ask.launch(Manifest.permission.CAMERA) }
 
-    Box(Modifier.fillMaxSize()) {
     Column(
-        Modifier.fillMaxSize().statusBarsPadding().padding(top = GlassBackInset).padding(horizontal = Gap.screen),
+        Modifier.fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Gap.screen, vertical = Gap.sm),
+        verticalArrangement = Arrangement.spacedBy(Gap.lg),
     ) {
-        Text("扫码签到", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
-        Spacer(Modifier.height(Gap.lg))
-
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.82f)
-                .background(Color.Black, Radius.card),
-            contentAlignment = Alignment.Center,
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Gap.md),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            when {
-                granted -> CameraPreview(onCode = { raw ->
-                    code = raw
-                    // 码里那条链接交给签到那一屏去发（带着会话自己发一次，读 302 的落点）。
-                    // 第一次识别到就跳过去，别让人再点一下 —— 上课那几分钟经不起多按一次。
-                    if (raw.startsWith("http", ignoreCase = true)) onSignUrl(raw)
-                })
-                denied -> Text("没给相机权限", fontSize = Type.body, color = Color.White)
-                else -> Text("正在要相机权限…", fontSize = Type.body, color = Color.White)
+            GlassBackButton(onBack)
+            Column(Modifier.weight(1f)) {
+                Text("扫码签到", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
+                Spacer(Modifier.height(Gap.xxs))
+                Text("对准课堂二维码，识别后自动进入签到", fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
             }
-            // 取景框：只画个框，不做识别区域裁剪，ML Kit 整帧识别够用
-            Box(
-                Modifier
-                    .size(180.dp)
-                    .background(Color.Transparent, Radius.card)
-                    .padding(2.dp),
-            ) {}
         }
 
-        Spacer(Modifier.height(Gap.lg))
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            Box(
+                Modifier.fillMaxWidth()
+                    .aspectRatio(if (maxWidth > 600.dp) 1.65f else 0.95f)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(Color(0xFF10151F)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (granted) {
+                    CameraPreview(onCode = { raw ->
+                        code = raw
+                        if (raw.startsWith("http", ignoreCase = true)) onSignUrl(raw)
+                    })
+                } else {
+                    Column(
+                        Modifier.padding(Gap.xl),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(Gap.md),
+                    ) {
+                        GlasmioIcon("camera.viewfinder", contentDescription = null, tint = Color.White, size = 36.dp)
+                        Text(
+                            if (denied) "需要相机权限" else "正在请求相机权限",
+                            fontSize = Type.title,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text("允许相机访问后，即可扫描课堂二维码", fontSize = Type.meta, lineHeight = Type.metaLine, color = Color.White.copy(alpha = 0.72f), textAlign = TextAlign.Center)
+                        if (denied) {
+                            Text(
+                                "重新授权",
+                                fontSize = Type.body,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White,
+                                modifier = Modifier.clip(Radius.pill)
+                                    .background(Color.White.copy(alpha = 0.16f))
+                                    .pressClick { ask.launch(Manifest.permission.CAMERA) }
+                                    .heightIn(min = 48.dp)
+                                    .padding(horizontal = Gap.lg, vertical = Gap.md),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Sheet {
-            Text("码里是", fontSize = Type.meta, color = ink.muted)
-            Spacer(Modifier.height(Gap.xs))
-            Text(
-                text = code ?: "对准二维码，识别到就显示在这儿",
-                fontSize = Type.body,
-                color = if (code == null) ink.ghost else ink.strong,
-                maxLines = 4,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Gap.md),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Box(
+                    Modifier.size(40.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), Radius.field),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    GlasmioIcon("camera.viewfinder", contentDescription = null, tint = MaterialTheme.colorScheme.primary, size = 22.dp)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Gap.xs)) {
+                    Text(if (code == null) "等待识别" else "识别结果", fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = ink.strong)
+                    if (code == null) {
+                        Text("无需拍照。保持二维码清晰，识别成功后将自动继续。", fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
+                    } else {
+                        SelectionContainer {
+                            Text(code.orEmpty(), fontSize = Type.body, lineHeight = Type.bodyLine, color = ink.strong)
+                        }
+                    }
+                }
+            }
         }
-        Spacer(Modifier.height(Gap.md))
+        Spacer(Modifier.height(Gap.sm))
     }
-        Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = Gap.screen, top = Gap.sm)) {
-            GlassBackButton(onBack)
-        }
+}
+
+@Composable
+private fun ScanViewfinder() {
+    val accent = MaterialTheme.colorScheme.primary
+    Canvas(Modifier.fillMaxSize()) {
+        val side = minOf(size.width * 0.66f, size.height * 0.52f, 240.dp.toPx())
+        val left = (size.width - side) / 2f
+        val top = (size.height - side) / 2f - 20.dp.toPx()
+        val right = left + side
+        val bottom = top + side
+        val dim = Color.Black.copy(alpha = 0.34f)
+        drawRect(dim, size = Size(size.width, top))
+        drawRect(dim, Offset(0f, bottom), Size(size.width, size.height - bottom))
+        drawRect(dim, Offset(0f, top), Size(left, side))
+        drawRect(dim, Offset(right, top), Size(size.width - right, side))
+        val length = 24.dp.toPx()
+        val stroke = 3.dp.toPx()
+        listOf(
+            Offset(left, top) to Offset(left + length, top),
+            Offset(left, top) to Offset(left, top + length),
+            Offset(right, top) to Offset(right - length, top),
+            Offset(right, top) to Offset(right, top + length),
+            Offset(left, bottom) to Offset(left + length, bottom),
+            Offset(left, bottom) to Offset(left, bottom - length),
+            Offset(right, bottom) to Offset(right - length, bottom),
+            Offset(right, bottom) to Offset(right, bottom - length),
+        ).forEach { (start, end) -> drawLine(accent, start, end, strokeWidth = stroke, cap = StrokeCap.Round) }
+        drawLine(Color.White.copy(alpha = 0.28f), Offset(left + 12.dp.toPx(), (top + bottom) / 2f), Offset(right - 12.dp.toPx(), (top + bottom) / 2f), strokeWidth = 1.dp.toPx())
     }
 }
 
@@ -140,7 +226,12 @@ fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
 private fun CameraPreview(onCode: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current
-    val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
+    val previewView = remember {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+    }
     val executor = remember { Executors.newSingleThreadExecutor() }
     // 绑上相机之后才有：变焦要往它身上设
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
@@ -252,30 +343,60 @@ private fun CameraPreview(onCode: (String) -> Unit) {
             },
             modifier = Modifier.fillMaxSize(),
         )
-        // 只有这台相机的变焦范围真大于 1 才摆这一排 —— 定焦前置机上摆一排按不动的丸子更糟
-        val maxZoom = camera?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 1f
-        if (maxZoom > 1.2f) {
-            Row(
-                Modifier.align(Alignment.BottomCenter).padding(bottom = Gap.md),
-                horizontalArrangement = Arrangement.spacedBy(Gap.sm),
-            ) {
-                val steps = (listOf(1f, 2f, 4f) + maxZoom).distinct().filter { it <= maxZoom }
-                steps.forEach { z ->
-                    val on = kotlin.math.abs(zoom - z) < 0.06f
-                    Chip(
-                        text = if (z == maxZoom && z > 4f) "最大" else "${z.roundToInt()}×",
-                        picked = on,
-                    ) { setZoom(z) }
+        if (trouble == null) {
+            ScanViewfinder()
+            Text(
+                "将二维码放入框内",
+                fontSize = Type.meta,
+                fontWeight = FontWeight.Medium,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .padding(top = Gap.lg)
+                    .background(Color.Black.copy(alpha = 0.4f), Radius.pill)
+                    .padding(horizontal = Gap.lg, vertical = Gap.sm),
+            )
+            val maxZoom = camera?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 1f
+            if (maxZoom > 1.2f) {
+                Row(
+                    Modifier.align(Alignment.BottomCenter)
+                        .padding(horizontal = Gap.md, vertical = Gap.lg)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val steps = (listOf(1f, 2f, 4f) + maxZoom).distinct().filter { it <= maxZoom }
+                    steps.forEach { z ->
+                        val selected = kotlin.math.abs(zoom - z) < 0.06f
+                        Text(
+                            text = if (z == maxZoom && z > 4f) "最大" else "${z.roundToInt()}×",
+                            fontSize = Type.meta,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (selected) Color(0xFF10151F) else Color.White,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.clip(CircleShape)
+                                .background(if (selected) Color.White else Color.Black.copy(alpha = 0.5f))
+                                .pressClick { setZoom(z) }
+                                .heightIn(min = 48.dp)
+                                .widthIn(min = 48.dp)
+                                .padding(horizontal = Gap.md, vertical = Gap.md),
+                        )
+                    }
                 }
             }
         }
-        trouble?.let {
-            Text(
-                text = it,
-                fontSize = Type.body,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.BottomStart).padding(Gap.md),
-            )
+        trouble?.let { why ->
+            Column(
+                Modifier.align(Alignment.Center)
+                    .padding(Gap.lg)
+                    .background(Color.Black.copy(alpha = 0.85f), Radius.card)
+                    .padding(Gap.lg),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Gap.sm),
+            ) {
+                Text("相机暂不可用", fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = Color.White)
+                Text(why, fontSize = Type.meta, lineHeight = Type.metaLine, color = Color.White.copy(alpha = 0.78f), textAlign = TextAlign.Center)
+            }
         }
     }
 }

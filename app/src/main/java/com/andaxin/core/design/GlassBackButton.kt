@@ -32,9 +32,9 @@ fun GlassBackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
     GlasmioIconButton(
         onClick = onBack,
         modifier = modifier.semantics { contentDescription = "返回" },
-        size = 44.dp,
+        size = 48.dp,
     ) {
-        // 手绘一个 chevron，不拿字号写「‹」：那个字形的墨迹又小又偏上，44dp 圆钮里
+        // 手绘一个 chevron，不拿字号写「‹」：那个字形的墨迹又小又偏上，48dp 圆钮里
         // 既不居中又太细（11-02 他指的就是这条）。Canvas 的框就是它自己，天生居中。
         Canvas(Modifier.size(width = 14.dp, height = 23.dp)) {
             val stroke = 2.7.dp.toPx()
@@ -52,5 +52,5 @@ fun GlassBackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
-/** 悬浮返回钮让出来的头部空间：钮高 44 + 起始留白 8 + 一点呼吸 8。 */
+/** 悬浮返回钮让出来的头部空间：钮高 48 + 起始留白 8 + 一点呼吸 4。 */
 val GlassBackInset: Dp = 60.dp

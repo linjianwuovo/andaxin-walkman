@@ -2,10 +2,13 @@ package com.andaxin.feature.home
 
 import android.net.Uri
 import androidx.compose.foundation.Image
+import com.andaxin.core.design.glassEdge
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +74,8 @@ import com.andaxin.shell.RowLine
 import com.andaxin.shell.SampleTag
 import com.andaxin.shell.Refreshable
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.ServiceGrid
+import com.andaxin.shell.ServiceTile
 import com.andaxin.shell.ShelfTail
 import com.andaxin.shell.registerShelfNavigationViewport
 import com.andaxin.shell.enterFade
@@ -94,6 +100,7 @@ import com.andaxin.state.HomeModel
  * ④ 底部那几段取证说明全部拿掉了 —— 界面只留一句状态，那些话在 docs/接入清单.md。
  */
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
     val graph = LocalAppGraph.current
@@ -203,6 +210,7 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             busy = false
         }
     }
+    val largeText = LocalDensity.current.fontScale > 1.3f
     Refreshable(reload, modifier.fillMaxSize()) {
         val scroll = rememberScrollState()
         // 把这一屏的滚动范围报给底栏，收起/展开才有判据（见 ShelfPageViewport.kt）。
@@ -340,7 +348,12 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
 
             Spacer(Modifier.height(Gap.md))
             Sheet(modifier = Modifier.enterFade(session.generation)) {
-                Row(Modifier.fillMaxWidth()) {
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    maxItemsInEachRow = if (largeText) 1 else 3,
+                    horizontalArrangement = Arrangement.spacedBy(Gap.md),
+                    verticalArrangement = Arrangement.spacedBy(Gap.md),
+                ) {
                     MetricCell("今天有课", d?.todayLessons?.let { "$it" } ?: "—", "节", modifier = Modifier.weight(1f))
                     MetricCell("未读消息", d?.let { "${it.unreadMessages}" } ?: "—", "条", modifier = Modifier.weight(1f))
                     /*
@@ -362,7 +375,12 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 Spacer(Modifier.height(Gap.md))
                 Hairline()
                 Spacer(Modifier.height(Gap.md))
-                Row(Modifier.fillMaxWidth()) {
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    maxItemsInEachRow = if (largeText) 1 else 2,
+                    horizontalArrangement = Arrangement.spacedBy(Gap.md),
+                    verticalArrangement = Arrangement.spacedBy(Gap.md),
+                ) {
                     // 两格各占一半。以前后面还挂了一个 `Spacer(weight(1f))`，
                     // 为的是跟上面那行三格对齐 —— 代价是这两格各只有三分之一宽，
                     // "51.34 公里" 放不下，数字被掐成 "51 …"。那个省略号不是"没数"，
@@ -410,17 +428,27 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                 }
             }
 
-            // 四枚快捷格只负责跳，不在这儿摆数据：数据在各自那一屏里。
             Spacer(Modifier.height(Rhythm.sectionGap))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Gap.sm),
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-            ) {
-                listOf("运动" to com.andaxin.shell.Route.SPORT, "查寝" to com.andaxin.shell.Route.DORM,
-                    "校园卡" to com.andaxin.shell.Route.CARD, "报修" to com.andaxin.shell.Route.REPAIR,
-                    "AI 课堂" to com.andaxin.shell.Route.AICLASS, "待办" to com.andaxin.shell.Route.AFFAIR,
-                    "第二课堂" to com.andaxin.shell.Route.DEKT)
-                    .forEach { (name, at) -> Chip(name, picked = false) { open(at) } }
+            SectionBlock("常用入口")
+            val shortcuts = listOf(
+                HomeShortcutItem("运动", "开始与记录", com.andaxin.shell.Route.SPORT, R.drawable.ic_entry_sport, R.drawable.ic_entry_sport_accent),
+                HomeShortcutItem("查寝签到", "记录与详情", com.andaxin.shell.Route.DORM, R.drawable.ic_entry_dorm, R.drawable.ic_entry_dorm_accent),
+                HomeShortcutItem("校园卡", "余额与流水", com.andaxin.shell.Route.CARD, R.drawable.ic_entry_card, R.drawable.ic_entry_card_accent),
+                HomeShortcutItem("报修", "单据与新建", com.andaxin.shell.Route.REPAIR, R.drawable.ic_entry_repair, R.drawable.ic_entry_repair_accent),
+                HomeShortcutItem("AI 课堂", "课件与签到", com.andaxin.shell.Route.AICLASS, R.drawable.ic_entry_aiclass, R.drawable.ic_entry_aiclass_accent),
+                HomeShortcutItem("待办事务", "申请与已办", com.andaxin.shell.Route.AFFAIR, R.drawable.ic_entry_todo, R.drawable.ic_entry_todo_accent),
+                HomeShortcutItem("第二课堂", "课程与学分", com.andaxin.shell.Route.DEKT, R.drawable.ic_entry_credit, R.drawable.ic_entry_credit_accent),
+            )
+            ServiceGrid(shortcuts) { item, tileModifier, horizontal ->
+                ServiceTile(
+                    title = item.title,
+                    subtitle = item.subtitle,
+                    icon = item.icon,
+                    accentIcon = item.accentIcon,
+                    horizontal = horizontal,
+                    modifier = tileModifier,
+                    onClick = { open(item.route) },
+                )
             }
 
             /*
@@ -430,7 +458,12 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
              */
             SectionBlock("待办事务")
             Sheet(modifier = Modifier.enterFade(if (todoCounts == null) 0 else 1)) {
-                Row(Modifier.fillMaxWidth()) {
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    maxItemsInEachRow = if (largeText) 2 else 4,
+                    horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                    verticalArrangement = Arrangement.spacedBy(Gap.md),
+                ) {
                     todoTabs.forEachIndexed { i, name ->
                         val v = todoCounts?.getOrNull(i) ?: "—"
                         MetricCell(
@@ -442,7 +475,6 @@ fun HomeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                                 .weight(1f)
                                 .pressClick(shrink = false) { open(com.andaxin.shell.affairTab(i)) },
                         )
-                        if (i != todoTabs.lastIndex) Spacer(Modifier.width(Gap.sm))
                     }
                 }
             }
@@ -492,48 +524,41 @@ private fun NextClassCard(slot: TimetableSlot, nowMinute: Int, dark: Boolean, mo
     } else {
         Brush.linearGradient(listOf(Color(0xFF2F6BFF), Color(0xFF1E44C9)))
     }
-    Row(
+    Column(
         modifier
             .fillMaxWidth()
             .clip(shape)
             .background(bg, shape)
-            .padding(horizontal = Gap.lg, vertical = Gap.lg),
-        verticalAlignment = Alignment.CenterVertically,
+            .glassEdge(shape)
+            .padding(Gap.lg),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = if (inClass) "正在上课" else "下一节",
-                fontSize = Type.micro,
-                color = Palette.Cream.copy(alpha = 0.72f),
-            )
+        Text(
+            text = if (inClass) "正在上课" else "下一节",
+            fontSize = Type.micro,
+            color = Palette.Cream.copy(alpha = 0.82f),
+        )
+        Spacer(Modifier.height(Gap.xs))
+        Text(
+            text = slot.course,
+            fontSize = (Type.title.value + 2).sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            lineHeight = Type.bodyLine,
+        )
+        if (slot.room.isNotBlank()) {
             Spacer(Modifier.height(Gap.xs))
-            Text(
-                text = slot.course,
-                fontSize = (Type.title.value + 2).sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-                maxLines = 2,
-                lineHeight = Type.bodyLine,
-            )
-            if (slot.room.isNotBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = shortRoom(slot.room),
-                    fontSize = Type.meta,
-                    color = Palette.Cream.copy(alpha = 0.82f),
-                    maxLines = 1,
-                )
-            }
+            Text(shortRoom(slot.room), fontSize = Type.meta, lineHeight = Type.metaLine, color = Palette.Cream.copy(alpha = 0.82f))
         }
         if (pill.isNotBlank()) {
-            Spacer(Modifier.width(Gap.md))
+            Spacer(Modifier.height(Gap.md))
             Box(
                 Modifier
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                    .clip(Radius.field)
                     .background(Color.White.copy(alpha = if (dark) 0.14f else 0.18f))
+                    .glassEdge(Radius.field)
                     .padding(horizontal = Gap.md, vertical = Gap.sm),
             ) {
-                Text(pill, fontSize = Type.meta, color = Color.White, fontWeight = FontWeight.Medium)
+                Text(pill, fontSize = Type.meta, lineHeight = Type.metaLine, color = Color.White, fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -565,19 +590,19 @@ private fun HeroWallpaper(style: HeroStyle, hadClassToday: Boolean, known: Boole
     Box(
         modifier
             .fillMaxWidth()
-            .height(168.dp)
+            .heightIn(min = 168.dp)
             .clip(shape),
     ) {
         Image(
             painter = painterResource(picture),
             contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.matchParentSize(),
             contentScale = ContentScale.Crop,
         )
         // 下半截压暗：白字压在任何一张图上都要能读
         Box(
             Modifier
-                .fillMaxSize()
+                .matchParentSize()
                 .background(
                     Brush.verticalGradient(
                         0.35f to Color.Transparent,
@@ -631,6 +656,14 @@ private fun SectionBlock(text: String) {
         modifier = Modifier.padding(top = Rhythm.sectionGap, bottom = Gap.xs, start = Gap.xxs),
     )
 }
+
+private data class HomeShortcutItem(
+    val title: String,
+    val subtitle: String,
+    val route: String,
+    val icon: Int,
+    val accentIcon: Int,
+)
 
 /** 只在需要时把 host 拿出来用（服务清单的副标题已经不显示了，留着给详情用）。 */
 internal fun hostOf(url: String): String = runCatching { Uri.parse(url).host }.getOrNull().orEmpty()

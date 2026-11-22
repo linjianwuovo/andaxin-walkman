@@ -361,7 +361,7 @@ internal fun SourceFeedSectionContent(
             color = MaterialTheme.colorScheme.onBackground,
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         if (section.layout == SourceFeedLayout.HERO && section.cards.isNotEmpty()) {

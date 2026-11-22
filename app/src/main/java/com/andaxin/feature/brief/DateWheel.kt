@@ -1,12 +1,16 @@
 package com.andaxin.feature.brief
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,9 +29,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.andaxin.core.design.safeGlassSurface
+import com.andaxin.core.design.glassEdge
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.LocalSamplingBackdrop
@@ -42,9 +49,8 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.util.Locale
 
-/** 轮子一行的高度、以及一屏露几行（5 行，正中那行是选中的）。 */
-private val WheelRow = 36.dp
-private val WheelHeight = 180.dp
+@Composable
+private fun wheelRowHeight() = 48.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
 
 /**
  * 日期选择器：iOS 那种三只轮子（年 / 月 / 日），不是 Android 那张月历。
@@ -65,6 +71,7 @@ internal fun DateWheelDialog(
 ) {
     val ink = LocalInk.current
     val accent = MaterialTheme.colorScheme.primary
+    val wheelRow = wheelRowHeight()
     // 这个弹窗也在独立窗口里（跟 PickDialog 同一处境）：业务内容在采样层里，
     // 而 Dialog 开在另一个 window、采的是宿主已经录好的那一页贴图 —— 不构成递归，
     // 所以要把被顶掉的那层拿回来，它才采得到背后那一页。
@@ -73,7 +80,7 @@ internal fun DateWheelDialog(
     )
     val glass = LocalGlassColors.current
     val sheetShape = RoundedCornerShape(24.dp)
-    val shellTint = glass.elevatedBackground.copy(alpha = 0.62f)
+    val shellTint = glass.elevatedBackground.copy(alpha = if (ink.dark) 0.86f else 0.90f)
     val blurPx = with(LocalDensity.current) { 24.dp.toPx() }
 
     val today = remember { LocalDate.now() }
@@ -101,6 +108,8 @@ internal fun DateWheelDialog(
                     onDrawSurface = { drawRect(shellTint) },
                 )
                 .clip(sheetShape)
+                .glassEdge(sheetShape)
+                .verticalScroll(rememberScrollState())
                 .padding(top = Gap.md, bottom = Gap.md),
         ) {
             Row(
@@ -112,26 +121,30 @@ internal fun DateWheelDialog(
                     fontSize = Type.body,
                     color = ink.muted,
                     modifier = Modifier
+                        .heightIn(min = 48.dp).widthIn(min = 48.dp)
                         .pressClick(shrink = false) { onDismiss() }
+                        .wrapContentHeight(Alignment.CenterVertically)
                         .padding(vertical = Gap.sm),
                 )
-                Spacer(Modifier.weight(1f))
                 Text(
                     text = title,
+                    modifier = Modifier.weight(1f).padding(horizontal = Gap.xs),
+                    textAlign = TextAlign.Center,
                     fontSize = Type.title,
                     fontWeight = FontWeight.SemiBold,
                     color = ink.strong,
                 )
-                Spacer(Modifier.weight(1f))
                 Text(
                     text = "完成",
                     fontSize = Type.body,
                     fontWeight = FontWeight.Medium,
                     color = accent,
                     modifier = Modifier
+                        .heightIn(min = 48.dp).widthIn(min = 48.dp)
                         .pressClick(shrink = false) {
                             onPick(String.format(Locale.US, "%04d-%02d-%02d", year, month, safeDay))
                         }
+                        .wrapContentHeight(Alignment.CenterVertically)
                         .padding(vertical = Gap.sm),
                 )
             }
@@ -143,9 +156,8 @@ internal fun DateWheelDialog(
                         .align(Alignment.Center)
                         .fillMaxWidth()
                         .padding(horizontal = Gap.md)
-                        .height(WheelRow)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(ink.hairline),
+                        .height(wheelRow)
+                        .safeGlassSurface(RoundedCornerShape(12.dp), selected = true),
                 )
                 Row(Modifier.fillMaxWidth().padding(horizontal = Gap.sm)) {
                     Wheel(
@@ -186,7 +198,9 @@ private fun Wheel(
     modifier: Modifier = Modifier,
 ) {
     val ink = LocalInk.current
-    val rowPx = with(LocalDensity.current) { WheelRow.toPx() }
+    val wheelRow = wheelRowHeight()
+    val wheelHeight = wheelRow * 5
+    val rowPx = with(LocalDensity.current) { wheelRow.toPx() }
     val state = rememberLazyListState(initialFirstVisibleItemIndex = selected)
     val centered by remember(state) {
         derivedStateOf {
@@ -203,11 +217,11 @@ private fun Wheel(
     }
     LazyColumn(
         state = state,
-        modifier = modifier.height(WheelHeight),
-        contentPadding = PaddingValues(vertical = (WheelHeight - WheelRow) / 2),
+        modifier = modifier.height(wheelHeight),
+        contentPadding = PaddingValues(vertical = (wheelHeight - wheelRow) / 2),
     ) {
         items(items.size) { i ->
-            Box(Modifier.fillMaxWidth().height(WheelRow), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().height(wheelRow), contentAlignment = Alignment.Center) {
                 Text(
                     text = items[i],
                     fontSize = Type.title,

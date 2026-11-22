@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -53,6 +52,8 @@ import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.ServiceGrid
+import com.andaxin.shell.ServiceTile
 import com.andaxin.shell.SectionTitle
 import com.andaxin.shell.ShelfTail
 import com.andaxin.shell.registerShelfNavigationViewport
@@ -209,87 +210,33 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             })
         }
 
-        SectionTitle("功能")
         EntryGrid(ENTRIES, open)
 
         ShelfTail()
     }
 }
 
-/**
- * 三到六列文字格，列数按可用宽度算。
- *
- * 为什么不用图标：仓里只画了底栏那五枚 vector，剩下这些入口没有图标，
- * 硬凑一堆 emoji 或通用图形反而更花；先把"一屏看全"这件事做到。
- */
 @Composable
 private fun EntryGrid(entries: List<Entry>, open: (String) -> Unit) {
-    val ink = LocalInk.current
-    // 强调色要先取出来：graphicsLayer 那一层不是组合作用域，在里面读 MaterialTheme 会编不过
-    val accent = MaterialTheme.colorScheme.primary
-    // 列数按可用宽度算（最少 3 列、最多 6 列，一格约 180dp）：原来写死三列，
-    // 平板上一格能摊到 250dp，右边和中间留出一大片白。
-    BoxWithConstraints {
-        val columns = (maxWidth / 180.dp).toInt().coerceIn(3, 6)
-        Sheet(modifier = Modifier.enterFade()) {
-            entries.chunked(columns).forEachIndexed { rowIdx, row ->
-                Row(Modifier.fillMaxWidth()) {
-                    row.forEach { e ->
-                        Column(
-                            Modifier
-                                .weight(1f)
-                                .pressClick { e.route?.let(open) }
-                                .padding(vertical = Gap.md),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            if (e.icon != 0) {
-                                Box(Modifier.size(22.dp)) {
-                                    androidx.compose.foundation.Image(
-                                        painter = androidx.compose.ui.res.painterResource(e.icon),
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .matchParentSize()
-                                            .graphicsLayer {
-                                                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(ink.strong)
-                                            },
-                                    )
-                                    if (e.iconAccent != 0) {
-                                        androidx.compose.foundation.Image(
-                                            painter = androidx.compose.ui.res.painterResource(e.iconAccent),
-                                            contentDescription = null,
-                                            modifier = Modifier
-                                                .matchParentSize()
-                                                .graphicsLayer {
-                                                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(accent)
-                                                },
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.height(Gap.xs))
-                            }
-                            Text(
-                                text = e.title,
-                                fontSize = Type.body,
-                                fontWeight = FontWeight.Medium,
-                                color = ink.strong,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Spacer(Modifier.height(1.dp))
-                            Text(
-                                text = e.note,
-                                fontSize = Type.micro,
-                                color = ink.ghost,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-                if (rowIdx != entries.chunked(columns).lastIndex) Hairline()
+    val groups = listOf(
+        "常用服务" to setOf("affair", "dorm", "card", "repair", "sport", "sport/records", "music"),
+        "学习成长" to setOf("aiclass", "opencourse", "group", "exam", "credit", "labor", "holiday"),
+        "设置与信息" to setOf("more", "theme", "about"),
+    )
+    groups.forEach { (label, routes) ->
+        val grouped = entries.filter { it.route in routes }
+        if (grouped.isNotEmpty()) {
+            SectionTitle(label)
+            ServiceGrid(grouped) { entry, tileModifier, horizontal ->
+                ServiceTile(
+                    title = entry.title,
+                    subtitle = entry.note,
+                    icon = entry.icon,
+                    accentIcon = entry.iconAccent,
+                    horizontal = horizontal,
+                    modifier = tileModifier,
+                    onClick = { entry.route?.let(open) },
+                )
             }
         }
     }
