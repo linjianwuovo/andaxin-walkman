@@ -50,8 +50,10 @@ import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Type
 import com.andaxin.shell.Sheet
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.readValue
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.AVFoundation.*
+import platform.CoreGraphics.CGRectZero
 import platform.UIKit.UIView
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
@@ -60,7 +62,7 @@ import platform.darwin.dispatch_queue_create
 import kotlin.coroutines.resume
 
 @OptIn(ExperimentalForeignApi::class)
-private class CameraPreviewView(private val preview: AVCaptureVideoPreviewLayer) : UIView() {
+private class CameraPreviewView(private val preview: AVCaptureVideoPreviewLayer) : UIView(frame = CGRectZero.readValue()) {
     init {
         clipsToBounds = true
         layer.addSublayer(preview)
