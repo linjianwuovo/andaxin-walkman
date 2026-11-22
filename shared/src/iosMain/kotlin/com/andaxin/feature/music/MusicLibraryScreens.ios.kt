@@ -124,7 +124,7 @@ internal fun DownloadedMusicTab(controller: MusicController, onDetail: (MusicDet
         IosMusicDownloads.message?.let { message -> item { Text(message, style = MaterialTheme.typography.bodySmall) } }
         items(active.keys.toList(), key = { "active-$it" }) { id ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("正在下载 · ${((active[id] ?: 0f) * 100).toInt()}%", modifier = Modifier.weight(1f))
+                Text("${IosMusicDownloads.activeSongs[id]?.name ?: "正在下载"} · ${((active[id] ?: 0f) * 100).toInt()}%", modifier = Modifier.weight(1f))
                 TextButton(onClick = { IosMusicDownloads.cancel(id) }) { Text("取消") }
             }
         }
@@ -141,6 +141,7 @@ internal fun LocalMusicLibraryTab(controller: MusicController, onDetail: (MusicD
     var section by remember { mutableStateOf("最近播放") }
     var selectedPlaylist by remember { mutableStateOf<String?>(null) }
     var draft by remember { mutableStateOf("") }
+    var deleteTarget by remember { mutableStateOf<String?>(null) }
     var resolved by remember { mutableStateOf<List<MusicSong>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
@@ -150,6 +151,7 @@ internal fun LocalMusicLibraryTab(controller: MusicController, onDetail: (MusicD
         if (section != "我喜欢的" && selectedPlaylist == null) return@LaunchedEffect
         loading = true
         error = null
+        resolved = emptyList()
         try { resolved = controller.loadLibrarySongs(ids) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Throwable) { error = failure.message ?: "歌曲暂时无法加载" }
@@ -175,6 +177,7 @@ internal fun LocalMusicLibraryTab(controller: MusicController, onDetail: (MusicD
                         Text("${controller.customPlaylists[name].orEmpty().size} 首", style = MaterialTheme.typography.bodySmall)
                     }
                 }
+                TextButton(onClick = { deleteTarget = name }) { Text("删除歌单") }
             }
         } else {
             if (selectedPlaylist != null) item {
@@ -194,6 +197,12 @@ internal fun LocalMusicLibraryTab(controller: MusicController, onDetail: (MusicD
             error?.let { reason -> item { MusicLoadError(reason) { retry++ } } }
             if (!loading && error == null && list.isEmpty()) item { EmptyHint("这里还没有歌曲") }
         }
+    }
+    deleteTarget?.let { name ->
+        AlertDialog(onDismissRequest = { deleteTarget = null }, title = { Text("删除歌单？") },
+            text = { Text("删除“$name”不会删除歌曲文件。") },
+            confirmButton = { TextButton(onClick = { controller.removePlaylist(name); deleteTarget = null }) { Text("删除") } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } })
     }
 }
 

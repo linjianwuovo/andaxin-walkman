@@ -595,18 +595,19 @@ private fun MusicDetailSheet(initialTarget: MusicDetail, controller: MusicContro
     var loading by remember(target) { mutableStateOf(true) }
     var failed by remember(target) { mutableStateOf(false) }
     LaunchedEffect(target) {
+        val requested = target
         loading = true
         failed = false
         try {
             val text = controller.fetchText(
-                when (target) {
-                    is MusicDetail.Playlist -> neteasePlaylistDetailCall(target.id, controller.musicU)
-                    is MusicDetail.TopList -> neteaseTopListByIdCall(target.id, controller.musicU)
-                    is MusicDetail.Album -> neteaseAlbumCall(target.id, controller.musicU)
-                    is MusicDetail.Artist -> neteaseArtistCall(target.id, controller.musicU)
+                when (requested) {
+                    is MusicDetail.Playlist -> neteasePlaylistDetailCall(requested.id, controller.musicU)
+                    is MusicDetail.TopList -> neteaseTopListByIdCall(requested.id, controller.musicU)
+                    is MusicDetail.Album -> neteaseAlbumCall(requested.id, controller.musicU)
+                    is MusicDetail.Artist -> neteaseArtistCall(requested.id, controller.musicU)
                 },
             )
-            state = when (target) {
+            state = when (requested) {
                 is MusicDetail.Playlist -> {
                     val detail = parsePlaylistDetail(text)
                     DetailUiState(
@@ -636,7 +637,7 @@ private fun MusicDetailSheet(initialTarget: MusicDetail, controller: MusicContro
                     val detail = parseArtistDetail(text)
                     val songs = parseSongArray(text)
                     val albums = runCatching {
-                        parseArtistAlbums(controller.fetchText(neteaseArtistAlbumsCall(target.id, musicU = controller.musicU)))
+                        parseArtistAlbums(controller.fetchText(neteaseArtistAlbumsCall(requested.id, musicU = controller.musicU)))
                     }.getOrDefault(emptyList())
                     DetailUiState(
                         title = detail?.name ?: "歌手详情",
@@ -649,12 +650,14 @@ private fun MusicDetailSheet(initialTarget: MusicDetail, controller: MusicContro
                     )
                 }
             }
-            failed = when (target) {
+            failed = when (requested) {
                 is MusicDetail.Playlist -> parsePlaylistDetail(text) == null
                 is MusicDetail.TopList -> parseSongArray(text).isEmpty()
                 is MusicDetail.Album -> parseAlbumDetail(text) == null
                 is MusicDetail.Artist -> parseArtistDetail(text) == null
             }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (_: Throwable) {
             failed = true
         }

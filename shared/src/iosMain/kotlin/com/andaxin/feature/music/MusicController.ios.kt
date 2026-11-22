@@ -295,11 +295,13 @@ class MusicController(
     }
 
     fun addSongToPlaylist(name: String, song: MusicSong) {
+        val target = name.trim()
+        if (target.isEmpty()) return
         rememberSong(song)
-        val ids = (customPlaylists[name].orEmpty() + song.id).distinct()
-        customPlaylists = customPlaylists + (name to ids)
+        val ids = (customPlaylists[target].orEmpty() + song.id).distinct()
+        customPlaylists = customPlaylists + (target to ids)
         MusicStore.saveCustomPlaylists(customPlaylists)
-        message = "已加入本地歌单：$name"
+        message = "已加入本地歌单：$target"
     }
 
     private fun rememberSong(song: MusicSong) {

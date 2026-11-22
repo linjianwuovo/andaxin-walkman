@@ -283,11 +283,12 @@ jobs:
           plutil -p "$APP/Info.plist" 2>/dev/null | grep -iE "UILaunchScreen|UISupportedInterfaceOrientations|UIRequiresFullScreen|CFBundleIdentifier|MinimumOSVersion|NSExceptionDomains" || echo "读不到 $APP/Info.plist"
 
       - name: Capture iOS parity pages and large text
+        id: parity_capture
         timeout-minutes: 8
         run: python3 .github/scripts/ios_parity_smoke.py --udid "$SIM_UDID" --artifacts ios-parity-visual
 
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ !cancelled() && (steps.parity_capture.outcome == 'success' || steps.parity_capture.outcome == 'failure') }}
         with:
           name: ios-parity-visual
           path: ios-parity-visual/

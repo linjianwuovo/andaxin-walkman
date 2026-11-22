@@ -13,6 +13,12 @@ object IosMusicDownloads {
     var songs by mutableStateOf(MusicStore.loadDownloadedSongs())
         private set
     val progress = mutableStateMapOf<Long, Float>()
+    val activeSongs = mutableStateMapOf<Long, MusicSong>()
+    private val cancelledTasks = mutableSetOf<String>()
+    private val completedDuringRestore = mutableSetOf<String>()
+    private val pending = mutableMapOf<Long, Pair<MusicSong, String>>()
+    private var restoreStarted = false
+    private var restoring = false
     var message by mutableStateOf<String?>(null)
         private set
     private val tasks = mutableMapOf<Long, NSURLSessionDownloadTask>()
@@ -28,15 +34,28 @@ object IosMusicDownloads {
     }
 
     fun restore() {
+        if (restoreStarted) return
+        restoreStarted = true
+        restoring = true
         fileManager.createDirectoryAtPath(directory, withIntermediateDirectories = true, attributes = null, error = null)
         songs = songs.filter { localUrl(it.id) != null }
         MusicStore.saveDownloadedSongs(songs)
         session.getAllTasksWithCompletionHandler { restored ->
-            restored.forEach { task ->
-                val download = task as? NSURLSessionDownloadTask ?: return@forEach
-                val song = decodeQueue(download.taskDescription.orEmpty()).firstOrNull() ?: return@forEach
-                tasks[song.id] = download
-                progress[song.id] = if (download.countOfBytesExpectedToReceive > 0L) download.countOfBytesReceived.toFloat() / download.countOfBytesExpectedToReceive else 0f
+            NSOperationQueue.mainQueue.addOperationWithBlock {
+                restored.orEmpty().forEach { task ->
+                    val download = task as? NSURLSessionDownloadTask ?: return@forEach
+                    if (download.taskIdentifier.toString() in completedDuringRestore) return@forEach
+                    val song = decodeQueue(download.taskDescription.orEmpty()).firstOrNull() ?: return@forEach
+                    if (song.id in tasks) return@forEach
+                    tasks[song.id] = download
+                    activeSongs[song.id] = song
+                    update(download, download.countOfBytesReceived, download.countOfBytesExpectedToReceive)
+                }
+                restoring = false
+                completedDuringRestore.clear()
+                val queued = pending.values.toList()
+                pending.clear()
+                queued.forEach { (song, url) -> enqueue(song, url) }
             }
         }
     }
@@ -53,6 +72,10 @@ object IosMusicDownloads {
     }
 
     internal fun enqueue(song: MusicSong, url: String) {
+        if (restoring) {
+            pending[song.id] = song to url
+            return
+        }
         if (song.id in tasks || localUrl(song.id) != null) return
         val source = NSURL.URLWithString(url)
         if (source == null || source.scheme !in listOf("http", "https")) {
@@ -63,19 +86,25 @@ object IosMusicDownloads {
         val task = session.downloadTaskWithURL(source)
         task.taskDescription = encodeQueue(listOf(song))
         tasks[song.id] = task
+        activeSongs[song.id] = song
         progress[song.id] = 0f
         message = null
         task.resume()
     }
 
     fun cancel(songId: Long) {
-        tasks.remove(songId)?.cancel()
+        pending.remove(songId)
+        tasks.remove(songId)?.let { task ->
+            cancelledTasks.add(task.taskIdentifier.toString())
+            task.cancel()
+        }
         progress.remove(songId)
+        activeSongs.remove(songId)
     }
 
     fun remove(songId: Long) {
         val fileName = MusicStore.loadDownloadPaths()[songId]
-        if (fileName != null && !fileManager.removeItemAtPath("$directory/$fileName", error = null)) {
+        if (fileName != null && fileManager.fileExistsAtPath("$directory/$fileName") && !fileManager.removeItemAtPath("$directory/$fileName", error = null)) {
             message = "文件暂时无法删除"
             return
         }
@@ -93,10 +122,12 @@ object IosMusicDownloads {
 
     internal fun update(task: NSURLSessionDownloadTask, written: Long, expected: Long) {
         val song = decodeQueue(task.taskDescription.orEmpty()).firstOrNull() ?: return
+        if (tasks[song.id]?.taskIdentifier != task.taskIdentifier) return
         progress[song.id] = if (expected > 0L) (written.toFloat() / expected).coerceIn(0f, 1f) else 0f
     }
 
     internal fun finished(task: NSURLSessionDownloadTask, location: NSURL) {
+        if (task.taskIdentifier.toString() in cancelledTasks) return
         val song = decodeQueue(task.taskDescription.orEmpty()).firstOrNull() ?: return
         val response = task.response as? NSHTTPURLResponse
         val mime = response?.MIMEType.orEmpty().lowercase()
@@ -122,9 +153,15 @@ object IosMusicDownloads {
 
     internal fun completed(task: NSURLSessionTask, error: NSError?) {
         val song = decodeQueue(task.taskDescription.orEmpty()).firstOrNull() ?: return
+        val identifier = task.taskIdentifier.toString()
+        if (restoring) completedDuringRestore.add(identifier)
+        val cancelled = cancelledTasks.remove(identifier)
+        val current = tasks[song.id]
+        if (current != null && current.taskIdentifier != task.taskIdentifier) return
         tasks.remove(song.id)
         progress.remove(song.id)
-        if (error != null && error.code != -999L) message = "${song.name} 下载失败：${error.localizedDescription}"
+        activeSongs.remove(song.id)
+        if (!cancelled && error != null && error.code != -999L) message = "${song.name} 下载失败：${error.localizedDescription}"
     }
 }
 
