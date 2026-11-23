@@ -14,6 +14,7 @@ import com.ljyh.mei.ui.navigation.meiloxHeaderAction
 import com.ljyh.mei.ui.component.utils.rememberAlertContent
 import io.github.neoruaa.glasmio.core.IosTypography
 import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.icons.SfIcon
 import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
@@ -128,8 +129,7 @@ internal fun LibraryDownloadsPage(
     var sort by rememberSaveable { mutableStateOf(DownloadLibrarySort.Recent) }
     val sortAnchor = rememberGlasmioMenuAnchorState()
     var sortOpen by remember { mutableStateOf(false) }
-    var selectedKey by remember { mutableStateOf<String?>(null) }
-    var menuAnchor by remember { mutableStateOf<Rect?>(null) }
+    var menuSelection by remember { mutableStateOf<DownloadMenuSelection?>(null) }
     var info by remember { mutableStateOf<Song?>(null) }
     var deleteEntry by remember { mutableStateOf<DownloadLibraryEntry?>(null) }
     var permissionDenied by rememberSaveable { mutableStateOf(false) }
@@ -273,9 +273,21 @@ internal fun LibraryDownloadsPage(
             androidx.compose.material3.HorizontalDivider(modifier = Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp), thickness = 0.5.dp, color = songListDividerColor())
         }
         items(entries, key = { it.key }, contentType = { "offline-song" }) { entry ->
+            val rowAnchor = rememberGlasmioMenuAnchorState()
             Box(Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp)) {
-                DownloadLibraryRow(entry, onPlay = { play(entry) }, onMore = { selectedKey = entry.key; menuAnchor = it },
-                    showDivider = entry.key != entries.lastOrNull()?.key)
+                DownloadLibraryRow(
+                    entry,
+                    onPlay = { play(entry) },
+                    onMore = { snapshot ->
+                        val live = rowAnchor.liveBounds?.takeUnless { it.isEmpty }
+                        val bounds = live ?: snapshot.takeUnless { it.isEmpty }
+                        if (bounds != null) {
+                            menuSelection = DownloadMenuSelection(entry.key, bounds, rowAnchor.takeIf { live != null })
+                        }
+                    },
+                    showDivider = entry.key != entries.lastOrNull()?.key,
+                    menuAnchorState = rowAnchor,
+                )
             }
         }
     }
@@ -291,7 +303,10 @@ internal fun LibraryDownloadsPage(
             GlasmioCascadingMenuItem(stringResource(value.labelRes()), systemName = if (value == sort) "checkmark" else null, onClick = { sort = value })
         },
     )
-    allEntries.firstOrNull { it.key == selectedKey }?.let { entry ->
+    val selection = menuSelection
+    val selectedEntry = selection?.let { picked -> allEntries.firstOrNull { it.key == picked.key } }
+    if (selection != null && selectedEntry != null) {
+        val entry = selectedEntry
         val song = entry.song
         val task = entry.task
         val metadata = song?.toMediaMetadata()
@@ -311,10 +326,11 @@ internal fun LibraryDownloadsPage(
             }
         }
         DownloadTrackMenu(
-            song = song, task = task, anchorBounds = menuAnchor,
+            song = song, task = task, anchorBounds = selection.bounds,
             canPlay = entry.canPlay && player != null,
             matchTitle = stringResource(R.string.local_library_match),
-            onDismiss = { selectedKey = null },
+            menuAnchorState = selection.anchor,
+            onDismiss = { menuSelection = null },
             onPlay = { play(entry) },
             onPlayNext = { metadata?.toMediaItem()?.let { player?.playNext(it) } },
             onAddToQueue = { metadata?.toMediaItem()?.let { player?.addToQueue(it) } },
@@ -323,7 +339,7 @@ internal fun LibraryDownloadsPage(
             onInfo = song?.let { { info = it } },
             onShare = metadata?.let { { share = it } },
             onAddToPlaylist = metadata?.takeIf { playerViewModel.isActionAvailable(MoreAction.ADD_TO_PLAYLIST, it) }?.let { track -> {
-                selectedKey = null
+                menuSelection = null
                 Screen.SourcePlaylistPicker.navigate(navController) { addPath(Uri.encode(TrackRefCodec.encode(track.trackRef))) }
             } },
             onPause = task?.let { { DownloadManager.pauseSong(context, it.songId) } },
@@ -370,8 +386,21 @@ internal fun LibraryDownloadsPage(
     }
 }
 
+private data class DownloadMenuSelection(
+    val key: String,
+    val bounds: Rect,
+    val anchor: GlasmioMenuAnchorState?,
+)
+
 @Composable
-internal fun DownloadLibraryRow(entry: DownloadLibraryEntry, onPlay: () -> Unit, onMore: (Rect) -> Unit, landscape: Boolean = rememberDeviceInfo().isLandscape, showDivider: Boolean = true) {
+internal fun DownloadLibraryRow(
+    entry: DownloadLibraryEntry,
+    onPlay: () -> Unit,
+    onMore: (Rect) -> Unit,
+    landscape: Boolean = rememberDeviceInfo().isLandscape,
+    showDivider: Boolean = true,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
+) {
     val colors = LocalGlassColors.current
     val task = entry.task
     val detail = when (task?.status) {
@@ -393,6 +422,7 @@ internal fun DownloadLibraryRow(entry: DownloadLibraryEntry, onPlay: () -> Unit,
             suffixColor = if (task?.status == DownloadStatus.FAILED) colors.destructive else colors.secondaryContent,
             onClick = if (entry.canPlay) onPlay else null,
             onMore = onMore,
+            menuAnchorState = menuAnchorState,
             showDivider = showDivider,
             footer = {
                 if (task != null && task.status != DownloadStatus.COMPLETED && task.status != DownloadStatus.FAILED) {

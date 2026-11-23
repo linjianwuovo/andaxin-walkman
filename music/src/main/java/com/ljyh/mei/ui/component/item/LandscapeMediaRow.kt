@@ -45,6 +45,8 @@ import com.ljyh.mei.ui.component.playlist.FavoriteTrackStar
 import com.ljyh.mei.ui.component.playlist.PlayingImageView
 import com.ljyh.mei.ui.component.utils.rememberDeviceInfo
 import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
+import io.github.neoruaa.glasmio.glass.glasmioMenuAnchor
 import io.github.neoruaa.glasmio.icons.SfIcon
 
 /** Shared landscape catalog columns; the album column follows the available viewport. */
@@ -66,9 +68,8 @@ internal fun LandscapeMediaRow(
     footer: (@Composable () -> Unit)? = null,
     landscape: Boolean = rememberDeviceInfo().isLandscape,
     isCurrentTrack: Boolean = false,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
-    val colors = LocalGlassColors.current
-    var anchor by remember(title, image) { mutableStateOf(Rect.Zero) }
     if (!landscape) {
         PortraitMediaRow(
             image = image,
@@ -83,12 +84,16 @@ internal fun LandscapeMediaRow(
             favorite = favorite,
             showDivider = showDivider,
             onMore = onMore,
+            menuAnchorState = menuAnchorState,
             navigationArrow = navigationArrow,
             footer = footer,
             isCurrentTrack = isCurrentTrack,
         )
         return
     }
+    val colors = LocalGlassColors.current
+    var anchor by remember(title, image) { mutableStateOf(Rect.Zero) }
+    val menuAnchorModifier = menuAnchorState?.let { Modifier.glasmioMenuAnchor(it) } ?: Modifier
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val showAlbum = album != null && maxWidth >= 1000.dp
         Column {
@@ -123,6 +128,7 @@ internal fun LandscapeMediaRow(
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (onMore != null) Box(
                         Modifier.size(44.dp).offset(x = (-8).dp)
+                            .then(menuAnchorModifier)
                             .onGloballyPositioned { anchor = it.boundsInWindow() }
                             .clip(ContinuousRoundedRectangle(22.dp))
                             .clickable(interactionSource = null, indication = null, onClick = { onMore(anchor) }),
@@ -157,8 +163,10 @@ internal fun PortraitMediaRow(
     navigationArrow: Boolean,
     footer: (@Composable () -> Unit)?,
     isCurrentTrack: Boolean = false,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
     val colors = LocalGlassColors.current
+    val menuAnchorModifier = menuAnchorState?.let { Modifier.glasmioMenuAnchor(it) } ?: Modifier
     var anchor by remember(title, image) { mutableStateOf(Rect.Zero) }
     Box(modifier.fillMaxWidth()) {
         Column {
@@ -199,6 +207,7 @@ internal fun PortraitMediaRow(
                     }
                     if (onMore != null) Box(
                         Modifier.size(44.dp).offset(x = 8.dp)
+                            .then(menuAnchorModifier)
                             .onGloballyPositioned { anchor = it.boundsInWindow() }
                             .clip(ContinuousRoundedRectangle(22.dp))
                             .clickable(interactionSource = null, indication = null, onClick = { onMore(anchor) }),

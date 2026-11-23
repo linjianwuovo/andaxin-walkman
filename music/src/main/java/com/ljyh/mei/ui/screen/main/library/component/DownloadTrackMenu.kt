@@ -9,6 +9,7 @@ import com.ljyh.mei.data.model.room.DownloadStatus
 import com.ljyh.mei.data.model.room.DownloadTask
 import com.ljyh.mei.data.model.room.Song
 import com.ljyh.mei.data.model.room.SourceType
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenu
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenuItem
 import com.ljyh.mei.utils.setClipboard
@@ -33,6 +34,7 @@ internal fun DownloadTrackMenu(
     onPause: (() -> Unit)? = null,
     onResume: (() -> Unit)? = null,
     onRetry: (() -> Unit)? = null,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
     if (song == null && task == null) return
     val context = LocalContext.current
@@ -157,6 +159,7 @@ internal fun DownloadTrackMenu(
     }
     GlasmioCascadingMenu(
         anchorBounds = anchorBounds,
+        menuAnchorState = menuAnchorState,
         items = items,
         headerActions = headerActions,
         useAccentIcons = false,
