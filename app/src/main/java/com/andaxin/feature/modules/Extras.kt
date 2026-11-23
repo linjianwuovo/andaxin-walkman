@@ -4,7 +4,11 @@ import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.verticalScroll
@@ -101,18 +105,76 @@ private val MORE_GROUPS = listOf(
 
 @Composable
 fun MoreScreen(open: (String) -> Unit, onBack: () -> Unit) {
+    val scale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     ScaffoldPage(title = "更多功能", onBack = onBack) {
         MORE_GROUPS.forEach { (group, entries) ->
             SectionTitle(group)
-            ServiceGrid(entries) { entry, tileModifier, horizontal ->
-                ServiceTile(
-                    title = entry.title,
-                    icon = entry.icon,
-                    accentIcon = entry.accentIcon,
-                    horizontal = horizontal,
-                    modifier = tileModifier,
-                    onClick = { open(entry.route) },
-                )
+            if (scale <= 1.3f) {
+                MoreCompactGrid(entries, open)
+            } else {
+                ServiceGrid(entries) { entry, tileModifier, horizontal ->
+                    ServiceTile(
+                        title = entry.title,
+                        icon = entry.icon,
+                        accentIcon = entry.accentIcon,
+                        horizontal = horizontal,
+                        modifier = tileModifier,
+                        onClick = { open(entry.route) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoreCompactGrid(entries: List<MoreEntry>, open: (String) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val scale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val gap = 8.dp
+        val minimumCellWidth = 92.dp * scale
+        val columns = ((maxWidth + gap) / (minimumCellWidth + gap)).toInt().coerceIn(1, 3)
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            entries.chunked(columns).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    row.forEach { entry ->
+                        Sheet(
+                            modifier = Modifier.weight(1f)
+                                .pressClick(shrink = false) { open(entry.route) },
+                            contentPadding = 8.dp,
+                        ) {
+                            Column(
+                                Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                            ) {
+                                Box(Modifier.size(24.dp)) {
+                                    Image(
+                                        painter = painterResource(entry.icon),
+                                        contentDescription = null,
+                                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    Image(
+                                        painter = painterResource(entry.accentIcon),
+                                        contentDescription = null,
+                                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                                Text(
+                                    entry.title,
+                                    fontSize = 14.sp,
+                                    lineHeight = 18.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = LocalGlassColors.current.content,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
         }
     }
