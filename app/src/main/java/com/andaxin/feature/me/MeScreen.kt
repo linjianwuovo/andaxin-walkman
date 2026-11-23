@@ -1,15 +1,18 @@
 package com.andaxin.feature.me
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,8 +32,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -52,7 +58,6 @@ import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
-import com.andaxin.shell.ServiceGrid
 import com.andaxin.shell.ServiceTile
 import com.andaxin.shell.SectionTitle
 import com.andaxin.shell.ShelfTail
@@ -227,16 +232,79 @@ private fun EntryGrid(entries: List<Entry>, open: (String) -> Unit) {
         val grouped = entries.filter { it.route in routes }
         if (grouped.isNotEmpty()) {
             SectionTitle(label)
-            ServiceGrid(grouped) { entry, tileModifier, horizontal ->
-                ServiceTile(
-                    title = entry.title,
-                    subtitle = entry.note,
-                    icon = entry.icon,
-                    accentIcon = entry.iconAccent,
-                    horizontal = horizontal,
-                    modifier = tileModifier,
-                    onClick = { entry.route?.let(open) },
-                )
+            MeEntryGrid(grouped, open)
+        }
+    }
+}
+
+@Composable
+private fun MeEntryGrid(entries: List<Entry>, open: (String) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val scale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val columns = if (scale <= 1.3f && maxWidth >= 280.dp * scale) 2 else 1
+        val gap = 10.dp
+        val cellWidth = (maxWidth - gap * (columns - 1).toFloat()) / columns.toFloat()
+        val compact = columns == 2 && cellWidth < 224.dp
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            entries.chunked(columns).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    row.forEach { entry ->
+                        if (compact) {
+                            Sheet(
+                                modifier = Modifier.weight(1f).heightIn(min = 92.dp)
+                                    .pressClick(shrink = false) { entry.route?.let(open) },
+                                contentPadding = 10.dp,
+                            ) {
+                                Box(Modifier.size(26.dp)) {
+                                    Image(
+                                        painter = painterResource(entry.icon),
+                                        contentDescription = null,
+                                        colorFilter = ColorFilter.tint(LocalInk.current.strong),
+                                        modifier = Modifier.matchParentSize(),
+                                    )
+                                    Image(
+                                        painter = painterResource(entry.iconAccent),
+                                        contentDescription = null,
+                                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
+                                        modifier = Modifier.matchParentSize(),
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    entry.title,
+                                    fontSize = 15.sp,
+                                    lineHeight = 19.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = LocalInk.current.strong,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (entry.note.isNotBlank()) {
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        entry.note,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
+                                        color = LocalInk.current.muted,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        } else {
+                            ServiceTile(
+                                title = entry.title,
+                                subtitle = entry.note,
+                                icon = entry.icon,
+                                accentIcon = entry.iconAccent,
+                                horizontal = cellWidth >= 224.dp && scale <= 1.3f,
+                                modifier = Modifier.weight(1f),
+                                onClick = { entry.route?.let(open) },
+                            )
+                        }
+                    }
+                    if (row.size < columns) Spacer(Modifier.weight(1f))
+                }
             }
         }
     }

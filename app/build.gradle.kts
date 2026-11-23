@@ -27,8 +27,8 @@ android {
         // ios 分支外观底座=Glasmio：其 AAR 声明 minSdk 33，manifest 合并实测顶死 26
         minSdk = 33
         targetSdk = 35
-        versionCode = 176
-        versionName = "0.9.37"
+        versionCode = 177
+        versionName = "0.9.38"
 
         // 只出 arm64：装机就是米11 和那台 OPPO，多一套 abi 只是让包胖 30%
         ndk { abiFilters += "arm64-v8a" }
@@ -121,6 +121,8 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+
     // 音乐：MeiloX 1.55.1 的源码整个并进来（库模块），不是另装一个 App
     implementation(project(":music"))
     // 首页那条播放条要直接读 MusicService 的 Player，所以要 media3 的类型在编译期可见

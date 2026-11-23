@@ -333,63 +333,30 @@ class FifSession(
      *   所以下面每一种落点都照原样把话说清楚，不许静默当成功。
      */
     suspend fun qrSign(raw: String): Result<String> {
-        val trimmed = raw.trim()
-        val token = qrToken(trimmed) ?: return Result.failure(IOException("码里没找到 token"))
-        var attempt = qrSignOnce(qrUrl(trimmed, token))
+        val target = FifQrTarget.parse(raw)
+            ?: return Result.failure(IOException("二维码不是有效的 FIF 官方签到码"))
+        // 丢弃二维码提供的主机、路径和其他参数，永远只向内置的官方签到主机发认证请求。
+        val signedUrl = qrUrl(target)
+            ?: return Result.failure(IOException("校内会话不可用，请重新登录后再签到"))
+        var attempt = qrSignOnce(signedUrl)
             ?: return Result.failure(IOException("签到那一发没发出去（网络）"))
         if (attempt.first == 302 && attempt.second.contains("login", ignoreCase = true)) {
             // 会话过期：重跑一遍单点登录，只再发这一回。再不行就把原因交给人，不循环重试
             val back = performSso().getOrNull()
                 ?: return Result.failure(IOException("AI 课堂的会话过期了，重登也没换到新会话"))
             saveIdentityCookies(bareJwt().orEmpty(), back)
-            attempt = qrSignOnce(qrUrl(trimmed, token))
+            val retryUrl = qrUrl(target)
+                ?: return Result.failure(IOException("重新登录后校内会话仍不可用，请重新登录"))
+            attempt = qrSignOnce(retryUrl)
                 ?: return Result.failure(IOException("重试那一发没发出去（网络）"))
         }
         return qrRead(attempt.first, attempt.second)
     }
 
-    /** 码可能是完整 URL（带 `token=`），也可能整串就是 token。 */
-    private fun qrToken(raw: String): String? {
-        runCatching { raw.toHttpUrl().queryParameter("token") }.getOrNull()
-            ?.takeIf { it.isNotBlank() }?.let { return it }
-        Regex("[?&]token=([^&#]+)").find(raw)?.groupValues?.getOrNull(1)?.let { return it }
-        return raw.takeIf { it.matches(Regex("^[A-Za-z0-9_-]{20,}$")) }
-    }
-
-    /**
-     * 拼上官方那一跳带的身份参数。
-     *
-     * `qrcodeHandler` 认的不只是 `token`：登录名、学号、appId 这几个都在 query 里带着，
-     * 少带就被当成没登录的人扫了个码 —— 那正是被推去 `loginManage` 的那一类。
-     * 码里已经有的参数一个都不覆盖（学校自己发的那种长链，参数比我们还全）。
-     */
-    private suspend fun qrUrl(raw: String, token: String): String {
-        val base = if (raw.startsWith("http", ignoreCase = true)) {
-            raw
-        } else {
-            "$HOST_STTP/coursecenter-interaction/qrcodeV2/qrcodeHandler?token=${urlEnc(token)}&openTheWay=2"
-        }
-        val inner = school.identity()
-        val jwt = bareJwt().orEmpty()
-        if (inner == null || jwt.isBlank()) return base
-        return runCatching {
-            val u = base.toHttpUrl()
-            // `queryParameter` 是 HttpUrl 上的，Builder 没有 —— 先拿住原 URL 再判
-            fun blank(k: String) = u.queryParameter(k).isNullOrBlank()
-            u.newBuilder().apply {
-                fun put(k: String, v: String) {
-                    if (blank(k) && v.isNotBlank()) addQueryParameter(k, v)
-                }
-                put("access_token", jwt)
-                put("_userCode", inner.userCode)
-                put("code", inner.userCode)
-                put("userCode", inner.userCode)
-                put("_userName", inner.userName)
-                put("_userType", inner.userType)
-                put("appId", School.APP_ID)
-                put("returnFromIscToAppFunc", "ReturnDefault")
-            }.build().toString()
-        }.getOrDefault(base)   // 码里那串不是合法 URL（少见）就别自己加工，照原样发
+    private suspend fun qrUrl(target: FifQrTarget): HttpUrl? {
+        val inner = school.identity() ?: return null
+        val jwt = bareJwt()?.takeIf(String::isNotBlank) ?: return null
+        return target.officialUrl(jwt, inner.userCode, inner.userName, inner.userType, School.APP_ID)
     }
 
     /**
@@ -404,17 +371,23 @@ class FifSession(
      * （罐子本身不动 —— 那会影响 FIF 另外十来发，那是另一件事，等能现打的时候再收。）
      */
     private val qrClient: OkHttpClient by lazy {
-        client.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
+        client.newBuilder()
+            .cookieJar(CookieJar.NO_COOKIES)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
     }
 
     /** 发那一发，回 `HTTP 码 → Location`。网络本身挂了回 null。 */
-    private suspend fun qrSignOnce(url: String): Pair<Int, String>? = withIo {
+    private suspend fun qrSignOnce(url: HttpUrl): Pair<Int, String>? = withIo {
+        if (!FifQrTarget.isOfficialHandler(url)) return@withIo null
+        val jwt = url.queryParameter("access_token")?.takeIf(String::isNotBlank) ?: return@withIo null
         val builder = Request.Builder().url(url).get()
             .header("User-Agent", WEB_UA)
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             .header("Upgrade-Insecure-Requests", "1")
             .header("X-Requested-With", "com.andaxin")
-        authHeader()?.let { builder.header("authorization", it) }
+        builder.header("authorization", "Basic $jwt")
         builder.header("Visit-Type", "mobile")
         qrCookies(url).takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
         runCatching {
@@ -428,12 +401,9 @@ class FifSession(
      * 那三条（`id`/`studentId`/`currentUserName`）是**我们手动放进罐子的**（见 `saveIdentityCookies`）——
      * FIF 服务端自己一条都不发，等罐子攒出来是等不到的。
      */
-    private suspend fun qrCookies(url: String): String {
+    private suspend fun qrCookies(url: HttpUrl): String {
         val merged = LinkedHashMap<String, String>()
-        runCatching {
-            val httpUrl = url.toHttpUrl()
-            jar[httpUrl.host].orEmpty().filter { it.matches(httpUrl) }.forEach { merged[it.name] = it.value }
-        }
+        jar[url.host].orEmpty().filter { it.matches(url) }.forEach { merged[it.name] = it.value }
         ids()?.let {
             if (it.studentId.isNotBlank()) {
                 merged["id"] = it.studentId
@@ -453,7 +423,7 @@ class FifSession(
             has("codeExpired") -> Result.failure(IOException("这个码已经过期了，让老师重新开一张"))
             has("login") -> Result.failure(IOException("AI 课堂的会话失效了，重登一次也没签上"))
             has("course") -> Result.failure(IOException("没签上：这一跳被送去了课程页（码可能不是这堂课的）"))
-            else -> Result.failure(IOException("没签上：跳转落点认不出来 ${location.take(70)}"))
+            else -> Result.failure(IOException("没签上：跳转落点认不出来"))
         }
     }
 
