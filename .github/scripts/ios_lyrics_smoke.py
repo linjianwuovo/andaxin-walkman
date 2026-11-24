@@ -613,7 +613,13 @@ class Simulator:
         self.udid = udid
 
     def sim(self, command, *args, timeout=30):
-        return run(["xcrun", "simctl", command, self.udid, *args], self.cwd, timeout)
+        argv = ["xcrun", "simctl", command, self.udid, *args]
+        result = subprocess.run(argv, cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+        if result.returncode != 0:
+            detail = " ".join((result.stdout + result.stderr).decode("utf-8", errors="replace").split())[:400]
+            suffix = f": {detail}" if detail else ""
+            raise SmokeError(f"xcrun simctl {command} failed (exit {result.returncode}){suffix}")
+        return result.stdout
 
     def details(self):
         listing = json.loads(run(["xcrun", "simctl", "list", "devices", "available", "--json"], self.cwd))
@@ -626,7 +632,7 @@ class Simulator:
     def uninstall_if_present(self):
         result = subprocess.run(
             ["xcrun", "simctl", "uninstall", self.udid, BUNDLE],
-            cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30,
         )
         if result.returncode == 0:
             return
@@ -634,7 +640,9 @@ class Simulator:
         output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
         if result.returncode == 117 and re.search(r"(not installed|no such app|application .* not found)", output, re.IGNORECASE):
             return
-        raise SmokeError(f"xcrun simctl uninstall failed (exit {result.returncode})")
+        detail = " ".join(output.split())[:400]
+        suffix = f": {detail}" if detail else ""
+        raise SmokeError(f"xcrun simctl uninstall failed (exit {result.returncode}){suffix}")
 
     def prepare(self, app):
         self.sim("bootstatus", "-b", timeout=120)
@@ -743,6 +751,7 @@ def collect(repo, sha, executable, temp, artifacts, udid):
     except (SmokeError, OSError, subprocess.SubprocessError, ValueError) as exc:
         evidence["status"] = "failed"
         evidence["failure_type"] = type(exc).__name__
+        evidence["failure"] = " ".join(str(exc).split())[:600]
         raise
     finally:
         (artifacts / "manifest.json").write_bytes(json_bytes(evidence))
