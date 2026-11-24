@@ -89,7 +89,7 @@ fun SongInfoSheet(
                         GlasmioSheetToolbarButton(
                             onClick = { scope.launch { saveImageToGallery(context, metadata.coverUrl) } },
                             modifier = Modifier.align(Alignment.BottomEnd),
-                        ) { SfIcon("square.and.arrow.down", "保存封面", size = 20.dp) }
+                        ) { SfIcon("square.and.arrow.down", stringResource(R.string.detail_save_cover), size = 20.dp) }
                     }
                 }
             }
@@ -106,7 +106,8 @@ fun SongInfoSheet(
                     resolution?.let { actual ->
                         add("实际音源" to (providers.find { it.id == actual.actualAudioProviderId }?.displayName ?: actual.actualAudioProviderId))
                         add("实际音质" to actual.resource.quality)
-                        if (actual.resolvedTrackRef != actual.originTrackRef) add("状态" to "已自动切换音源")
+                        if (actual.alternateVersion) add("状态" to stringResource(R.string.source_playing_alternate_version))
+                        else if (actual.resolvedTrackRef != actual.originTrackRef) add("状态" to "已自动切换音源")
                     }
                 })
             }

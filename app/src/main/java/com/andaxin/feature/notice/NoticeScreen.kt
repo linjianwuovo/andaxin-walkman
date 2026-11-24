@@ -81,20 +81,28 @@ fun NoticeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
              * 丸子只摆"这一屏真拿到了的类别"，一条没有的类别不摆（摆一颗点出空列表的丸子是坑人）。
              */
             val cats = state.items.map { it.category }.filter { it.isNotBlank() }.distinct()
+            val activeCategory = picked?.takeIf { cats.size > 1 && it in cats }
             if (cats.size > 1) {
                 Row(
                     Modifier.horizontalScroll(rememberScrollState()).padding(bottom = Gap.md),
                     horizontalArrangement = Arrangement.spacedBy(Gap.sm),
                 ) {
-                    Chip("全部", picked == null) { picked = null }
-                    cats.forEach { c -> Chip(c, picked == c) { picked = c } }
+                    Chip("全部", activeCategory == null) { picked = null }
+                    cats.forEach { c -> Chip(c, activeCategory == c) { picked = c } }
                 }
             }
-            val shown = state.items.filter { picked == null || it.category == picked }
+            val shown = state.items.filter { activeCategory == null || it.category == activeCategory }
 
-            // 原来一条一行、一行自己画一条分隔线，三十条就是三十块卡片。
-            // 现在一张卡里分行，行间细线，时间和来源在右
-            if (shown.isNotEmpty()) {
+            if (state.firstLoad && state.items.isEmpty()) {
+                Sheet { com.andaxin.shell.EmptyState("正在加载公告…") }
+            } else if (shown.isNotEmpty()) {
+                Text(
+                    text = "${shown.size} 条公告",
+                    fontSize = Type.meta,
+                    lineHeight = Type.metaLine,
+                    color = LocalInk.current.muted,
+                    modifier = Modifier.padding(bottom = Gap.sm),
+                )
                 Sheet {
                     shown.forEachIndexed { i, item ->
                         RowLine(
@@ -112,10 +120,16 @@ fun NoticeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
                         }
                     }
                 }
+            } else if (state.error == null) {
+                Sheet {
+                    com.andaxin.shell.EmptyState(
+                        if (activeCategory == null) "暂无公告" else "这个分类暂无公告",
+                    )
+                }
             }
 
             Spacer(Modifier.height(Gap.lg))
-            state.error?.let { ErrorLine(it) }
+            state.error?.let { ErrorLine(it, retry = { model.reload() }) }
             ShelfTail()
         }
     }

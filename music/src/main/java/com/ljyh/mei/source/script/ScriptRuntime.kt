@@ -9,6 +9,7 @@ import com.google.gson.JsonParser
 import com.ljyh.mei.source.api.SourceErrorCode
 import com.ljyh.mei.source.api.SourceException
 import com.ljyh.mei.source.api.SourceResponseSizeException
+import com.ljyh.mei.source.api.SourceRuntimeUnavailableException
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,6 +29,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Semaphore
@@ -41,6 +44,8 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import timber.log.Timber
 
 data class ScriptInvocation(val result: JsonElement, val storage: Map<String, String>? = null)
 
@@ -52,6 +57,24 @@ class ScriptRuntime @Inject constructor(@ApplicationContext private val context:
     val supported: Boolean get() = QuickJsSandbox.isSupported()
     internal val concurrentExecutionSupported: Boolean get() = true
     internal val independentIsolateTerminationSupported: Boolean get() = true
+    private val keepWarmState = MutableStateFlow(false)
+
+    init {
+        sandboxScope.launch {
+            keepWarmState.collectLatest { active ->
+                sandboxes.setKeepWarm(
+                    enabled = active,
+                    create = if (supported) ({ QuickJsSandbox.createConnectedInstanceAsync(context.applicationContext) }) else null,
+                    isClosed = { it.isClosed },
+                )
+            }
+        }
+    }
+
+    /** Retains the isolated engine binding across active playback so background track preloads need not cold-bind. */
+    fun setPlaybackKeepWarm(active: Boolean) {
+        keepWarmState.value = active
+    }
 
     suspend fun invoke(
         script: String,
@@ -90,18 +113,42 @@ class ScriptRuntime @Inject constructor(@ApplicationContext private val context:
         val resultLimit = scriptResultLimit(manifest, operation, params)
         var phase = ScriptRuntimePhase.CONNECTION
         var requestSent = false
+        val traceLibrary = manifest.id == BundledSourceProvisioner.NETEASE_ID && operation in libraryTraceOperations
+        val libraryVersion = manifest.version.takeIf { traceLibrary && libraryTraceVersion.matches(it) } ?: "unknown"
+        val attempts = mutableListOf<String>()
+        var requestLabel: String? = null
+        var response: JsonObject? = null
+        var diagnostic: JsonElement? = null
+        var pluginError = false
+        fun logLibraryFailure(code: SourceErrorCode, kind: String) {
+            if (!traceLibrary) return
+            requestLabel?.let { attempts += libraryResponseSummary(it, response, diagnostic) }
+            if (attempts.isEmpty() && diagnostic != null) attempts += libraryResponseSummary("no-request", null, diagnostic)
+            val session = when ((storage["sessionType"] ?: configuration["sessionType"])?.lowercase()) {
+                "mobile" -> "mobile"
+                "web" -> "web"
+                else -> "unknown"
+            }
+            Timber.tag("ScriptRuntime").w(
+                "NetEase library failure version=%s operation=%s session=%s code=%s phase=%s kind=%s attempts=[%s]",
+                libraryVersion, operation, session, code, phase, kind, attempts.joinToString(" -> "),
+            )
+        }
         val memoryLimited = java.util.concurrent.atomic.AtomicBoolean(false)
         val terminated = CompletableDeferred<Unit>()
         return try {
             withTimeout(20_000) {
                 invocationSlots.withPermit {
-                    withSandbox { sandbox, shared ->
+                    sandboxes.withSandbox(
+                        create = { QuickJsSandbox.createConnectedInstanceAsync(context.applicationContext) },
+                        isClosed = { it.isClosed },
+                    ) { sandbox, shared ->
                         val invocationJob = currentCoroutineContext()[Job]
                         val guard = {
                             invocationJob?.ensureActive()
                             ensureCurrent()
                             if (terminated.isCompleted || shared.retired.isCompleted == true) {
-                                throw SourceException(SourceErrorCode.UNAVAILABLE, outcomeUnknown = requestSent)
+                                throw SourceRuntimeUnavailableException(outcomeUnknown = requestSent)
                             }
                         }
                         guard()
@@ -122,7 +169,6 @@ class ScriptRuntime @Inject constructor(@ApplicationContext private val context:
                             withTimeout(3_000) { isolate.evaluateJavaScriptAsync(script + "\n;'loaded';").await() }
                             val gson = Gson()
                             val entropy = SecureRandom()
-                            var response: JsonObject? = null
                             var state: JsonElement? = null
                             repeat(5) { hop ->
                                 guard()
@@ -159,6 +205,11 @@ class ScriptRuntime @Inject constructor(@ApplicationContext private val context:
                                 phase = ScriptRuntimePhase.RESULT
                                 val result = parseScriptResult(raw, resultLimit)
                                 val envelope = result.takeIf(JsonElement::isJsonObject)?.asJsonObject
+                                if (traceLibrary) {
+                                    diagnostic = envelope?.get("diagnostic")
+                                    requestLabel?.let { attempts += libraryResponseSummary(it, response, diagnostic) }
+                                    requestLabel = null
+                                }
                                 if (envelope?.has("request") == true) {
                                     if (hop == 4) throw SourceException(SourceErrorCode.PLUGIN, "Source request limit exceeded")
                                     guard()
@@ -169,6 +220,11 @@ class ScriptRuntime @Inject constructor(@ApplicationContext private val context:
                                     } ?: false
                                     phase = ScriptRuntimePhase.REQUEST
                                     requestSent = true
+                                    if (traceLibrary) {
+                                        requestLabel = libraryRequestLabel(frame)
+                                        response = null
+                                        diagnostic = null
+                                    }
                                     response = try {
                                         requestWhileAlive(shared, terminated) { request(frame) }
                                     }
@@ -183,6 +239,18 @@ class ScriptRuntime @Inject constructor(@ApplicationContext private val context:
                                 } else {
                                     if (envelope?.has("error") == true) {
                                         val code = runCatching { SourceErrorCode.valueOf(envelope.get("error").asString) }.getOrDefault(SourceErrorCode.PLUGIN)
+                                        pluginError = true
+                                        if (!traceLibrary && code == SourceErrorCode.INVALID_RESPONSE) {
+                                            val action = params.get("action")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                                                ?.asString?.takeIf { candidate ->
+                                                    operation == "feature.invoke" && manifest.features.values.any { candidate in it }
+                                                }
+                                            val status = response?.get("status")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asInt
+                                            Timber.tag("ScriptRuntime").w(
+                                                "Invalid source response plugin=%s version=%s operation=%s action=%s requests=%d httpStatus=%s",
+                                                manifest.id, manifest.version, operation, action, hop, status,
+                                            )
+                                        }
                                         throw SourceException(code)
                                     }
                                     val updated = envelope?.getAsJsonObject("storage")?.let { values ->
@@ -193,6 +261,15 @@ class ScriptRuntime @Inject constructor(@ApplicationContext private val context:
                                         values.entrySet().associate { it.key to it.value.asString }
                                     }
                                     guard()
+                                    if (traceLibrary && diagnostic != null) {
+                                        val continuation = envelope?.get("result")?.takeIf(JsonElement::isJsonObject)?.asJsonObject
+                                        if (continuation?.get("hostEffect")?.isJsonObject == true) {
+                                            Timber.tag("ScriptRuntime").w(
+                                                "NetEase library retry version=%s operation=%s attempts=[%s]",
+                                                libraryVersion, operation, attempts.joinToString(" -> "),
+                                            )
+                                        }
+                                    }
                                     return@withSandbox ScriptInvocation(envelope?.get("result") ?: result, updated)
                                 }
                             }
@@ -204,48 +281,48 @@ class ScriptRuntime @Inject constructor(@ApplicationContext private val context:
         } catch (_: TimeoutCancellationException) {
             currentCoroutineContext().ensureActive()
             ensureCurrent()
+            logLibraryFailure(SourceErrorCode.TIMEOUT, "deadline")
             throw SourceException(SourceErrorCode.TIMEOUT)
         } catch (cancelled: CancellationException) { throw cancelled
         } catch (error: SourceException) {
             ensureCurrent()
-            if (memoryLimited.get()) throw SourceException(SourceErrorCode.PLUGIN, outcomeUnknown = requestSent)
+            if (memoryLimited.get()) {
+                logLibraryFailure(SourceErrorCode.PLUGIN, "heap-limit")
+                throw SourceException(SourceErrorCode.PLUGIN, outcomeUnknown = requestSent)
+            }
+            val kind = when {
+                pluginError -> "plugin-error"
+                error is SourceResponseSizeException -> "response-size-limit"
+                else -> error.javaClass.simpleName
+            }
+            logLibraryFailure(error.code, kind)
+            if (!traceLibrary && error is SourceRuntimeUnavailableException) {
+                Timber.tag("ScriptRuntime").w(
+                    "Sandbox failure plugin=%s operation=%s code=%s phase=%s requestSent=%s kind=%s",
+                    manifest.id, operation, error.code, phase, requestSent, error.javaClass.simpleName,
+                )
+            }
             throw error
         } catch (error: Exception) {
             ensureCurrent()
             var cause: Throwable = error
             repeat(8) { (cause as? java.util.concurrent.ExecutionException)?.cause?.let { cause = it } }
             if (resultLimit == MAX_CATALOG_RESULT_BYTES && cause is QuickJsEvaluationResultSizeLimitExceededException) {
+                logLibraryFailure(SourceErrorCode.INVALID_RESPONSE, "script-result-size-limit")
                 throw SourceResponseSizeException()
             }
             val failure = scriptRuntimeFailure(error, phase, memoryLimited.get(), requestSent)
-            if (failure.code in setOf(SourceErrorCode.UNAVAILABLE, SourceErrorCode.PLUGIN, SourceErrorCode.INVALID_RESPONSE)) {
+            logLibraryFailure(failure.code, cause.javaClass.simpleName)
+            if (!traceLibrary && failure.code in setOf(SourceErrorCode.UNAVAILABLE, SourceErrorCode.PLUGIN, SourceErrorCode.INVALID_RESPONSE)) {
                 // Engine exception messages may contain script data. Record fixed metadata only.
                 val kind = (error as? java.util.concurrent.ExecutionException)?.cause?.javaClass?.simpleName ?: error.javaClass.simpleName
-                android.util.Log.w("ScriptRuntime", "Sandbox failure code=${failure.code.name} phase=${phase.name} kind=$kind")
+                Timber.tag("ScriptRuntime").w(
+                    "Sandbox failure plugin=%s operation=%s code=%s phase=%s requestSent=%s kind=%s",
+                    manifest.id, operation, failure.code, phase, requestSent, kind,
+                )
             }
             throw failure
         }
-    }
-
-    private suspend fun <T> withSandbox(
-        block: suspend (QuickJsSandbox, ScriptSandboxPool.Lease<QuickJsSandbox>) -> T,
-    ): T {
-        repeat(2) { attempt ->
-            val lease = sandboxes.acquire { QuickJsSandbox.createConnectedInstanceAsync(context.applicationContext) }
-            try {
-                if (lease.value.isClosed) {
-                    sandboxes.invalidate(lease)
-                    // Reconnect only before executing any plugin code or sending any requests.
-                    if (attempt == 0) return@repeat
-                    throw QuickJsSandboxDeadException()
-                }
-                return block(lease.value, lease)
-            } finally {
-                if (lease.value.isClosed) sandboxes.invalidate(lease)
-                withContext(NonCancellable) { sandboxes.release(lease) }
-            }
-        }
-        throw QuickJsSandboxDeadException()
     }
 
     private suspend fun requestWhileAlive(
@@ -256,8 +333,8 @@ class ScriptRuntime @Inject constructor(@ApplicationContext private val context:
         val pending = async { request() }
         try {
             select {
-                terminated.onAwait { throw SourceException(SourceErrorCode.UNAVAILABLE, outcomeUnknown = true) }
-                lease.retired.onAwait { throw SourceException(SourceErrorCode.UNAVAILABLE, outcomeUnknown = true) }
+                terminated.onAwait { throw SourceRuntimeUnavailableException(outcomeUnknown = true) }
+                lease.retired.onAwait { throw SourceRuntimeUnavailableException(outcomeUnknown = true) }
                 pending.onAwait { it }
             }
         } finally { pending.cancel() }
@@ -294,6 +371,50 @@ class ScriptRuntime @Inject constructor(@ApplicationContext private val context:
                 ByteArray(SECURE_RANDOM_BYTES).also(entropy::nextBytes)))
         }
     }
+}
+
+private val libraryTraceOperations = setOf(
+    "library.likedTracks", "library.createdPlaylists", "library.savedPlaylists", "catalog.tracks",
+)
+private val libraryTraceVersion = Regex("[0-9]{1,5}\\.[0-9]{1,5}\\.[0-9]{1,5}")
+private val libraryTraceHosts = setOf("music.163.com", "interface.music.163.com", "interface3.music.163.com")
+private val libraryTracePaths = setOf(
+    "/weapi/user/playlist", "/weapi/user/playlist/create", "/weapi/user/playlist/collect",
+    "/eapi/user/playlist", "/eapi/user/playlist/create", "/eapi/user/playlist/collect",
+    "/eapi/w/nuser/account/get", "/eapi/nuser/account/get", "/api/v6/playlist/detail", "/api/v3/song/detail",
+)
+private val libraryTraceReasons = setOf(
+    "invalid-json", "invalid-envelope", "missing-api-code", "invalid-api-code", "api-error", "invalid-library-cursor",
+    "invalid-playlist-data", "missing-playlist-list", "invalid-playlist-list", "empty-playlist-page",
+    "missing-playlist-detail", "playlist-id-mismatch", "missing-track-index", "invalid-track-index",
+    "invalid-track-ids", "invalid-song-list",
+)
+
+internal fun libraryRequestLabel(frame: JsonObject): String {
+    val url = frame.get("url")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+        ?.asString?.toHttpUrlOrNull()
+    return if (url != null && url.host in libraryTraceHosts && url.encodedPath in libraryTracePaths) {
+        "${url.host}${url.encodedPath}"
+    } else "other-route"
+}
+
+internal fun libraryResponseSummary(label: String, response: JsonObject?, diagnostic: JsonElement?): String {
+    val status = response?.get("status")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
+        ?.asString?.toIntOrNull()?.takeIf { it in 100..599 }
+    val body = response?.get("body")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+    val shape = when (body?.firstOrNull { !it.isWhitespace() }) {
+        null -> if (body == null) "none" else "empty"
+        '{' -> "object"
+        '[' -> "array"
+        '<' -> "markup"
+        else -> "other"
+    }
+    val details = diagnostic?.takeIf(JsonElement::isJsonObject)?.asJsonObject
+    val reason = details?.get("reason")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+        ?.asString?.takeIf { it in libraryTraceReasons }
+    val apiCode = details?.get("apiCode")?.takeIf { reason != null && it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
+        ?.asString?.toIntOrNull()?.takeIf { it in 0..99_999 }
+    return "$label http=${status ?: "-"} body=$shape chars=${body?.length ?: 0} apiCode=${apiCode ?: "-"} reason=${reason ?: "-"}"
 }
 
 internal fun scriptResultLimit(manifest: PluginManifest, operation: String, parameters: JsonObject): Int {
@@ -370,7 +491,8 @@ internal fun scriptRuntimeFailure(error: Throwable, phase: ScriptRuntimePhase,
             cause !is QuickJsException && cause !is android.os.RemoteException -> SourceErrorCode.INVALID_RESPONSE
         else -> SourceErrorCode.UNAVAILABLE
     }
-    return SourceException(code, outcomeUnknown = requestSent && (code == SourceErrorCode.UNAVAILABLE || memoryFailure))
+    return if (code == SourceErrorCode.UNAVAILABLE) SourceRuntimeUnavailableException(outcomeUnknown = requestSent)
+    else SourceException(code, outcomeUnknown = requestSent && memoryFailure)
 }
 
 /** A cancelled caller retires its late binding before another acquisition proceeds. */
@@ -429,6 +551,41 @@ internal class ScriptSandboxPool<T : AutoCloseable>(
     private val scope: CoroutineScope,
     private val idleTimeoutMs: Long = 15_000,
 ) {
+    /** Only connection setup may be retried, before the invocation has executed any plugin code. */
+    suspend fun <R> withSandbox(
+        create: () -> ListenableFuture<T>,
+        isClosed: (T) -> Boolean,
+        block: suspend (T, Lease<T>) -> R,
+    ): R {
+        repeat(2) { attempt ->
+            val lease = try {
+                acquire(create)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
+                if (attempt != 0 ||
+                    scriptRuntimeFailure(error, ScriptRuntimePhase.CONNECTION) !is SourceRuntimeUnavailableException
+                ) throw error
+                Timber.tag("ScriptRuntime").w("Retrying sandbox connection attempt=2")
+                delay(250)
+                return@repeat
+            }
+            try {
+                if (!isClosed(lease.value)) return block(lease.value, lease)
+                invalidate(lease)
+            } finally {
+                if (isClosed(lease.value)) invalidate(lease)
+                withContext(NonCancellable) { release(lease) }
+            }
+            if (attempt == 0) {
+                Timber.tag("ScriptRuntime").w("Retrying closed sandbox connection attempt=2")
+                delay(250)
+            }
+        }
+        throw QuickJsSandboxDeadException()
+    }
+
     internal class Entry<T : AutoCloseable>(val connection: ScriptConnectionLease<T>) {
         val retired = CompletableDeferred<Unit>()
         var references = 0
@@ -444,6 +601,43 @@ internal class ScriptSandboxPool<T : AutoCloseable>(
     private val lifecycle = Mutex()
     private var current: Entry<T>? = null
     private var pending: Opening<T>? = null
+    private var keepWarm = false
+
+    suspend fun setKeepWarm(
+        enabled: Boolean,
+        create: (() -> ListenableFuture<T>)? = null,
+        isClosed: ((T) -> Boolean)? = null,
+    ) {
+        var shouldPrewarm = false
+        lifecycle.withLock {
+            keepWarm = enabled
+            val entry = current
+            if (enabled) {
+                entry?.idle?.cancel()
+                if (entry != null) entry.idle = null
+                if ((entry == null || entry.retired.isCompleted || (isClosed != null && isClosed(entry.connection.value))) &&
+                    pending == null && create != null
+                ) {
+                    shouldPrewarm = true
+                }
+            } else if (entry != null && entry.references == 0 && !entry.retired.isCompleted && entry.idle == null) {
+                scheduleIdleRetirement(entry)
+            }
+        }
+        if (shouldPrewarm && create != null) {
+            try {
+                val lease = acquire(create)
+                withContext(NonCancellable) {
+                    if (isClosed?.invoke(lease.value) == true) invalidate(lease)
+                    release(lease)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Normal invocation retries handle transient connection errors when needed.
+            }
+        }
+    }
 
     private class Opening<T : AutoCloseable> {
         val ready = CompletableDeferred<Entry<T>>()
@@ -519,21 +713,26 @@ internal class ScriptSandboxPool<T : AutoCloseable>(
         val entry = lease.entry
         check(entry.references > 0)
         entry.references--
-        if (entry.references == 0 && current === entry && !entry.retired.isCompleted) {
-            entry.idle = scope.launch {
-                try {
-                    delay(idleTimeoutMs)
-                    lifecycle.withLock {
-                        if (current === entry && entry.references == 0) {
-                            current = null
-                            entry.retired.complete(Unit)
-                            entry.connection.close()
-                        }
+        if (entry.references == 0 && current === entry && !entry.retired.isCompleted && !keepWarm) {
+            scheduleIdleRetirement(entry)
+        }
+    }
+
+    private fun scheduleIdleRetirement(entry: Entry<T>) {
+        entry.idle?.cancel()
+        entry.idle = scope.launch {
+            try {
+                delay(idleTimeoutMs)
+                lifecycle.withLock {
+                    if (!keepWarm && current === entry && entry.references == 0) {
+                        current = null
+                        entry.retired.complete(Unit)
+                        entry.connection.close()
                     }
-                } catch (cancelled: CancellationException) { throw cancelled
-                } catch (_: Throwable) {
-                    // ScriptConnectionGate keeps a failed retirement closed to new bindings.
                 }
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (_: Throwable) {
+                // ScriptConnectionGate keeps a failed retirement closed to new bindings.
             }
         }
     }

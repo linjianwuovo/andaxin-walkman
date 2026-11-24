@@ -14,6 +14,7 @@ import com.ljyh.mei.R
 import com.ljyh.mei.constants.MusicQuality
 import com.ljyh.mei.data.model.MediaMetadata
 import com.ljyh.mei.data.model.toMediaItem
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenu
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenuItem
 import com.ljyh.mei.ui.local.LocalPlayerConnection
@@ -37,6 +38,7 @@ fun TrackActionMenu(
     onShare: (() -> Unit)? = null,
     deleteEnabled: Boolean = true,
     playerViewModel: PlayerViewModel? = null,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
     if (targetTrack == null) return
     val context = LocalContext.current
@@ -135,6 +137,7 @@ fun TrackActionMenu(
     )
     GlasmioCascadingMenu(
         anchorBounds = anchorBounds,
+        menuAnchorState = menuAnchorState,
         items = items,
         headerActions = headerActions,
         useAccentIcons = false,

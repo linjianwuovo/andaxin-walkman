@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -14,10 +15,8 @@ import android.net.Uri
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.ljyh.mei.R
 import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.icons.SfIcon
@@ -29,9 +28,15 @@ import com.ljyh.mei.source.api.ProviderIds
 import com.ljyh.mei.source.api.SourceErrorCode
 import com.ljyh.mei.ui.screen.source.SourceProfileState
 import com.ljyh.mei.ui.screen.source.SourceProfileViewModel
+import com.ljyh.mei.ui.screen.source.LibraryShareArtwork
+import com.ljyh.mei.ui.screen.source.LibraryShareAsyncImage
+import com.ljyh.mei.ui.screen.source.LibraryShareContent
 
 @Composable
-fun globalProfileHeaderAction(): GlasmioHeaderAction {
+fun globalProfileHeaderAction(): GlasmioHeaderAction = globalProfileHeaderAction(null)
+
+@Composable
+internal fun globalProfileHeaderAction(shareContent: LibraryShareContent?): GlasmioHeaderAction {
     val navController = LocalNavController.current
     val sourceViewModel: SourceProfileViewModel = hiltViewModel(LocalActivity.current as ComponentActivity)
     val profile by sourceViewModel.state.collectAsState()
@@ -42,7 +47,7 @@ fun globalProfileHeaderAction(): GlasmioHeaderAction {
         enabled = profile.providerId.isNotBlank() && profile.providerId != ProviderIds.LOCAL,
         onClick = { openSourceProfile(navController, profile, sourceViewModel::refresh) },
         overflowSystemName = "person.crop.circle",
-    ) { SourceProfileImage(profile) }
+    ) { SourceProfileImage(profile, shareContent) }
 }
 
 /** Shared account entry shown on every primary tab's pinned navigation bar. */
@@ -76,11 +81,16 @@ internal fun sourceProfileFeatureScreen(profile: SourceProfileState): Screen? = 
 }
 
 @Composable
-private fun SourceProfileImage(profile: SourceProfileState) {
+private fun SourceProfileImage(profile: SourceProfileState, shareContent: LibraryShareContent? = null) {
+    if (shareContent != null) DisposableEffect(shareContent) {
+        shareContent.mountedProfileImages++
+        onDispose { shareContent.mountedProfileImages-- }
+    }
     Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
         val avatar = profile.account?.avatarUrl.orEmpty()
         if (avatar.isBlank()) SfIcon("person.crop.circle", null, Modifier.requiredSize(27.dp), size = 27.dp)
-        else AsyncImage(avatar, profile.account?.displayName,
-            modifier = Modifier.requiredSize(36.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+        else LibraryShareAsyncImage(avatar, profile.account?.displayName,
+            modifier = Modifier.requiredSize(36.dp).clip(CircleShape),
+            artwork = shareContent?.let { LibraryShareArtwork(it, "profile-avatar") })
     }
 }

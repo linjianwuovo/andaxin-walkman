@@ -7,6 +7,7 @@ import androidx.compose.ui.res.stringResource
 import com.ljyh.mei.R
 import com.ljyh.mei.data.model.MediaMetadata
 import com.ljyh.mei.source.api.ContentRef
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenu
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenuItem
 
@@ -24,6 +25,7 @@ fun PlayerNavigationMenu(
     viewportBounds: Rect? = null,
     canOpenSourceContent: (ContentRef) -> Boolean = { false },
     onSourceContentClick: ((ContentRef) -> Unit)? = null,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
     val navigableArtists = artists.filter { it.id > 0 || it.ref?.let(canOpenSourceContent) == true }
         .distinctBy { it.ref ?: it.id }
@@ -42,6 +44,7 @@ fun PlayerNavigationMenu(
 
     GlasmioCascadingMenu(
         anchorBounds = anchorBounds,
+        menuAnchorState = menuAnchorState,
         viewportBounds = viewportBounds,
         title = stringResource(R.string.player_navigation_title),
         expandedDescription = stringResource(R.string.menu_expanded),

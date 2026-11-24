@@ -50,12 +50,13 @@ internal object NeteaseUrsPuzzle {
             }
             "VDF_FUNCTION" -> {
                 val modulus = BigInteger(args.getString("mod"), 16)
+                val exponent = BigInteger.valueOf(2L)
                 var x = BigInteger(args.getString("x"), 16)
                 val rounds = args.getString("t").toLong()
                 count = 0
                 while (count < rounds || elapsed() < minimum) {
                     currentCoroutineContext().ensureActive()
-                    x = x.modPow(BigInteger.TWO, modulus); count++
+                    x = x.modPow(exponent, modulus); count++
                     if (elapsed() > maximum) break
                 }
                 values = mapOf("runTimes" to count, "x" to x.toString(16),

@@ -1,11 +1,19 @@
 package com.andaxin.feature.modules
 
 import io.github.neoruaa.glasmio.ui.GlasmioButton
-import io.github.neoruaa.glasmio.ui.GlasmioCard
 import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -61,35 +71,110 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.Labeled
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.SectionTitle
+import com.andaxin.shell.ServiceGrid
+import com.andaxin.shell.ServiceTile
+import com.andaxin.R
 
 /**
  * 更多功能那一格：只是入口，不取任何数据。
  * 顺序按"哪块证据厚"排，接报文时从上往下推。
  */
-private val MORE = listOf(
-    "报修" to "repair",
-    "待办事务" to "affair",
-    "AI 课堂" to "aiclass",
-    "公开课" to "opencourse",
-    "查寝签到" to "dorm",
-    "考试成绩" to "exam",
-    "素质学分" to "credit",
-    "劳动教育" to "labor",
-    "节假日离返校" to "holiday",
-    "校园卡" to "card",
-    "班级群" to "group",
-    // 凡是"要不要响、响在哪、系统让不让响"都收在那一屏里（上课提醒以前挂在「我的」最底下）
-    "通知设置" to "notify",
+private data class MoreEntry(val title: String, val route: String, val icon: Int, val accentIcon: Int)
+
+private val MORE_GROUPS = listOf(
+    "学习" to listOf(
+        MoreEntry("AI 课堂", "aiclass", R.drawable.ic_entry_aiclass, R.drawable.ic_entry_aiclass_accent),
+        MoreEntry("公开课", "opencourse", R.drawable.ic_entry_opencourse, R.drawable.ic_entry_opencourse_accent),
+        MoreEntry("考试成绩", "exam", R.drawable.ic_entry_exam, R.drawable.ic_entry_exam_accent),
+        MoreEntry("素质学分", "credit", R.drawable.ic_entry_credit, R.drawable.ic_entry_credit_accent),
+        MoreEntry("劳动教育", "labor", R.drawable.ic_entry_labor, R.drawable.ic_entry_labor_accent),
+        MoreEntry("班级群", "group", R.drawable.ic_entry_group, R.drawable.ic_entry_group_accent),
+    ),
+    "校园生活" to listOf(
+        MoreEntry("校园卡", "card", R.drawable.ic_entry_card, R.drawable.ic_entry_card_accent),
+        MoreEntry("查寝签到", "dorm", R.drawable.ic_entry_dorm, R.drawable.ic_entry_dorm_accent),
+        MoreEntry("离返校", "holiday", R.drawable.ic_entry_holiday, R.drawable.ic_entry_holiday_accent),
+    ),
+    "办事" to listOf(
+        MoreEntry("待办事务", "affair", R.drawable.ic_entry_todo, R.drawable.ic_entry_todo_accent),
+        MoreEntry("报修", "repair", R.drawable.ic_entry_repair, R.drawable.ic_entry_repair_accent),
+        MoreEntry("通知设置", "notify", R.drawable.ic_entry_theme, R.drawable.ic_entry_theme_accent),
+    ),
 )
 
 @Composable
 fun MoreScreen(open: (String) -> Unit, onBack: () -> Unit) {
-    val ink = LocalInk.current
+    val scale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     ScaffoldPage(title = "更多功能", onBack = onBack) {
-        Sheet {
-            MORE.forEachIndexed { i, (label, route) ->
-                RowLine(title = label, onClick = { open(route) })
-                if (i != MORE.lastIndex) Hairline()
+        MORE_GROUPS.forEach { (group, entries) ->
+            SectionTitle(group)
+            if (scale <= 1.3f) {
+                MoreCompactGrid(entries, open)
+            } else {
+                ServiceGrid(entries) { entry, tileModifier, horizontal ->
+                    ServiceTile(
+                        title = entry.title,
+                        icon = entry.icon,
+                        accentIcon = entry.accentIcon,
+                        horizontal = horizontal,
+                        modifier = tileModifier,
+                        onClick = { open(entry.route) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoreCompactGrid(entries: List<MoreEntry>, open: (String) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val scale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val gap = 8.dp
+        val minimumCellWidth = 92.dp * scale
+        val columns = ((maxWidth + gap) / (minimumCellWidth + gap)).toInt().coerceIn(1, 3)
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            entries.chunked(columns).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    row.forEach { entry ->
+                        Sheet(
+                            modifier = Modifier.weight(1f)
+                                .pressClick(shrink = false) { open(entry.route) },
+                            contentPadding = 8.dp,
+                        ) {
+                            Column(
+                                Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                            ) {
+                                Box(Modifier.size(24.dp)) {
+                                    Image(
+                                        painter = painterResource(entry.icon),
+                                        contentDescription = null,
+                                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    Image(
+                                        painter = painterResource(entry.accentIcon),
+                                        contentDescription = null,
+                                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                                Text(
+                                    entry.title,
+                                    fontSize = 14.sp,
+                                    lineHeight = 18.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = LocalGlassColors.current.content,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
         }
     }
@@ -107,11 +192,11 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(150.dp)
+                .heightIn(min = 150.dp)
                 .background(if (ink.dark) Palette.NightCardBlue else Palette.Blue, Radius.card)
                 .padding(Gap.lg),
         ) {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Gap.lg)) {
                 Text("安徽信息工程学院 · 校园卡", fontSize = Type.body, color = Palette.Cream)
                 Column {
                     Text(
@@ -181,7 +266,7 @@ fun CampusCardScreen(open: (String) -> Unit, onBack: () -> Unit) {
          * 「点了没用的主按钮比少一颗按钮坏得多」这条规矩，对哑按钮同样成立。
          */
         Box(
-            Modifier.fillMaxWidth().height(46.dp).background(ink.offFill, Radius.field)
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).background(ink.offFill, Radius.field)
                 .pressClick { open("card/flows") }.padding(Gap.md),
             contentAlignment = Alignment.Center,
         ) { Text("流水", fontSize = Type.body, color = ink.body) }
@@ -231,6 +316,7 @@ private fun money(f: com.andaxin.data.capture.CampusCardClient.Flow): String =
  * 流水。服务端**不给合计、不给余额快照**，所以这里只列它给的行。
  * 分页键是 `count`（不是 pageSize）—— 少这一个键它只回总数不回行，见契约文件那条坑。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CardFlowsScreen(onBack: () -> Unit) {
     val ink = LocalInk.current
@@ -248,7 +334,7 @@ fun CardFlowsScreen(onBack: () -> Unit) {
         card?.flows?.forEach { f ->
             Sheet {
                 Column(Modifier.fillMaxWidth()) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.md), verticalArrangement = Arrangement.spacedBy(Gap.xs)) {
                         Text(f.at.take(16), fontSize = Type.body, color = ink.muted)
                         Text(
                             money(f), fontSize = Type.body,
@@ -321,6 +407,7 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
         }
     }
 
+    val controlHeight = maxOf(52.dp, 24.dp * LocalDensity.current.fontScale + 24.dp)
     ScaffoldPage(title = "", onBack = onBack) {
         Spacer(Modifier.height(Gap.lg))
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -336,18 +423,15 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(Gap.xxl))
-        // 一格一张玻璃卡：两行输入 + 一行开关。这里不能用 Sheet —— 它会再套一层
-        // Rhythm.cardPad(14dp)，而字段自带 16dp 内边距和 16dp 缩进的分组分隔线
-        // （库 IosInputs 的 glasmioGroupedListSeparator）,两边一叠就是 30dp，
-        // 字会缩到卡片正中。卡壳用 GlasmioCard，内边距让字段自己给。
-        GlasmioCard(Modifier.fillMaxWidth()) {
+        // 字段自带分组内边距，复用玻璃分组卡而不叠加额外内边距。
+        Sheet(contentPadding = 0.dp) {
             Column(Modifier.fillMaxWidth()) {
                 GlasmioTextField(
                     value = account,
                     onValueChange = { account = it },
                     placeholder = "校园账号",
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = controlHeight),
                 )
                 GlasmioTextField(
                     value = secret,
@@ -355,12 +439,12 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
                     placeholder = "密码",
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = controlHeight),
                 )
                 // 「记住密码」不是方便少打六个字：校方那条 refresh.do 服务端是死的，
                 // 续期只能拿口令重登一次。不记住 = 每 8 小时、以及每次被顶号，都得手打。
                 Row(
-                    Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 16.dp),
+                    Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("记住密码", fontSize = Type.body, color = ink.strong, modifier = Modifier.weight(1f))
@@ -373,10 +457,11 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
                      */
                     Box(
                         Modifier
-                            .size(46.dp, 28.dp)
+                            .size(48.dp)
+                            .pressClick { rememberPw = !rememberPw }
+                            .padding(horizontal = 1.dp, vertical = 10.dp)
                             .clip(Radius.pill)
-                            .background(if (rememberPw) MaterialTheme.colorScheme.primary else ink.offFill)
-                            .pressClick { rememberPw = !rememberPw },
+                            .background(if (rememberPw) MaterialTheme.colorScheme.primary else ink.offFill),
                     ) {
                         Box(
                             Modifier
@@ -464,8 +549,8 @@ fun LoginScreen(onDone: () -> Unit, onBack: () -> Unit) {
 fun OnboardingScreen(onAgree: () -> Unit) {
     val ink = LocalInk.current
     Column(
-        Modifier.fillMaxSize().padding(Gap.xl),
-        verticalArrangement = Arrangement.SpaceBetween,
+        Modifier.fillMaxSize().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(Gap.xl),
+        verticalArrangement = Arrangement.spacedBy(Gap.xl),
     ) {
         Column {
             Spacer(Modifier.height(Gap.xxl))
@@ -488,8 +573,8 @@ fun OnboardingScreen(onAgree: () -> Unit) {
             )
         }
         Box(
-            Modifier.fillMaxWidth().height(50.dp).background(MaterialTheme.colorScheme.primary, Radius.card)
-                .pressClick(onClick = onAgree),
+            Modifier.fillMaxWidth().heightIn(min = 50.dp).background(MaterialTheme.colorScheme.primary, Radius.card)
+                .pressClick(onClick = onAgree).padding(Gap.md),
             contentAlignment = Alignment.Center,
         ) {
             Text("知道了", fontSize = Type.title, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)

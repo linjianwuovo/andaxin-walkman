@@ -106,6 +106,8 @@ data class OnlineCommentUser(val id: String, val nickname: String, val avatarUrl
 data class OnlineComment(
     val commentId: String, val user: OnlineCommentUser, val content: String, val time: Long, val timeStr: String,
     val liked: Boolean, val likedCount: Int, val replyCount: Int,
+    val voiceDurationMs: Long? = null,
+    val providerId: String = "",
 )
 data class OnlineCommentPage(val comments: List<OnlineComment>, val hasMore: Boolean, val cursor: String?, val totalCount: Int)
 data class OnlineFloorPage(val comments: List<OnlineComment>, val hasMore: Boolean, val time: Long, val totalCount: Int)

@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.screen.playlist.component
 
+import com.ljyh.mei.ui.component.home.homeArtworkBorder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -37,12 +38,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +64,7 @@ import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
 import com.ljyh.mei.utils.rememberEnumPreference
 import io.github.neoruaa.glasmio.core.IosTypography
 import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.core.LocalGlassDimensions
 import io.github.neoruaa.glasmio.core.LocalGroupedListBackgroundAlpha
 import io.github.neoruaa.glasmio.glass.GlassEmphasis
 import io.github.neoruaa.glasmio.glass.GlassSurfaceStyle
@@ -101,7 +105,14 @@ fun PlaylistHeader(
 ) {
     val colors = LocalGlassColors.current
     val actionHeight = if (horizontal) 54.dp else 44.dp
-    val playWidth = if (horizontal) 180.dp else 148.dp
+    val actionSpacing = if (horizontal) 16.dp else 14.dp
+    val canScrollActions = horizontal || allowActionScroll
+    val preferredPlayWidth = if (horizontal) 180.dp else 148.dp
+    val playLabel = stringResource(R.string.pip_play)
+    val playTextStyle = if (horizontal) IosTypography.headline.copy(fontSize = 20.sp, lineHeight = 24.sp)
+        else IosTypography.headline
+    val playIconSize = if (horizontal) 18.dp else 16.dp
+    val playIconSpacing = 6.dp
     val groupedListBackgroundAlpha = LocalGroupedListBackgroundAlpha.current.coerceIn(0f, 1f)
     val useGroupedListButtonBackground = groupedListBackgroundAlpha < 1f
     val regularButtonBackground =
@@ -120,7 +131,22 @@ fun PlaylistHeader(
                 else -> 16.dp
             })
     ) {
+        val coverSpacing = 32.dp
         val coverSize = minOf(maxWidth * 0.30f, 300.dp)
+        val playWidth = if (detailAction && canScrollActions) {
+            val labelWidth = rememberTextMeasurer().measure(playLabel, style = playTextStyle).size.width
+            val downloadSize = LocalGlassDimensions.current.iconButtonSize
+            with(LocalDensity.current) {
+                val informationWidth = maxWidth.roundToPx() -
+                    if (horizontal) coverSize.roundToPx() + coverSpacing.roundToPx() else 0
+                val iconFootprint = actionHeight.roundToPx() + actionSpacing.roundToPx()
+                val subscriptionFootprint = if (showSubscriptionAction) iconFootprint else 0
+                val downloadFootprint = if (onDownload != null) downloadSize.roundToPx() + actionSpacing.roundToPx() else 0
+                val availableWidth = informationWidth - iconFootprint - subscriptionFootprint - downloadFootprint
+                val minimumWidth = labelWidth + playIconSize.roundToPx() + playIconSpacing.roundToPx() + 2 * 8.dp.roundToPx()
+                minOf(preferredPlayWidth.roundToPx(), availableWidth).coerceAtLeast(minimumWidth).toDp()
+            }
+        } else preferredPlayWidth
         val coverContent: @Composable () -> Unit = {
             PlaylistCover(
                 style = playlistCoverStyle,
@@ -199,14 +225,14 @@ fun PlaylistHeader(
                         Modifier.padding(top = 18.dp)
                             .testTag("DetailHeaderActions")
                             .then(
-                                if (horizontal || allowActionScroll) Modifier.horizontalScroll(rememberScrollState())
+                                if (canScrollActions) Modifier.horizontalScroll(rememberScrollState())
                                 else Modifier
                             ),
-                    horizontalArrangement = Arrangement.spacedBy(if (horizontal) 16.dp else 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(actionSpacing),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (isLoading) {
-                        listOf(actionHeight, playWidth, actionHeight).forEach { width ->
+                        listOfNotNull(actionHeight, playWidth, actionHeight.takeIf { showSubscriptionAction }).forEach { width ->
                             Spacer(
                                 Modifier.size(width = width, height = actionHeight)
                                     .clip(Capsule())
@@ -245,13 +271,13 @@ fun PlaylistHeader(
                                         blendMode = BlendMode.DstOut
                                         compositingStrategy = CompositingStrategy.Offscreen
                                     },
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(playIconSpacing),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                SfIcon("play.fill", null, tint = Color.White, size = if (horizontal) 18.dp else 16.dp)
+                                SfIcon("play.fill", null, tint = Color.White, size = playIconSize)
                                 Text(
-                                    text = stringResource(R.string.pip_play),
-                                    style = if (horizontal) IosTypography.headline.copy(fontSize = 20.sp, lineHeight = 24.sp) else IosTypography.headline,
+                                    text = playLabel,
+                                    style = playTextStyle,
                                     color = Color.White,
                                 )
                             }
@@ -286,10 +312,7 @@ fun PlaylistHeader(
                         ) {
                             SfIcon("play.fill", null, size = 18.dp)
                             Spacer(Modifier.width(8.dp))
-                            androidx.compose.material3.Text(
-                                stringResource(R.string.pip_play),
-                                style = if (horizontal) IosTypography.headline.copy(fontSize = 20.sp, lineHeight = 24.sp) else IosTypography.headline,
-                            )
+                            Text(playLabel, style = playTextStyle)
                         }
                         if (showSubscriptionAction) GlasmioIconButton(
                             onClick = { onSubscribed(isSubscribed) },
@@ -346,7 +369,7 @@ fun PlaylistHeader(
         if (horizontal) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                horizontalArrangement = Arrangement.spacedBy(coverSpacing),
             ) {
                 coverContent()
                 Box(Modifier.weight(1f)) { information() }
@@ -439,6 +462,7 @@ private fun PlaylistCover(
                         ),
                 )
                 .clip(shape)
+                .homeArtworkBorder(shape)
     ) {
         if (isLoading) {
             Box(
@@ -497,4 +521,10 @@ private fun buildPlaylistMetadata(
     return listOfNotNull(songs, played).joinToString(" · ")
 }
 
-private fun formatCompactCount(value: Long): String = value.toString()
+internal fun formatCompactCount(value: Long): String = when {
+    value >= 100_000_000L ->
+        String.format(java.util.Locale.getDefault(), "%.1f亿", value / 100_000_000.0)
+    value >= 10_000L ->
+        String.format(java.util.Locale.getDefault(), "%.1f万", value / 10_000.0)
+    else -> value.toString()
+}

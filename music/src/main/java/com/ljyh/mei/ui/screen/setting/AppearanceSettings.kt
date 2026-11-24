@@ -54,6 +54,7 @@ import com.ljyh.mei.constants.LibraryStyle
 import com.ljyh.mei.constants.LibraryStyleKey
 import com.ljyh.mei.constants.LibraryDefaultPageKey
 import com.ljyh.mei.constants.KeepBottomBarExpandedKey
+import com.ljyh.mei.constants.HorizontalSafeAreaEnabledKey
 import com.ljyh.mei.constants.BottomFloatingContentExtraSpacingKey
 import com.ljyh.mei.constants.DefaultBottomFloatingContentExtraSpacing
 import com.ljyh.mei.constants.MaxBottomFloatingContentExtraSpacing
@@ -89,6 +90,7 @@ import com.ljyh.mei.ui.navigation.ContentFeature
 import com.ljyh.mei.ui.navigation.LibraryPage
 import com.ljyh.mei.utils.rememberEnumPreference
 import com.ljyh.mei.utils.rememberPreference
+import io.github.neoruaa.glasmio.glass.render.isRuntimeShaderSupported
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,8 +112,11 @@ fun AppearanceSettings(
     val (libraryStyle, setLibraryStyle) = rememberEnumPreference(LibraryStyleKey, LibraryStyle.Default)
     val (libraryDefaultPage, setLibraryDefaultPage) = rememberPreference(LibraryDefaultPageKey, "")
     val (keepBottomBarExpanded, setKeepBottomBarExpanded) = rememberPreference(KeepBottomBarExpandedKey, false)
+    val (horizontalSafeAreaEnabled, setHorizontalSafeAreaEnabled) =
+        rememberPreference(HorizontalSafeAreaEnabledKey, true)
     val (bottomFloatingExtraSpacing, setBottomFloatingExtraSpacing) =
         rememberPreference(BottomFloatingContentExtraSpacingKey, DefaultBottomFloatingContentExtraSpacing)
+    val shaderEffectsSupported = isRuntimeShaderSupported()
     val (liquidGlassEnabled, setLiquidGlassEnabled) = rememberPreference(LiquidGlassEnabledKey, true)
     val (glassHdrEffects, setGlassHdrEffects) = rememberPreference(GlassHdrEffectsKey, false)
     val (reduceTransparency, setReduceTransparency) = rememberPreference(ReduceTransparencyKey, false)
@@ -191,6 +196,13 @@ fun AppearanceSettings(
         item {
             SettingsGroup(stringResource(R.string.appearance_interface)) {
                 AppearanceToggle(
+                    R.string.appearance_horizontal_safe_area,
+                    null,
+                    "arrow.left.and.right",
+                    horizontalSafeAreaEnabled,
+                    setHorizontalSafeAreaEnabled,
+                )
+                AppearanceToggle(
                     R.string.appearance_fixed_bottom_bar,
                     R.string.appearance_fixed_bottom_bar_description,
                     "rectangle.split.3x1.fill",
@@ -200,26 +212,29 @@ fun AppearanceSettings(
                 AppearanceBottomFloatingSpacing(bottomFloatingExtraSpacing, setBottomFloatingExtraSpacing)
                 AppearanceToggle(
                     R.string.appearance_liquid_glass,
-                    R.string.appearance_liquid_glass_description,
+                    if (shaderEffectsSupported) R.string.appearance_liquid_glass_description
+                    else R.string.legacy_appearance_shader_requirement,
                     "square.on.square",
-                    liquidGlassEnabled,
+                    liquidGlassEnabled && shaderEffectsSupported,
                     setLiquidGlassEnabled,
-                    enabled = !reduceTransparency,
+                    enabled = shaderEffectsSupported && !reduceTransparency,
                 )
                 AppearanceToggle(
                     R.string.appearance_glass_hdr_effects,
-                    null,
+                    if (shaderEffectsSupported) null else R.string.legacy_appearance_shader_requirement,
                     "sun.max.fill",
-                    glassHdrEffects,
+                    glassHdrEffects && shaderEffectsSupported,
                     setGlassHdrEffects,
-                    enabled = liquidGlassEnabled && !reduceTransparency,
+                    enabled = shaderEffectsSupported && liquidGlassEnabled && !reduceTransparency,
                 )
                 AppearanceToggle(
                     R.string.appearance_reduce_transparency,
-                    R.string.appearance_reduce_transparency_description,
+                    if (shaderEffectsSupported) R.string.appearance_reduce_transparency_description
+                    else R.string.legacy_appearance_reduce_transparency_description,
                     "circle.lefthalf.filled",
-                    reduceTransparency,
+                    !shaderEffectsSupported || reduceTransparency,
                     setReduceTransparency,
+                    enabled = shaderEffectsSupported,
                 )
                 AppearanceToggle(
                     R.string.appearance_predictive_back,
@@ -302,13 +317,23 @@ fun AppearanceSettings(
             }
         }
         item {
-            SettingsGroup(stringResource(R.string.appearance_fluid_background)) {
-                AppearanceFloatChoice(R.string.appearance_flow_speed, "gauge.with.dots.needle.33percent", meshFlowSpeed, listOf(.05f, .1f, .15f, .25f, .5f), setMeshFlowSpeed)
-                AppearanceFloatChoice(R.string.appearance_render_scale, "eye", meshRenderScale, listOf(.25f, .5f, .75f, 1f), setMeshRenderScale)
-                AppearanceFloatChoice(R.string.appearance_beat_sensitivity, "waveform.path.ecg", meshLowFrequency, listOf(0f, .1f, .2f, .3f, .4f, .5f), setMeshLowFrequency)
-                AppearanceChoice(R.string.appearance_mesh_subdivision, "circle.grid.2x2.fill", meshSubdivision, (1..8).map { it * 10 }, { it.toString() }, setMeshSubdivision)
-                AppearanceToggle(R.string.appearance_static_mode, R.string.appearance_static_mode_description, "pause.circle", meshStatic, setMeshStatic)
-                AppearanceToggle(R.string.appearance_background_animation, R.string.appearance_background_animation_description, "play.circle", meshPlaying, setMeshPlaying)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SettingsGroup(stringResource(R.string.appearance_fluid_background)) {
+                    AppearanceFloatChoice(R.string.appearance_flow_speed, "gauge.with.dots.needle.33percent", meshFlowSpeed, listOf(.05f, .1f, .15f, .25f, .5f), setMeshFlowSpeed, enabled = shaderEffectsSupported)
+                    AppearanceFloatChoice(R.string.appearance_render_scale, "eye", meshRenderScale, listOf(.25f, .5f, .75f, 1f), setMeshRenderScale, enabled = shaderEffectsSupported)
+                    AppearanceFloatChoice(R.string.appearance_beat_sensitivity, "waveform.path.ecg", meshLowFrequency, listOf(0f, .1f, .2f, .3f, .4f, .5f), setMeshLowFrequency, enabled = shaderEffectsSupported)
+                    AppearanceChoice(R.string.appearance_mesh_subdivision, "circle.grid.2x2.fill", meshSubdivision, (1..8).map { it * 10 }, { it.toString() }, setMeshSubdivision, enabled = shaderEffectsSupported)
+                    AppearanceToggle(R.string.appearance_static_mode, R.string.appearance_static_mode_description.takeIf { shaderEffectsSupported }, "pause.circle", meshStatic && shaderEffectsSupported, setMeshStatic, enabled = shaderEffectsSupported)
+                    AppearanceToggle(R.string.appearance_background_animation, R.string.appearance_background_animation_description.takeIf { shaderEffectsSupported }, "play.circle", meshPlaying && shaderEffectsSupported, setMeshPlaying, enabled = shaderEffectsSupported)
+                }
+                if (!shaderEffectsSupported) {
+                    Text(
+                        stringResource(R.string.legacy_appearance_fluid_description),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
         item {
@@ -513,6 +538,7 @@ private fun AppearanceFloatChoice(
     selected: Float,
     values: List<Float>,
     onSelected: (Float) -> Unit,
+    enabled: Boolean = true,
 ) {
-    AppearanceChoice(titleRes, systemName, selected, values, { "${(it * 100).toInt()}%" }, onSelected)
+    AppearanceChoice(titleRes, systemName, selected, values, { "${(it * 100).toInt()}%" }, onSelected, enabled)
 }

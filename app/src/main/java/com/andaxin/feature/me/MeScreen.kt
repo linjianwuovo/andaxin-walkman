@@ -1,6 +1,7 @@
 package com.andaxin.feature.me
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,8 +32,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -53,6 +58,7 @@ import com.andaxin.shell.Chip
 import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Sheet
+import com.andaxin.shell.ServiceTile
 import com.andaxin.shell.SectionTitle
 import com.andaxin.shell.ShelfTail
 import com.andaxin.shell.registerShelfNavigationViewport
@@ -209,87 +215,96 @@ fun MeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
             })
         }
 
-        SectionTitle("功能")
         EntryGrid(ENTRIES, open)
 
         ShelfTail()
     }
 }
 
-/**
- * 三到六列文字格，列数按可用宽度算。
- *
- * 为什么不用图标：仓里只画了底栏那五枚 vector，剩下这些入口没有图标，
- * 硬凑一堆 emoji 或通用图形反而更花；先把"一屏看全"这件事做到。
- */
 @Composable
 private fun EntryGrid(entries: List<Entry>, open: (String) -> Unit) {
-    val ink = LocalInk.current
-    // 强调色要先取出来：graphicsLayer 那一层不是组合作用域，在里面读 MaterialTheme 会编不过
-    val accent = MaterialTheme.colorScheme.primary
-    // 列数按可用宽度算（最少 3 列、最多 6 列，一格约 180dp）：原来写死三列，
-    // 平板上一格能摊到 250dp，右边和中间留出一大片白。
-    BoxWithConstraints {
-        val columns = (maxWidth / 180.dp).toInt().coerceIn(3, 6)
-        Sheet(modifier = Modifier.enterFade()) {
-            entries.chunked(columns).forEachIndexed { rowIdx, row ->
-                Row(Modifier.fillMaxWidth()) {
-                    row.forEach { e ->
-                        Column(
-                            Modifier
-                                .weight(1f)
-                                .pressClick { e.route?.let(open) }
-                                .padding(vertical = Gap.md),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            if (e.icon != 0) {
-                                Box(Modifier.size(22.dp)) {
-                                    androidx.compose.foundation.Image(
-                                        painter = androidx.compose.ui.res.painterResource(e.icon),
+    val groups = listOf(
+        "常用服务" to setOf("affair", "dorm", "card", "repair", "sport", "sport/records", "music"),
+        "学习成长" to setOf("aiclass", "opencourse", "group", "exam", "credit", "labor", "holiday"),
+        "设置与信息" to setOf("more", "theme", "about"),
+    )
+    groups.forEach { (label, routes) ->
+        val grouped = entries.filter { it.route in routes }
+        if (grouped.isNotEmpty()) {
+            SectionTitle(label)
+            MeEntryGrid(grouped, open)
+        }
+    }
+}
+
+@Composable
+private fun MeEntryGrid(entries: List<Entry>, open: (String) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val scale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val columns = if (scale <= 1.3f && maxWidth >= 280.dp * scale) 2 else 1
+        val gap = 10.dp
+        val cellWidth = (maxWidth - gap * (columns - 1).toFloat()) / columns.toFloat()
+        val compact = columns == 2 && cellWidth < 224.dp
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            entries.chunked(columns).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    row.forEach { entry ->
+                        if (compact) {
+                            Sheet(
+                                modifier = Modifier.weight(1f).heightIn(min = 92.dp)
+                                    .pressClick(shrink = false) { entry.route?.let(open) },
+                                contentPadding = 10.dp,
+                            ) {
+                                Box(Modifier.size(26.dp)) {
+                                    Image(
+                                        painter = painterResource(entry.icon),
                                         contentDescription = null,
-                                        modifier = Modifier
-                                            .matchParentSize()
-                                            .graphicsLayer {
-                                                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(ink.strong)
-                                            },
+                                        colorFilter = ColorFilter.tint(LocalInk.current.strong),
+                                        modifier = Modifier.matchParentSize(),
                                     )
-                                    if (e.iconAccent != 0) {
-                                        androidx.compose.foundation.Image(
-                                            painter = androidx.compose.ui.res.painterResource(e.iconAccent),
-                                            contentDescription = null,
-                                            modifier = Modifier
-                                                .matchParentSize()
-                                                .graphicsLayer {
-                                                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(accent)
-                                                },
-                                        )
-                                    }
+                                    Image(
+                                        painter = painterResource(entry.iconAccent),
+                                        contentDescription = null,
+                                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
+                                        modifier = Modifier.matchParentSize(),
+                                    )
                                 }
-                                Spacer(Modifier.height(Gap.xs))
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    entry.title,
+                                    fontSize = 15.sp,
+                                    lineHeight = 19.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = LocalInk.current.strong,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (entry.note.isNotBlank()) {
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        entry.note,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
+                                        color = LocalInk.current.muted,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
-                            Text(
-                                text = e.title,
-                                fontSize = Type.body,
-                                fontWeight = FontWeight.Medium,
-                                color = ink.strong,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Spacer(Modifier.height(1.dp))
-                            Text(
-                                text = e.note,
-                                fontSize = Type.micro,
-                                color = ink.ghost,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                        } else {
+                            ServiceTile(
+                                title = entry.title,
+                                subtitle = entry.note,
+                                icon = entry.icon,
+                                accentIcon = entry.iconAccent,
+                                horizontal = cellWidth >= 224.dp && scale <= 1.3f,
+                                modifier = Modifier.weight(1f),
+                                onClick = { entry.route?.let(open) },
                             )
                         }
                     }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                    if (row.size < columns) Spacer(Modifier.weight(1f))
                 }
-                if (rowIdx != entries.chunked(columns).lastIndex) Hairline()
             }
         }
     }

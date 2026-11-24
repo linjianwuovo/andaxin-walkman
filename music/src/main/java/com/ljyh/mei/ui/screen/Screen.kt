@@ -31,6 +31,7 @@ sealed class Screen(val route:String) {
     data object ListeningStats:Screen("account/listening_stats")
     data object AppearanceSettings:Screen("setting/appearance")
     data object GeneralSettings:Screen("setting/general")
+    data object LocalMcpSettings:Screen("setting/general/local-mcp")
     data object LyricsSettings:Screen("setting/lyrics")
     data object PlaySettings:Screen("setting/play")
     data object EqualizerSettings:Screen("setting/equalizer")

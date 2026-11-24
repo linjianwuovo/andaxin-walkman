@@ -1,7 +1,6 @@
 package com.ljyh.mei.ui.component.player.component.classic.component
 
 import androidx.annotation.OptIn
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -9,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -58,6 +58,7 @@ import com.ljyh.mei.constants.OriginalCoverKey
 import com.ljyh.mei.constants.PlayerStyle
 import com.ljyh.mei.constants.PlayerStyleKey
 import com.ljyh.mei.data.model.MediaMetadata
+import com.ljyh.mei.ui.component.player.PlayerArtworkTransition
 import com.ljyh.mei.ui.component.player.component.applemusic.rememberAppleMusicPlaybackScale
 import com.ljyh.mei.playback.PlayerConnection
 import com.ljyh.mei.utils.image.saveImageToGallery
@@ -123,12 +124,7 @@ fun Cover(
         contentAlignment = Alignment.Center
     ) {
 
-        AnimatedContent(
-            targetState = mediaMetadata.coverUrl,
-            transitionSpec = {
-                fadeIn(tween(500)) togetherWith fadeOut(tween(500))
-            },
-            label = "CoverTransition",
+        Surface(
             modifier = Modifier.graphicsLayer {
                 scaleX = coverScale.value
                 scaleY = coverScale.value
@@ -137,28 +133,27 @@ fun Cover(
                 shadowElevation = { 12.dp },
                 backgroundColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 playbackScale = { coverScale.value },
-            )
-        ) { url ->
-
-            Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .aspectRatio(1f)
-                    .shadow(12.dp, coverShape)
-                    .pointerInput(onClick != null) {
-                        detectTapGestures(
-                            onTap = { currentOnClick?.invoke() },
-                            onDoubleTap = if (currentOnClick == null) {
-                                { offset -> currentOnDoubleClick(offset, size.width) }
-                            } else null,
-                            onLongPress = {
-                                showFullImage = true
-                            }
-                        )
-                    },
-                shape = coverShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHighest
-            ) {
+            ).fillMaxSize()
+                .aspectRatio(1f)
+                .shadow(12.dp, coverShape)
+                .pointerInput(onClick != null) {
+                    detectTapGestures(
+                        onTap = { currentOnClick?.invoke() },
+                        onDoubleTap = if (currentOnClick == null) {
+                            { offset -> currentOnDoubleClick(offset, size.width) }
+                        } else null,
+                        onLongPress = { showFullImage = true },
+                    )
+                },
+            shape = coverShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ) {
+            PlayerArtworkTransition(
+                coverUrl = mediaMetadata.coverUrl,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(500)) },
+            ) { coverUrl ->
+                val url = coverUrl.orEmpty()
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .placeholderMemoryCacheKey(url.smallImage())
@@ -167,7 +162,7 @@ fun Cover(
                         .build(),
                     contentScale = ContentScale.Crop,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }

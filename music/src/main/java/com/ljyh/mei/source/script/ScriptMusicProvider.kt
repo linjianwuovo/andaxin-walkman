@@ -785,6 +785,8 @@ internal class ScriptMusicProvider(
             SourceStatus.INCOMPATIBLE -> SourceErrorCode.UNSUPPORTED
             else -> SourceErrorCode.MISSING_PROVIDER
         })
+        val authorization = currentCoroutineContext()[com.ljyh.mei.source.core.SourceMutationAuthorization]
+        authorization?.check?.invoke()
         val mutationOwner = read?.owner ?: catalogOwner
         val mutation = if (operation in CATALOG_MUTATIONS) {
             catalog.beginMutation(mutationOwner) { ensureCurrent(); read?.let(::ensureCatalog) }.also {
@@ -803,6 +805,7 @@ internal class ScriptMusicProvider(
                 val verifiedUserId = catalog.account(callOwner, ::ensureCurrent).second?.ref?.accountId?.value
                 val call = runtime.invoke(File(directory, manifest.entry).readText(), manifest, operation, parameters, config(), inputStorage, network,
                     verifiedUserId = verifiedUserId, readOnlyStorage = readOnlyStorage, ensureCurrent = {
+                        authorization?.check?.invoke()
                         ensureCurrent()
                         catalog.ensureOwner(callOwner)
                         read?.let(::ensureCatalog)

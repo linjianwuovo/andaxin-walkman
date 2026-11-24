@@ -29,12 +29,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -90,7 +86,7 @@ import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 import com.ljyh.mei.ui.screen.Screen
 import com.ljyh.mei.ui.screen.main.library.component.groupedLazyItems
-import io.github.neoruaa.glasmio.scaffold.pullToRefreshRebound
+import io.github.neoruaa.glasmio.scaffold.GlasmioPullToRefreshBox
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.text.NumberFormat
 import javax.inject.Inject
@@ -508,7 +504,6 @@ class ListeningRankViewModel @Inject constructor(
 }
 
 @OptIn(UnstableApi::class)
-@kotlin.OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ListeningRankScreen(userId: String, viewModel: ListeningRankViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
@@ -516,7 +511,6 @@ fun ListeningRankScreen(userId: String, viewModel: ListeningRankViewModel = hilt
     val playerConnection = LocalPlayerConnection.current
     val insets = LocalPlayerAwareWindowInsets.current.asPaddingValues()
     val listState = rememberLazyListState()
-    val refreshState = rememberPullToRefreshState()
     val collapseDistancePx = with(LocalDensity.current) { 56.dp.toPx() }
     val collapseProgress by remember(listState, collapseDistancePx) {
         derivedStateOf {
@@ -532,23 +526,18 @@ fun ListeningRankScreen(userId: String, viewModel: ListeningRankViewModel = hilt
         collapseProgress = collapseProgress,
         topBarBlurProgress = collapseProgress,
     ) { contentPadding ->
-        PullToRefreshBox(
+        GlasmioPullToRefreshBox(
             isRefreshing = state.refreshing,
-            onRefresh = { if (!state.loading) viewModel.load(userId, state.period, force = true) },
-            state = refreshState,
-            modifier = Modifier.fillMaxSize(),
-            indicator = {
-                PullToRefreshDefaults.Indicator(
-                    state = refreshState,
-                    isRefreshing = state.refreshing,
-                    modifier = Modifier.align(Alignment.TopCenter)
-                        .padding(top = contentPadding.calculateTopPadding()),
-                )
+            onRefresh = {
+                val current = viewModel.state.value
+                if (!current.loading) viewModel.load(userId, current.period, force = true)
             },
+            modifier = Modifier.fillMaxSize(),
+            indicatorPadding = PaddingValues(top = contentPadding.calculateTopPadding()),
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().pullToRefreshRebound(refreshState, state.refreshing),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = contentPadding,
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {

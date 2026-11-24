@@ -1,10 +1,12 @@
 package com.ljyh.mei.ui.screen.playlist.component
 
+import com.ljyh.mei.ui.component.item.trackRowPressIndication
 import com.ljyh.mei.ui.component.playlist.songListDividerColor
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.height
 import com.ljyh.mei.ui.component.item.PortraitMediaRow
+import com.ljyh.mei.ui.component.item.TrackMenuTrigger
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,10 +26,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,8 +33,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -56,9 +52,10 @@ import com.ljyh.mei.constants.songListCoverSize
 import com.ljyh.mei.data.model.MediaMetadata
 import com.ljyh.mei.data.model.supportsNeteaseSongActions
 import com.ljyh.mei.ui.component.playlist.PlayingImageView
-import com.ljyh.mei.ui.component.playlist.AnimatedSoundWave
+import com.ljyh.mei.ui.component.playlist.TrackPlaybackWave
 import com.ljyh.mei.ui.component.playlist.FavoriteTrackStar
 import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.utils.TimeUtils.formatDuration
@@ -81,6 +78,7 @@ internal fun DetailTrackRow(
     selected: Boolean?,
     onMoreClick: ((Rect) -> Unit)?,
     showDuration: Boolean = false,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
     val colors = LocalGlassColors.current
     val compactRows = rememberDeviceInfo().isLandscape
@@ -95,17 +93,27 @@ internal fun DetailTrackRow(
             suffixColor = null, favorite = isFavorite, showDivider = false,
             onMore = onMoreClick, navigationArrow = false, footer = null,
             isCurrentTrack = highlightTitle,
+            fullWidthTrackPress = true,
+            menuAnchorState = menuAnchorState,
         )
         return
     }
 
+    val rowIndication = trackRowPressIndication()
     val numberWidth = if (showArtwork) 0.dp else albumTrackNumberWidth()
     val numberColumnWidth = maxOf(numberWidth, DetailTrackIndicatorWidth)
     val favoriteOffset = -(DetailPageHorizontalPadding + DetailTrackFavoriteSize) / 2 +
         if (compactRows) 0.dp else 2.dp
     val moreButtonOffset = if (compactRows) -8.dp else 8.dp
-    var menuAnchor by remember { mutableStateOf(Rect.Zero) }
-    Box(Modifier.fillMaxWidth()) {
+    Box(
+        Modifier.fillMaxWidth().then(
+            if (selected == null) Modifier.clickable(interactionSource = null, indication = rowIndication, onClick = onClick)
+            else Modifier.selectable(
+                selected = selected, interactionSource = null, indication = rowIndication,
+                role = Role.Checkbox, onClick = onClick,
+            )
+        ),
+    ) {
         if (isFavorite) {
             FavoriteTrackStar(
                 modifier = Modifier.align(Alignment.CenterStart).offset(x = favoriteOffset),
@@ -116,10 +124,6 @@ internal fun DetailTrackRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = if (showArtwork) { 56.dp } else 52.dp)
-                .then(
-                    if (selected == null) Modifier.clickable(onClick = onClick)
-                    else Modifier.selectable(selected = selected, role = Role.Checkbox, onClick = onClick)
-                )
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -152,13 +156,7 @@ internal fun DetailTrackRow(
                             contentAlignment = Alignment.Center,
                         ) {
                             if (isPlaying) {
-                                AnimatedSoundWave(
-                                    modifier = Modifier.size(width = DetailTrackIndicatorWidth, height = 12.dp),
-                                    barCount = 5,
-                                    barColor = colors.secondaryContent,
-                                    barWidth = 2.dp,
-                                    barSpacing = 2.dp,
-                                )
+                                TrackPlaybackWave(colors.secondaryContent)
                             } else {
                                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                     repeat(5) {
@@ -221,26 +219,29 @@ internal fun DetailTrackRow(
                     modifier = Modifier.width(DetailTrackMoreButtonSize),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(DetailTrackMoreButtonSize)
-                            .offset(x = moreButtonOffset)
-                            .onGloballyPositioned { menuAnchor = it.boundsInWindow() }
-                            .clip(CircleShape)
-                            .clickable(
-                                role = Role.Button,
-                                onClickLabel = stringResource(R.string.more_actions_title),
-                                onClick = { onMore(menuAnchor) },
+                    TrackMenuTrigger(menuAnchorState, onMore) { trigger, openMenu ->
+                        Box(
+                            modifier = Modifier
+                                .size(DetailTrackMoreButtonSize)
+                                .offset(x = moreButtonOffset)
+                                .clip(CircleShape)
+                                .then(trigger)
+                                .clickable(
+                                    interactionSource = null, indication = null,
+                                    role = Role.Button,
+                                    onClickLabel = stringResource(R.string.more_actions_title),
+                                    onClick = openMenu,
+                                )
+                                .detailInkBlend(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            SfIcon(
+                                symbol = SfSymbol.Ellipsis,
+                                contentDescription = stringResource(R.string.more_actions_title),
+                                tint = colors.secondaryContent,
+                                size = if (compactRows && !showArtwork) 18.dp else DetailTrackMoreIconSize,
                             )
-                            .detailInkBlend(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        SfIcon(
-                            symbol = SfSymbol.Ellipsis,
-                            contentDescription = stringResource(R.string.more_actions_title),
-                            tint = colors.secondaryContent,
-                            size = if (compactRows && !showArtwork) 18.dp else DetailTrackMoreIconSize,
-                        )
+                        }
                     }
                 }
             }

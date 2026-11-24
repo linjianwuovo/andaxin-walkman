@@ -5,7 +5,6 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.Animatable
@@ -39,6 +38,7 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import com.ljyh.mei.ui.component.sheet.LocalPlayerSheet
+import com.ljyh.mei.ui.component.player.rememberPlayerSheetPresentation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -59,6 +59,8 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.foundation.Image
 import com.ljyh.mei.ui.component.player.LocalPlayerArtwork
+import com.ljyh.mei.ui.component.player.LocalPlayerLyricsRequest
+import com.ljyh.mei.ui.component.player.PlayerArtworkTransition
 import com.ljyh.mei.ui.component.sheet.playerArtwork
 import com.ljyh.mei.ui.component.sheet.PlayerArtworkGeometry
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -133,7 +135,16 @@ fun AppleMusicPlayer(
     val configuration = LocalConfiguration.current
 
     // --- Apple Music 特定状态 ---
-    var page by remember { mutableStateOf(AppleMusicPlayerPage.Artwork) }
+    val lyricsRequest = LocalPlayerLyricsRequest.current
+    var page by remember {
+        mutableStateOf(if (lyricsRequest?.value == true) AppleMusicPlayerPage.Lyrics else AppleMusicPlayerPage.Artwork)
+    }
+    LaunchedEffect(lyricsRequest?.value) {
+        if (lyricsRequest?.value == true) {
+            page = AppleMusicPlayerPage.Lyrics
+            lyricsRequest.value = false
+        }
+    }
     val showLyrics = page == AppleMusicPlayerPage.Lyrics
     val showQueue = page == AppleMusicPlayerPage.Queue
     val showDetail = page != AppleMusicPlayerPage.Artwork
@@ -175,6 +186,7 @@ fun AppleMusicPlayer(
     val isLiked by stateContainer.isLiked
     val canLike by stateContainer.canLike
     val sheetLayers = LocalPlayerSheet.current
+    val sheetPresentation = rememberPlayerSheetPresentation(state)
     val expandPlayer: () -> Unit = { sheetLayers?.expand() }
     val sheetExpanded by remember(state, sheetLayers) {
         derivedStateOf { state.isExpanded && sheetLayers?.isTransitioning != true }
@@ -397,7 +409,7 @@ fun AppleMusicPlayer(
                 stateContainer.playerConnection.player.stop()
                 stateContainer.playerConnection.player.clearMediaItems()
             },
-            onHorizontalSwipe = if (state.isCollapsed) null else { direction ->
+            onHorizontalSwipe = if (sheetPresentation.isCollapsed) null else { direction ->
                 if (!sheetExpanded) {
                     when (direction) {
                         HorizontalSwipeDirection.Left -> stateContainer.playerConnection.seekToNext()
@@ -532,6 +544,7 @@ fun AppleMusicPlayer(
                                                                 showLikeButton = canLike,
                                                                 onLikeClick = { stateContainer.playerViewModel.like(metadata) },
                                                                 onMoreClick = { overlayHandler.showMoreAction() },
+                                                                navigationMenuAnchor = overlayHandler.navigationMenuAnchor,
                                                                 onTitleClick = {
                                                                     overlayHandler.showAlbumArtist(
                                                                         metadata.album, metadata.artists, metadata.coverUrl,
@@ -646,6 +659,7 @@ fun AppleMusicPlayer(
                                 showLikeButton = canLike,
                                 onLikeClick = { stateContainer.playerViewModel.like(metadata) },
                                 onMoreClick = { overlayHandler.showMoreAction() },
+                                navigationMenuAnchor = overlayHandler.navigationMenuAnchor,
                                 onTitleClick = {
                                     overlayHandler.showAlbumArtist(
                                         metadata.album,
@@ -693,6 +707,7 @@ fun AppleMusicPlayer(
                             showLikeButton = canLike,
                             onLikeClick = { stateContainer.playerViewModel.like(metadata) },
                             onMoreClick = { overlayHandler.showMoreAction() },
+                            navigationMenuAnchor = overlayHandler.navigationMenuAnchor,
                             onTitleClick = {
                                 overlayHandler.showAlbumArtist(
                                     metadata.album,
@@ -802,10 +817,10 @@ fun AppleMusicPlayer(
                     .layerBackdrop(playerCoverBackdrop)
                     .trackBackdropPosition(playerCoverBackdrop),
             ) {
-                AnimatedContent(
-                    targetState = coverUrl,
+                PlayerArtworkTransition(
+                    coverUrl = coverUrl,
+                    contentDescription = "Cover",
                     transitionSpec = { appleMusicArtworkTransition() },
-                    label = "CoverTransition",
                     modifier = Modifier
                         .playerArtworkMotion(artworkFrame)
                         .size(with(density) { artworkLayoutSize.toDp() })
@@ -842,19 +857,20 @@ fun AppleMusicPlayer(
                         )
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                 ) { currentCoverUrl ->
-                    if (currentCoverUrl != null) {
-                        val retainedPainter = remember(currentCoverUrl) {
-                            sharedArtwork?.takeIf { it.first == currentCoverUrl }?.second
+                    Box(Modifier.fillMaxSize()) {
+                        if (currentCoverUrl != null) {
+                            val retainedPainter = remember(currentCoverUrl) {
+                                sharedArtwork?.takeIf { it.first == currentCoverUrl }?.second
+                            }
+                            val painter = sharedArtwork?.takeIf { it.first == currentCoverUrl }?.second
+                                ?: retainedPainter
+                            if (painter != null) Image(
+                                painter = painter,
+                                contentDescription = "Cover",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
                         }
-                        val painter = sharedArtwork?.takeIf { it.first == currentCoverUrl }?.second ?: retainedPainter
-                        if (painter != null) Image(
-                            painter = painter,
-                            contentDescription = "Cover",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        ) else Box(Modifier.fillMaxSize())
-                    } else {
-                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant))
                     }
                 }
             }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +26,7 @@ import com.ljyh.mei.constants.PlayerStyle
 import com.ljyh.mei.constants.PlayerStyleKey
 import com.ljyh.mei.utils.rememberEnumPreference
 import com.ljyh.mei.ui.component.sheet.LocalPlayerSheet
+import com.ljyh.mei.ui.component.player.rememberPlayerSheetPresentation
 import com.ljyh.mei.ui.component.sheet.isUsable
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -33,6 +35,7 @@ import com.ljyh.mei.ui.component.player.component.applemusic.AppleMusicPlayerPag
 import com.ljyh.mei.ui.component.player.component.applemusic.NarrowLandscapePlayer
 import com.ljyh.mei.ui.component.player.component.classic.component.Cover
 import com.ljyh.mei.ui.component.player.MiniPlayer
+import com.ljyh.mei.ui.component.player.LocalPlayerLyricsRequest
 import com.ljyh.mei.ui.component.player.component.FluidBackground
 import com.ljyh.mei.ui.component.player.overlay.PlayerOverlayHandler
 import com.ljyh.mei.ui.component.player.state.PlayerStateContainer
@@ -63,7 +66,9 @@ fun ClassicPlayer(
 ) {
 
     val device = rememberDeviceInfo()
-    val queueBackdrop = rememberRasterizedBackdrop(playerBackgroundBackdrop)
+    val sheetPresentation = rememberPlayerSheetPresentation(state)
+    val playerVisible = sheetPresentation.isContentVisible
+    val queueBackdrop = rememberRasterizedBackdrop(playerBackgroundBackdrop, enabled = playerVisible)
 
     val playerStyle by rememberEnumPreference(PlayerStyleKey, PlayerStyle.AppleMusic)
     val sheetLayers = LocalPlayerSheet.current
@@ -71,6 +76,15 @@ fun ClassicPlayer(
     val scope = rememberCoroutineScope()
     var pendingExpansion by remember { mutableStateOf<Job?>(null) }
     var narrowPage by remember { mutableStateOf(AppleMusicPlayerPage.Artwork) }
+    val lyricsRequest = LocalPlayerLyricsRequest.current
+    LaunchedEffect(device.isLandscape, lyricsRequest?.value) {
+        if (device.isLandscape && lyricsRequest?.value == true) {
+            narrowPage = AppleMusicPlayerPage.Lyrics
+            stateContainer.landscapeQueueSelected.value = false
+            stateContainer.landscapeDetailVisible.value = true
+            lyricsRequest.value = false
+        }
+    }
 
     fun openLandscapeDetail(queueSelected: Boolean) {
         if (sheetLayers?.isTransitioning == true) return
@@ -121,7 +135,7 @@ fun ClassicPlayer(
             stateContainer.playerConnection.player.stop()
             stateContainer.playerConnection.player.clearMediaItems()
         },
-        onHorizontalSwipe = if (state.isCollapsed) null else { direction ->
+        onHorizontalSwipe = if (sheetPresentation.isCollapsed) null else { direction ->
             when (direction) {
                 HorizontalSwipeDirection.Left -> stateContainer.playerConnection.seekToNext()
                 HorizontalSwipeDirection.Right -> stateContainer.playerConnection.seekToPrevious()
@@ -176,7 +190,7 @@ fun ClassicPlayer(
                         io.github.neoruaa.glasmio.glass.LocalBlurBackdrop provides queueBackdrop,
                     ) {
                         NarrowLandscapePlayer(stateContainer, overlayHandler, narrowPage,
-                            active = state.isContentVisible,
+                            active = playerVisible,
                             onPageSelected = { narrowPage = it },
                             artwork = { artworkModifier ->
                                 mediaMetadata?.let { track ->

@@ -1,5 +1,6 @@
 package io.github.neoruaa.glasmio.glass
 
+import io.github.neoruaa.glasmio.glass.render.isRuntimeShaderSupported
 import android.graphics.Paint
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
@@ -8,10 +9,14 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.colorspace.ColorSpaces
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
+import io.github.neoruaa.glasmio.glass.render.BackdropEffectScope
 import io.github.neoruaa.glasmio.glass.render.GlassColorSpaceShaderFunctions
+import io.github.neoruaa.glasmio.glass.render.cachedResource
+import io.github.neoruaa.glasmio.glass.render.effects.effect
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -89,13 +94,21 @@ internal data class NavigationMaterialRecipe(
 internal fun NavigationMaterialRecipe.hasFillLayers(): Boolean =
     fills.isNotEmpty() || appearanceAlternate?.hasFillLayers() == true
 
+/** Apply the Regular glass color response without imposing a rounded-box optical field. */
+fun BackdropEffectScope.regularGlassFace(darkFraction: Float) {
+    if (!isRuntimeShaderSupported()) return
+    val renderer = cachedResource("Glasmio.RegularGlassFace", ::NavigationMaterialRenderer)
+    val recipe = NavigationMaterialRecipe.resolve(darkFraction, NavigationGlassMaterial.RegularMedium)
+    effect(renderer.effect(recipe).asComposeRenderEffect())
+}
+
 /**
  * Cached material program. Modern HWUI can consume the destination directly; older HWUI applies
  * the identical function to the already sampled backdrop with a RenderEffect.
  */
 internal class NavigationMaterialRenderer {
-    private val shaderWithFills by lazy { RuntimeShader(NavigationMaterialEffectShader) }
-    private val shaderWithoutFills by lazy { RuntimeShader(NavigationMaterialEffectNoFillShader) }
+    private var shaderWithFills: RuntimeShader? = null
+    private var shaderWithoutFills: RuntimeShader? = null
     private var effectRecipe: NavigationMaterialRecipe? = null
     private var effectOpacity = Float.NaN
     private var cachedEffect: RenderEffect? = null
@@ -117,9 +130,14 @@ internal class NavigationMaterialRenderer {
         return requireNotNull(sizeRecipe)
     }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     fun effect(value: NavigationMaterialRecipe, opacity: Float = 1f, minimumDimension: Float = Float.NaN): RenderEffect {
         val recipe = recipeForSize(value, minimumDimension)
-        val shader = if (recipe.hasFillLayers()) shaderWithFills else shaderWithoutFills
+        val shader = if (recipe.hasFillLayers()) {
+            shaderWithFills ?: RuntimeShader(NavigationMaterialEffectShader).also { shaderWithFills = it }
+        } else {
+            shaderWithoutFills ?: RuntimeShader(NavigationMaterialEffectNoFillShader).also { shaderWithoutFills = it }
+        }
         val alpha = opacity.coerceIn(0f, 1f)
         if (!recipe.matches(effectRecipe) || effectOpacity != alpha || cachedEffect == null) {
             if (!recipe.matches(effectRecipe)) updateNavigationMaterialUniforms(recipe, alpha, shader::setFloatUniform)
@@ -183,7 +201,7 @@ internal fun updateNavigationMaterialUniforms(
     }
 }
 
-private fun updateNavigationMaterialEndpointUniforms(
+internal fun updateNavigationMaterialEndpointUniforms(
     recipe: NavigationMaterialRecipe?,
     opacity: Float,
     set: (String, FloatArray) -> Unit,

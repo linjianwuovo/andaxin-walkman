@@ -103,6 +103,11 @@ fun GeneralSettings() {
                     systemName = "music.note.list",
                     onClick = { Screen.SourceManagement.navigate(navController) },
                 )
+                GlasmioListRow(
+                    title = stringResource(R.string.mcp_title),
+                    systemName = "server.rack",
+                    onClick = { Screen.LocalMcpSettings.navigate(navController) },
+                )
             }
         }
         item {

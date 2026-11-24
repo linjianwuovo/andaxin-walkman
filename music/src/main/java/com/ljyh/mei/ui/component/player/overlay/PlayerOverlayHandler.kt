@@ -9,7 +9,6 @@ import androidx.annotation.OptIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
@@ -17,7 +16,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import com.ljyh.mei.data.model.MediaMetadata
-import com.ljyh.mei.data.model.room.Playlist
 import com.ljyh.mei.ui.component.player.OverlayState
 import com.ljyh.mei.ui.component.player.PlayerViewModel
 import com.ljyh.mei.ui.component.player.state.PlayerStateContainer
@@ -26,10 +24,7 @@ import com.ljyh.mei.ui.model.availableFor
 import com.ljyh.mei.source.api.ProviderIds
 import com.ljyh.mei.utils.lyric.lyricStorageKey
 import com.ljyh.mei.ui.component.player.enterFloatingLyricsPip
-import com.ljyh.mei.ui.screen.Screen
-import android.net.Uri
-import com.ljyh.mei.source.api.TrackRefCodec
-import com.ljyh.mei.ui.navigation.MeiNavigator
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 
 /**
  * 播放器弹窗处理器
@@ -38,15 +33,15 @@ import com.ljyh.mei.ui.navigation.MeiNavigator
 @OptIn(UnstableApi::class)
 class PlayerOverlayHandler(
     private val stateContainer: PlayerStateContainer,
-    private val navController: MeiNavigator,
     private val context: android.content.Context,
-    private val onNavigateFromPlayer: () -> Unit = {},
 ) {
     private val _currentOverlay = mutableStateOf<OverlayState>(OverlayState.None)
     val currentOverlay: State<OverlayState> = _currentOverlay
 
     val currentOverlayValue: OverlayState
         get() = _currentOverlay.value
+
+    internal val navigationMenuAnchor = GlasmioMenuAnchorState()
 
     /** Optional inline queue route supplied by the active player layout. */
     internal var onShowPlaylist: (() -> Unit)? = null
@@ -69,26 +64,9 @@ class PlayerOverlayHandler(
         _currentOverlay.value = OverlayState.SleepTimer
     }
 
-    /**
-     * 显示添加到播放列表弹窗
-     */
-    fun showAddToPlaylist(mediaId: Long) {
-        val metadata = stateContainer.mediaMetadata.value?.takeIf { it.id == mediaId } ?: return
-        showAddToPlaylist(metadata)
-    }
-
     fun showAddToPlaylist(metadata: MediaMetadata) {
-        if (metadata.isLocal || metadata.isPodcast) return
-        dismiss()
-        Screen.SourcePlaylistPicker.navigate(navController) { addPath(Uri.encode(TrackRefCodec.encode(metadata.trackRef))) }
-        onNavigateFromPlayer()
-    }
-
-    /**
-     * 显示创建播放列表弹窗
-     */
-    fun showCreatePlaylist() {
-        _currentOverlay.value = OverlayState.CreatePlaylist
+        if (!stateContainer.playerViewModel.isActionAvailable(MoreAction.ADD_TO_PLAYLIST, metadata)) return
+        _currentOverlay.value = OverlayState.AddToPlaylist(metadata.trackRef)
     }
 
     /**
@@ -120,6 +98,7 @@ class PlayerOverlayHandler(
         viewportBounds: Rect? = null,
     ) {
         val connection = stateContainer.playerConnection
+        anchorBounds?.let { navigationMenuAnchor.bind(null, it) }
         _currentOverlay.value = OverlayState.AlbumArtist(
             album, artists, cover, anchorBounds,
             playlistTitle = connection.queueTitle.value,
@@ -175,9 +154,7 @@ class PlayerOverlayHandler(
         if (!stateContainer.playerViewModel.isActionAvailable(action, mediaMetadata)) return
         when (action) {
             MoreAction.ADD_TO_PLAYLIST -> {
-                mediaMetadata?.let {
-                    showAddToPlaylist(it)
-                }
+                mediaMetadata?.let(::showAddToPlaylist)
             }
             MoreAction.SHARE -> {
                 mediaMetadata?.let { metadata ->
@@ -219,19 +196,6 @@ class PlayerOverlayHandler(
     }
 
     /**
-     * 添加歌曲到播放列表
-     */
-    fun addSongToPlaylist(selectedPlaylist: Playlist, mediaId: Long) {
-        val ref = stateContainer.mediaMetadata.value?.takeIf { it.id == mediaId }?.trackRef
-            ?: TrackRefCodec.decode(mediaId.toString()) ?: return
-        stateContainer.playerViewModel.addSongToPlaylist(selectedPlaylist, ref) { added ->
-            val message = if (added) "已添加到 ${selectedPlaylist.title}" else "添加到歌单失败"
-            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
-        }
-        dismiss()
-    }
-
-    /**
      * 创建新播放列表
      */
     fun createPlaylist(name: String, privacy: Boolean) {
@@ -260,20 +224,7 @@ class PlayerOverlayHandler(
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun rememberOverlayHandler(
-    stateContainer: PlayerStateContainer,
-    navController: MeiNavigator,
-    onNavigateFromPlayer: () -> Unit = {},
-): PlayerOverlayHandler {
+fun rememberOverlayHandler(stateContainer: PlayerStateContainer): PlayerOverlayHandler {
     val context = LocalContext.current
-
-    val currentOnNavigate = rememberUpdatedState(onNavigateFromPlayer)
-    return remember(stateContainer, navController, context) {
-        PlayerOverlayHandler(
-            stateContainer = stateContainer,
-            navController = navController,
-            context = context,
-            onNavigateFromPlayer = { currentOnNavigate.value() },
-        )
-    }
+    return remember(stateContainer, context) { PlayerOverlayHandler(stateContainer, context) }
 }

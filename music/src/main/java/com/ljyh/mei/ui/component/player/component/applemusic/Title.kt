@@ -45,6 +45,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import com.ljyh.mei.R
 import com.ljyh.mei.ui.component.player.LocalPlayerRoamingModeLabel
+import com.ljyh.mei.ui.component.player.autoMixIncomingMetadataDominant
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
+import io.github.neoruaa.glasmio.glass.glasmioMenuGesture
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
 
@@ -73,6 +76,7 @@ fun Title(
     marqueeEnabled: Boolean = true,
     showLikeButton: Boolean = true,
     modeLabel: String? = LocalPlayerRoamingModeLabel.current,
+    navigationMenuAnchor: GlasmioMenuAnchorState? = null,
 ) {
     val shadowStyle = if (needShadow) Shadow(
         color = Color.Black.copy(alpha = 0.3f),
@@ -83,6 +87,10 @@ fun Title(
     val artistColor = Color.White.copy(alpha = 0.4f)
     var metadataWidth by remember { mutableIntStateOf(0) }
     val favoriteMotion = rememberPlayerFavoriteMotion(isLiked, title to subTitle)
+    val actionsEnabled = enabled && !autoMixIncomingMetadataDominant()
+    val menuGesture = if (actionsEnabled && navigationMenuAnchor != null) {
+        Modifier.glasmioMenuGesture(navigationMenuAnchor, onTitleClick)
+    } else Modifier
 
     Row(
         modifier = modifier.onGloballyPositioned(onRowPositioned),
@@ -95,10 +103,11 @@ fun Title(
                 .onSizeChanged { metadataWidth = it.width; onTextSizeChanged(it) }
                 .then(textModifier)
                 .onGloballyPositioned(onTextPositioned)
+                .then(menuGesture)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    enabled = enabled,
+                    enabled = actionsEnabled,
                     onClick = onTitleClick,
                 ),
         ) {
@@ -144,7 +153,7 @@ fun Title(
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            enabled = enabled,
+                            enabled = actionsEnabled,
                             role = Role.Button,
                             onClick = { favoriteMotion.click(isLiked, onLikeClick) },
                         ),
@@ -183,7 +192,7 @@ fun Title(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        enabled = enabled,
+                        enabled = actionsEnabled,
                         role = Role.Button,
                         onClick = onMoreClick,
                     ),

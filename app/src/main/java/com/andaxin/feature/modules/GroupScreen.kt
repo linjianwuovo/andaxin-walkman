@@ -66,17 +66,12 @@ fun GroupScreen(onBack: () -> Unit) {
         if (!busy && kinds.isNotEmpty()) {
             Sheet {
                 kinds.forEach { g ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = Gap.sm),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        // 「班级群」这类是服务端给的分类名，下面挂的才是具体的班
+                    Column(Modifier.fillMaxWidth().padding(vertical = Gap.sm)) {
                         Text(g.name.ifBlank { "一类群" }, fontSize = Type.body, color = ink.strong)
+                        Spacer(Modifier.height(Gap.xs))
                         Text(
-                            text = g.groups.joinToString("、") { it.name }.ifBlank { "没有具体的群" },
-                            fontSize = Type.meta,
-                            lineHeight = Type.metaLine,
-                            color = ink.muted,
+                            g.groups.joinToString("、") { it.name }.ifBlank { "没有具体的群" },
+                            fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted,
                         )
                     }
                 }

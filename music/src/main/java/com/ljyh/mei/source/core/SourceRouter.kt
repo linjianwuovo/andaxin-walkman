@@ -3,6 +3,10 @@ package com.ljyh.mei.source.core
 import com.ljyh.mei.source.api.*
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -47,7 +51,13 @@ class SourceRouter @Inject constructor(
     }
     private val mutableContentRevision = MutableStateFlow(0L)
     val contentRevision = mutableContentRevision.asStateFlow()
+    private val mutableTrackLikeRevision = MutableStateFlow(0L)
+    internal val trackLikeRevision = mutableTrackLikeRevision.asStateFlow()
     private val accountReads = mutableMapOf<String, AccountRead>()
+    private val artistNameHints = linkedMapOf<ArtistRef, String>()
+
+    internal fun artistNameHint(ref: ArtistRef): String? = synchronized(artistNameHints) { artistNameHints[ref] }
+
     fun searchTypes(providerId: String): Set<ContentType> {
         val provider = registry.provider(providerId) ?: return emptySet()
         if (SourceCapability.SEARCH !in provider.capabilities) return emptySet()
@@ -62,7 +72,16 @@ class SourceRouter @Inject constructor(
             else if (type == ContentType.TRACK) search(providerId, query, page).let {
                 SourcePage<SourceItem>(it.items.map { track -> SourceItem.TrackItem(track) }, it.hasMore, it.nextCursor)
             } else unsupported()
-        return result.also { validateItems(providerId, it.items, type) }
+        return result.also { page ->
+            validateItems(providerId, page.items, type)
+            if (type == ContentType.ARTIST) synchronized(artistNameHints) {
+                for (item in page.items.filterIsInstance<SourceItem.ArtistItem>()) {
+                    artistNameHints.remove(item.ref)
+                    artistNameHints[item.ref] = item.title
+                }
+                while (artistNameHints.size > 64) artistNameHints.remove(artistNameHints.keys.first())
+            }
+        }
     }
 
     suspend fun getFeed(providerId: String, kind: FeedKind, categoryId: String? = null, page: PageRequest = PageRequest()): SourceFeedPage {
@@ -193,7 +212,7 @@ class SourceRouter @Inject constructor(
         val owner = mutations.capture(ref.providerId, expectedProvider, expectedAccountRevision)
         val provider = ownedCapability<LikeCapability>(owner, SourceCapability.LIKE)
         if (!provider.canWriteLikes) unsupported()
-        write(owner, likeKey(ref), "liked:$liked") {
+        write(owner, likeKey(ref), "liked:$liked", affectsTrackLikes = true) {
             applyLiked(owner, provider, ref, liked)
             mutations.ensureCurrent(owner)
             mutations.confirm(owner, likeKey(ref), liked)
@@ -205,7 +224,7 @@ class SourceRouter @Inject constructor(
         val provider = ownedCapability<LikeCapability>(owner, SourceCapability.LIKE)
         if (!provider.canReadLikes || !provider.canWriteLikes) unsupported()
         var writeStarted = false
-        return write(owner, likeKey(ref), canReconcile = { writeStarted }) {
+        return write(owner, likeKey(ref), canReconcile = { writeStarted }, affectsTrackLikes = true) {
             val liked = mutations.confirmed(owner, likeKey(ref)) ?: provider.liked(ref)
             mutations.ensureCurrent(owner)
             writeStarted = true
@@ -230,7 +249,7 @@ class SourceRouter @Inject constructor(
         val owner = mutations.capture(ref.providerId, expectedProvider, expectedAccountRevision)
         val provider = ownedCapability<CollectionCapability>(owner, SourceCapability.COLLECTIONS)
         if (!provider.canWriteCollections || ref.type !in provider.collectionTypes) unsupported()
-        write(owner, mutationKey(ref), "saved:$saved") {
+        write(owner, mutationKey(ref), "saved:$saved", affectsTrackLikes = ref is TrackRef) {
             provider.setSaved(ref, saved)
             mutations.ensureCurrent(owner)
             mutations.confirm(owner, mutationKey(ref), saved)
@@ -253,7 +272,7 @@ class SourceRouter @Inject constructor(
     suspend fun deletePlaylist(ref: PlaylistRef, expectedAccountRevision: String? = null, expectedProvider: MusicProvider? = null) {
         val owner = mutations.capture(ref.providerId, expectedProvider, expectedAccountRevision)
         val editor = ownedEditor(owner, PlaylistEditAction.DELETE)
-        write(owner, mutationKey(ref), uncertain = { it == mutationKey(ref) || it.startsWith("like:") }) {
+        write(owner, mutationKey(ref), uncertain = { it == mutationKey(ref) || it.startsWith("like:") }, affectsTrackLikes = true) {
             editor.deletePlaylist(ref)
             mutations.ensureCurrent(owner)
             mutations.invalidate(owner) { it.startsWith("like:") }
@@ -274,7 +293,7 @@ class SourceRouter @Inject constructor(
         val owner = mutations.capture(ref.providerId, expectedProvider, expectedAccountRevision)
         val editor = ownedEditor(owner, action)
         val affected = selected.map(::likeKey).toSet()
-        write(owner, mutationKey(ref), uncertain = { it == mutationKey(ref) || it in affected }) {
+        write(owner, mutationKey(ref), uncertain = { it == mutationKey(ref) || it in affected }, affectsTrackLikes = true) {
             if (expectedContentRevision != null && mutableContentRevision.value != expectedContentRevision) {
                 throw SourceException(SourceErrorCode.CANCELLED, "Playlist content changed before reorder")
             }
@@ -291,10 +310,26 @@ class SourceRouter @Inject constructor(
         }
     }
     private suspend fun <T> write(owner: SourceMutationOwner, key: String, signature: String? = null,
-        uncertain: (String) -> Boolean = { it == key }, canReconcile: () -> Boolean = { true }, action: suspend () -> T): T =
+        uncertain: (String) -> Boolean = { it == key }, canReconcile: () -> Boolean = { true },
+        affectsTrackLikes: Boolean = false, action: suspend () -> T): T =
         mutations.mutate(owner, key, signature) {
-            try { action().also { mutations.ensureCurrent(owner); contentChanged() } }
-            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            try { action().also { mutations.ensureCurrent(owner); contentChanged(affectsTrackLikes) } }
+            catch (cancelled: CancellationException) {
+                if (currentCoroutineContext()[SourceMutationAuthorization] != null && canReconcile()) {
+                    withContext(NonCancellable) {
+                        // A provider may already have received the write before cancellation.
+                        // Clear stale confirmation only if this is still the same account.
+                        try {
+                            mutations.ensureCurrent(owner)
+                            mutations.invalidate(owner, uncertain)
+                            contentChanged(affectsTrackLikes)
+                        } catch (_: CancellationException) {
+                            // Account replacement already invalidates the previous confirmation.
+                        }
+                    }
+                }
+                throw cancelled
+            }
             catch (error: Exception) {
                 val ambiguous = if (error is SourceException) error.outcomeUnknown || error.code in setOf(
                     SourceErrorCode.NETWORK, SourceErrorCode.TIMEOUT, SourceErrorCode.INVALID_RESPONSE,
@@ -302,7 +337,7 @@ class SourceRouter @Inject constructor(
                 if (ambiguous && canReconcile()) {
                     mutations.ensureCurrent(owner)
                     mutations.invalidate(owner, uncertain)
-                    contentChanged()
+                    contentChanged(affectsTrackLikes)
                 }
                 throw error
             }
@@ -369,5 +404,8 @@ class SourceRouter @Inject constructor(
     }
     private fun unsupported(): Nothing = throw SourceException(SourceErrorCode.UNSUPPORTED)
     private fun invalid(): Nothing = throw SourceException(SourceErrorCode.INVALID_RESPONSE)
-    private fun contentChanged() { mutableContentRevision.update { it + 1 } }
+    private fun contentChanged(affectsTrackLikes: Boolean) {
+        mutableContentRevision.update { it + 1 }
+        if (affectsTrackLikes) mutableTrackLikeRevision.update { it + 1 }
+    }
 }

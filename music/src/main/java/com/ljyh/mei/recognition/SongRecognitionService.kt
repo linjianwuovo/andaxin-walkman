@@ -10,6 +10,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import androidx.core.content.IntentCompat
 import com.ljyh.mei.R
 import com.ljyh.mei.source.shared.SourceRecognitionSession
 import com.ljyh.mei.source.shared.guard
@@ -88,7 +89,9 @@ class SongRecognitionService : Service() {
         }
         try {
             if (state.source == RecognitionSource.Playback) {
-                val consent = checkNotNull(intent.getParcelableExtra(EXTRA_PROJECTION_CONSENT, Intent::class.java))
+                val consent = checkNotNull(
+                    IntentCompat.getParcelableExtra(intent, EXTRA_PROJECTION_CONSENT, Intent::class.java),
+                )
                 openPlaybackPanel(consent, binding)
             } else {
                 startForeground(

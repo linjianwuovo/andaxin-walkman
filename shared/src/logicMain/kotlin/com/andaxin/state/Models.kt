@@ -15,6 +15,8 @@ import com.andaxin.data.NoticeItem
 import com.andaxin.data.TimetableFeed
 import com.andaxin.data.TimetableSlot
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -131,8 +133,11 @@ class TimetableModel(private val feed: TimetableFeed, private val store: Store) 
 
     /** 内存里那份色号表，进屏时从本机读回来，之后只增不改。 */
     private var palette: Map<String, Int> = emptyMap()
+    private val paletteReady = CompletableDeferred<Unit>(scope.coroutineContext[Job])
+    private var latestRequest = Any()
 
     init {
+        val initialRequest = latestRequest
         // 课程表这一屏也一样：先把本机那份本周摆上（认周一，跨周自动作废），
         // 再等这一发回来整块换 —— 大退重开不该先空着网格（他 0.8.73 那句
         // 「大退重开为什么不能再从缓存先加载」）。
@@ -148,18 +153,31 @@ class TimetableModel(private val feed: TimetableFeed, private val store: Store) 
         }
         // 色号表要先读回来，第一周的课一进来才能拿到"这门课第一次那个号"
         scope.launch {
-            palette = parsePalette(runCatching { store.text(KEY_PALETTE).first() }.getOrNull())
-            _state.value = _state.value.copy(courseColors = palette)
-            load(0)
+            try {
+                val storedPalette = parsePalette(runCatching { store.text(KEY_PALETTE).first() }.getOrNull())
+                currentCoroutineContext().ensureActive()
+                palette = storedPalette
+                _state.value = _state.value.copy(courseColors = palette)
+            } finally {
+                paletteReady.complete(Unit)
+            }
+            refresh(0, initialRequest)
         }
     }
 
     fun load(offset: Int) {
-        scope.launch { refresh(offset) }
+        val request = Any().also { latestRequest = it }
+        scope.launch { refresh(offset, request) }
     }
 
     /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
     suspend fun refresh(offset: Int = _state.value.weekOffset) {
+        val request = Any().also { latestRequest = it }
+        refresh(offset, request)
+    }
+
+    private suspend fun refresh(offset: Int, request: Any) {
+        if (request !== latestRequest) return
         val r = try {
             feed.week(offset)
         } catch (e: CancellationException) {
@@ -171,17 +189,22 @@ class TimetableModel(private val feed: TimetableFeed, private val store: Store) 
         if (failure is CancellationException) throw failure
         val context = currentCoroutineContext()
         context.ensureActive()
+        if (request !== latestRequest) return
         val slots = r.getOrDefault(_state.value.slots)
+        paletteReady.await()
+        context.ensureActive()
+        if (request !== latestRequest) return
+        val colors = withNewCourses(slots.map { it.course })
+        context.ensureActive()
+        if (request !== latestRequest) return
         // 用 copy：整份 new 会把刚拿到的周次表冲掉，那一行会闪回「本周/下周」两颗
-        val updated = _state.value.copy(
+        _state.value = _state.value.copy(
             firstLoad = false,
             weekOffset = offset,
             slots = slots,
-            courseColors = withNewCourses(slots.map { it.course }),
+            courseColors = colors,
             error = failure?.message,
         )
-        context.ensureActive()
-        _state.value = updated
     }
 
     /**

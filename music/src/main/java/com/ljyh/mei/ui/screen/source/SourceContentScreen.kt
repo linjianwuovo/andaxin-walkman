@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.screen.source
 
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.material.icons.Icons
@@ -27,8 +28,13 @@ import com.ljyh.mei.ui.screen.playlist.rememberDetailSelection
 import com.ljyh.mei.ui.screen.artist.*
 import com.ljyh.mei.ui.screen.playlist.component.DetailTrackRow
 import com.ljyh.mei.ui.screen.playlist.component.DetailTrackDivider
+import com.ljyh.mei.ui.screen.playlist.component.TrackItemShimmer
+import com.ljyh.mei.ui.component.shimmer.ShimmerHost
 import com.ljyh.mei.ui.component.utils.rememberDeviceInfo
+import com.ljyh.mei.ui.component.playlist.AddToPlaylistSheet
+import com.ljyh.mei.ui.component.playlist.CreatePlaylistSheet
 import com.ljyh.mei.ui.component.playlist.rememberFavoriteTrackIds
+import com.ljyh.mei.ui.component.sheet.rememberMeiloXSheetDismissal
 import com.ljyh.mei.ui.component.item.LandscapeMediaRow
 import com.ljyh.mei.utils.color.ColorExtractionUtils
 import io.github.neoruaa.glasmio.core.IosTypography
@@ -46,8 +52,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -67,6 +71,8 @@ import com.ljyh.mei.playback.SongDownloadInfo
 import com.ljyh.mei.source.api.*
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalContentPadding
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalEdgeToEdge
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 import com.ljyh.mei.ui.navigation.MeiNavigator
 import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
@@ -76,11 +82,14 @@ import com.ljyh.mei.ui.screen.main.library.component.groupedLazyItems
 import com.ljyh.mei.ui.screen.search.LoadingView
 import com.ljyh.mei.ui.component.DownloadConfirmDialog
 import com.ljyh.mei.utils.DownloadManager
+import com.ljyh.mei.utils.image.saveImageToGallery
 import com.ljyh.mei.utils.rememberEnumPreference
 import com.ljyh.mei.utils.rememberPreference
 import io.github.neoruaa.glasmio.core.swipeBackExcluded
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
+import com.ljyh.mei.ui.component.item.TrackMenuTrigger
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderAction
 import io.github.neoruaa.glasmio.ui.*
@@ -139,6 +148,7 @@ internal fun LazyListScope.sourceContentItems(
     onMore: (Track, Rect) -> Unit,
     keyPrefix: String = "source",
     firstItemTopPadding: Dp = 10.dp,
+    menuAnchorState: GlasmioMenuAnchorState,
     subtitle: @Composable (SourceItem) -> String = { sourceItemSubtitle(it) },
 ) {
     val tracks = items.filterIsInstance<SourceItem.TrackItem>().map { it.track }
@@ -157,10 +167,14 @@ internal fun LazyListScope.sourceContentItems(
                     modifier = Modifier.size(44.dp).clip(if (item is SourceItem.ArtistItem) CircleShape else ContinuousRoundedRectangle(10.dp)))
             },
             trailing = if (item is SourceItem.TrackItem) ({
-                var anchor by remember { mutableStateOf(Rect.Zero) }
-                Box(Modifier.size(40.dp).onGloballyPositioned { anchor = it.boundsInWindow() }
-                    .clickable(interactionSource = null, indication = null) { onMore(item.track, anchor) }, contentAlignment = Alignment.Center) {
-                    SfIcon("ellipsis", "更多操作", size = 18.dp)
+                TrackMenuTrigger(menuAnchorState, { onMore(item.track, it) }) { trigger, openMenu ->
+                    Box(
+                        Modifier.size(40.dp).then(trigger)
+                            .clickable(interactionSource = null, indication = null, onClick = openMenu),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        SfIcon("ellipsis", stringResource(R.string.more_actions_title), size = 18.dp)
+                    }
                 }
             }) else null,
             showDisclosure = item !is SourceItem.TrackItem,
@@ -210,7 +224,9 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
     val contentRevision by viewModel.contentRevision.collectAsState()
     val nav = LocalNavController.current
     var menu by remember(ref) { mutableStateOf<Pair<Track, Rect>?>(null) }
-    var saved by remember(ref, state.providerVersion, state.accountRevision, contentRevision) { mutableStateOf<Boolean?>(null) }
+    val trackMenuAnchor = rememberGlasmioMenuAnchorState()
+    val savedResetRevision = contentRevision.takeUnless { ref is ArtistRef }
+    var saved by remember(ref, state.providerVersion, state.accountRevision, savedResetRevision) { mutableStateOf<Boolean?>(null) }
     var savedLoading by remember(ref, state.providerVersion, state.accountRevision, contentRevision) { mutableStateOf(false) }
     var savedError by remember(ref, state.providerVersion, state.accountRevision, contentRevision) { mutableStateOf<SourceErrorCode?>(null) }
     var savedAttempt by remember(ref) { mutableIntStateOf(0) }
@@ -223,18 +239,22 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
     val shuffle = rememberSourceQueuePlayer("source-${ref.providerId}-${ref.type.wireName}-${ref.contentId}", state.title,
         viewModel = viewModel, queueRequest = SourceContentRequest.Detail(ref), shuffle = true,
         preserveRepeatMode = false, randomStart = true)
-    LaunchedEffect(ref) { viewModel.open(SourceContentRequest.Detail(ref)) }
+    LaunchedEffect(ref) { viewModel.open(SourceContentRequest.Detail(ref), artistLogo = ref is ArtistRef) }
     val provider = providers.firstOrNull { it.id == ref.providerId && it.status == SourceStatus.READY }
     val collections = (provider as? CollectionCapability)?.takeIf {
         SourceCapability.COLLECTIONS in provider.capabilities && ref.type in it.collectionTypes
     }
     LaunchedEffect(ref, state.detail, provider, state.accountRevision, contentRevision, savedAttempt) {
-        saved = null
+        if (ref !is ArtistRef) saved = null
         savedError = null
-        savedLoading = collections?.canReadCollections == true
-        if (savedLoading) try { saved = viewModel.saved(ref) }
+        val canReadCollection = collections?.canReadCollections == true
+        savedLoading = canReadCollection && saved == null
+        if (canReadCollection) try { saved = viewModel.saved(ref) }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: Exception) { savedError = error.sourceCode() }
+        catch (error: Exception) {
+            saved = null
+            savedError = error.sourceCode()
+        }
         finally { savedLoading = false }
     }
     val toggleCollection: () -> Unit = {
@@ -252,14 +272,19 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
     val canReorder = SourceCapability.PLAYLIST_EDIT in provider?.capabilities.orEmpty() &&
         PlaylistEditAction.REORDER_TRACKS in actions &&
         PlaylistEditAction.REORDER_TRACKS in (provider as? PlaylistEditCapability)?.playlistEditActions.orEmpty()
-    val title = state.title.ifBlank { when (ref) {
-        is PlaylistRef -> "歌单"; is AlbumRef -> "专辑"; is ArtistRef -> "歌手"; is TrackRef -> "歌曲"
-    } }
+    val title = state.title.ifBlank {
+        stringResource(when (ref) {
+            is PlaylistRef -> R.string.library_page_playlists
+            is AlbumRef -> R.string.playlist_table_album
+            is ArtistRef -> R.string.local_library_sort_artist
+            is TrackRef -> R.string.share_kind_song
+        })
+    }
     if (ref is ArtistRef) {
-        SourceArtistDetail(ref, state, provider, busy || savedLoading, saved, viewModel,
-            onFollow = toggleCollection, selection = menu, onDismissMenu = { menu = null },
+        SourceArtistDetail(ref, state, provider, savedLoading, saved, viewModel,
+            onFollow = { if (!busy) toggleCollection() }, selection = menu, onDismissMenu = { menu = null },
             onInformation = { Screen.ArtistInfo.navigate(nav) { addPath(Uri.encode(ref.contentId)); addQuery("providerId", ref.providerId) } }, onPlay = play,
-            onMore = { track, anchor -> menu = track to anchor })
+            onMore = { track, anchor -> menu = track to anchor }, menuAnchorState = trackMenuAnchor)
     } else {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
@@ -271,22 +296,21 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
         var orderGeneration by remember(ownerKey) { mutableIntStateOf(0) }
         var order by remember(ownerKey) { mutableStateOf<PlaylistOrderState<TrackRef>?>(null) }
         var orderTracks by remember(ownerKey) { mutableStateOf<SourceDetailTracks?>(null) }
-        var searchTracks by remember(ownerKey) { mutableStateOf<SourceDetailTracks?>(null) }
-        var searching by remember(ownerKey) { mutableStateOf(false) }
-        var searchError by remember(ownerKey) { mutableStateOf<SourceErrorCode?>(null) }
+        var searchTracks by remember(ownerKey, contentRevision) { mutableStateOf<SourceDetailTracks?>(null) }
+        var searchError by remember(ownerKey, contentRevision) { mutableStateOf<SourceErrorCode?>(null) }
+        var searching by remember(ownerKey, contentRevision) { mutableStateOf(false) }
         var searchAttempt by remember(ownerKey) { mutableIntStateOf(0) }
         val playSearch = rememberSourceQueuePlayer("source-${ref.providerId}-${ref.type.wireName}-${ref.contentId}", state.title)
         val shuffleSearch = rememberSourceQueuePlayer("source-search-${ref.providerId}-${ref.type.wireName}-${ref.contentId}",
             state.title, shuffle = true, preserveRepeatMode = false, randomStart = true)
         LaunchedEffect(ownerKey, query, contentRevision, state.detail?.ref, state.loading, state.refreshing, searchAttempt) {
-            searchTracks = null
             searchError = null
             searching = false
             if (query.isBlank() || state.detail?.ref != ref || state.loading || state.refreshing) return@LaunchedEffect
             searching = true
             try {
-                delay(200)
-                searchTracks = viewModel.detailTracks(ref)
+                delay(80)
+                searchTracks = viewModel.detailTracks(ref, pageSize = 100) { progress -> searchTracks = progress }
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) { searchError = error.sourceCode()
             } finally { searching = false }
@@ -364,9 +388,16 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
             }
         }
         DetailSelectionToolbar(selection,
-            onSelectAll = { sourceDetailMatches(viewModel.detailTracks(ref).tracks, query).map { TrackRefCodec.mediaId(it.value.ref) }.toSet() },
+            onSelectAll = {
+                val selectedQuery = query
+                sourceDetailMatches(viewModel.detailTracks(ref).tracks, selectedQuery)
+                    .map { TrackRefCodec.mediaId(it.value.ref) }.toSet()
+            },
             onDownload = { prepareDownload(ids = selection.ids) })
-        val matchingTracks = if (query.isBlank()) tracks else searchTracks?.tracks.orEmpty()
+        val searchSnapshot = searchTracks?.takeIf { it.contentRevision == contentRevision }
+        val matchingTracks = if (query.isBlank()) tracks else {
+            searchSnapshot?.tracks?.takeIf { it.size > tracks.size } ?: tracks
+        }
         val displayed = remember(matchingTracks, query) { sourceDetailMatches(matchingTracks, query) }
         val displayedMetadata = remember(displayed) { displayed.map { it.value.toMediaMetadata() } }
         val favoriteIds = rememberFavoriteTrackIds(displayedMetadata)
@@ -377,7 +408,22 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
                 ?.takeIf { it.supportsNeteaseSongActions }?.trackRef
         } else null
         val bottomPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()
-        val count = maxOf(playlist?.trackCount ?: album?.trackCount ?: 0, tracks.size)
+        val declaredCount = playlist?.trackCount ?: album?.trackCount ?: 0
+        val count = maxOf(declaredCount, tracks.size)
+        val searchResultsLoading = query.isNotBlank() && (state.error != null || searchError != null ||
+            searchSnapshot?.isComplete != true && (state.loading || state.hasMore || searching))
+        // Unknown metadata belongs to the collection, not to the filtered result count.
+        val pendingTrackCount = when {
+            state.detail?.ref != ref || state.error != null -> 0
+            query.isBlank() && ref is PlaylistRef && (state.loading || state.hasMore) ->
+                (count - tracks.size).coerceAtLeast(0)
+            query.isBlank() && state.loading ->
+                (count - tracks.size).coerceIn(0, 30)
+            query.isNotBlank() && (state.loading || state.hasMore) &&
+                searchSnapshot?.isComplete != true && searchError == null ->
+                if (declaredCount > 0) (declaredCount - matchingTracks.size).coerceAtLeast(0) else 4
+            else -> 0
+        }
         val detailMenu = detailMenuItems(
             downloadTitle = stringResource(R.string.album_download_all, count),
             subscriptionTitle = stringResource(if (ref is PlaylistRef) {
@@ -391,17 +437,67 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
         ).toMutableList().apply {
             if (canReorder) add(2, GlasmioCascadingMenuItem(stringResource(R.string.playlist_order_title), "line.3.horizontal",
                 enabled = !busy && order == null, onClick = { openOrder() }))
+            if (state.detail?.ref == ref) {
+                val cover = state.artworkUrl
+                if (cover.isNotBlank()) add(GlasmioCascadingMenuItem(
+                    title = stringResource(R.string.detail_save_cover),
+                    systemName = "square.and.arrow.down",
+                    onClick = { scope.launch { saveImageToGallery(context, cover) } },
+                ))
+                add(GlasmioCascadingMenuItem(
+                    title = stringResource(R.string.system_share),
+                    systemName = "square.and.arrow.up",
+                    onClick = {
+                        scope.launch {
+                            val link = try {
+                                viewModel.detailShareUrl(ref, title)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                null
+                            } ?: if (ref.providerId == ProviderIds.NETEASE && ref.contentId.all(Char::isDigit)) {
+                                "https://music.163.com/${ref.type.wireName}?id=${ref.contentId}"
+                            } else null
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, title)
+                                putExtra(Intent.EXTRA_TEXT, listOfNotNull(title, link).joinToString("\n"))
+                            }
+                            context.startActivity(Intent.createChooser(intent, context.getString(R.string.system_share)))
+                        }
+                    },
+                ))
+            }
         }
         SongListDetailScreen(
             uiData = SongListDetailData(title = title, count = count,
                 cover = state.artworkUrl, creatorName = state.detail?.let(::sourceItemSubtitle).orEmpty(),
                 tracks = displayedMetadata, isSubscribed = saved == true, playCount = playlist?.playCount),
-            isLoading = state.loading && (state.detail == null || query.isNotBlank()) || searching,
-            onPlayAll = { if (tracks.isNotEmpty()) playAll(tracks, 0) },
+            isLoading = state.loading && state.detail == null,
+            onPlayAll = {
+                val selectedQuery = query
+                if (selectedQuery.isBlank()) {
+                    if (tracks.isNotEmpty()) playAll(tracks, 0)
+                } else scope.launch {
+                    try {
+                        val snapshot = viewModel.detailTracks(ref, pageSize = 100)
+                        val matches = sourceDetailMatches(snapshot.tracks, selectedQuery).map { it.value }
+                        if (matches.isNotEmpty()) playSearch(matches, 0)
+                    } catch (cancelled: CancellationException) { throw cancelled
+                    } catch (_: Exception) { Toast.makeText(context, R.string.load_failed, Toast.LENGTH_SHORT).show() }
+                }
+            },
             onShufflePlay = {
-                if (query.isNotBlank()) {
-                    val matches = displayed.map { it.value }
-                    if (matches.isNotEmpty()) shuffleSearch(matches, 0)
+                val selectedQuery = query
+                if (selectedQuery.isNotBlank()) {
+                    scope.launch {
+                        try {
+                            val snapshot = viewModel.detailTracks(ref, pageSize = 100)
+                            val matches = sourceDetailMatches(snapshot.tracks, selectedQuery).map { it.value }
+                            if (matches.isNotEmpty()) shuffleSearch(matches, 0)
+                        } catch (cancelled: CancellationException) { throw cancelled
+                        } catch (_: Exception) { Toast.makeText(context, R.string.load_failed, Toast.LENGTH_SHORT).show() }
+                    }
                 } else if (tracks.isNotEmpty()) shuffle(tracks, 0)
             },
             onHeaderAction = toggleCollection,
@@ -412,12 +508,14 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
             onTrackClick = { metadata, index ->
                 if (selection.active) selection.toggle(metadata.mediaId)
                 else displayed.getOrNull(index)?.let { selected ->
-                    val snapshot = searchTracks.takeIf { query.isNotBlank() }
-                    if (snapshot == null) play(tracks, selected.index)
+                    val selectedQuery = query
+                    if (selectedQuery.isBlank()) play(tracks, selected.index)
                     else scope.launch {
                         try {
-                            viewModel.ensureDetailCurrent(snapshot)
-                            playSearch(snapshot.tracks, selected.index)
+                            val complete = viewModel.detailTracks(ref, pageSize = 100)
+                            val matches = sourceDetailMatches(complete.tracks, selectedQuery).map { it.value }
+                            val queueIndex = matches.indexOfFirst { it.ref == selected.value.ref }
+                            if (queueIndex >= 0) playSearch(matches, queueIndex)
                         } catch (cancelled: CancellationException) { throw cancelled
                         } catch (_: Exception) { Toast.makeText(context, R.string.load_failed, Toast.LENGTH_SHORT).show() }
                     }
@@ -426,6 +524,7 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
             onTrackMore = { metadata, anchor ->
                 matchingTracks.firstOrNull { it.ref == metadata.trackRef }?.let { menu = it to anchor }
             },
+            trackMenuAnchorState = trackMenuAnchor,
             onBack = nav::navigateUp, detailMenu = detailMenu,
             selectionMode = selection.active, selectedTrackIds = selection.ids, onSelectionDone = selection::finish,
             detailMenuTitle = stringResource(if (ref is PlaylistRef) R.string.detail_playlist_menu else R.string.album_menu_title),
@@ -436,12 +535,17 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
             showTrackArtwork = ref !is AlbumRef, hasLoadedContent = state.detail != null,
             listState = listState,
             favoriteTrackIds = favoriteIds,
+            loadingTrackCount = pendingTrackCount,
+            searchResultsLoading = searchResultsLoading,
             trackNumber = { _, index -> (displayed.getOrNull(index)?.index ?: index) + 1 },
             footer = {
-                if (query.isBlank()) sourceDetailPagingStatus(state, viewModel::refresh, viewModel::loadMore)
-                else searchError?.let { error -> item("source-detail-search-error") {
-                    GlasmioListRow(sourceErrorMessage(error), trailing = { Text("重试") }, onClick = { searchAttempt++ })
-                } }
+                if (query.isBlank()) sourceDetailPagingStatus(state, viewModel::refresh, viewModel::loadMore,
+                    automatic = ref !is PlaylistRef, showLoading = pendingTrackCount == 0)
+                else {
+                    searchError?.let { error -> item("source-detail-search-error") {
+                        GlasmioListRow(sourceErrorMessage(error), trailing = { Text("重试") }, onClick = { searchAttempt++ })
+                    } }
+                }
             },
             overlayContent = {
                 locateTrack?.let { track ->
@@ -451,7 +555,7 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
                         modifier = Modifier.align(Alignment.BottomEnd),
                     )
                 }
-                SourceTrackActions(menu, { menu = null }, viewModel, playlist = playlist)
+                SourceTrackActions(menu, { menu = null }, viewModel, playlist = playlist, menuAnchorState = trackMenuAnchor)
             },
         )
         var retainedOrder by remember(ownerKey) { mutableStateOf<PlaylistOrderState<TrackRef>?>(null) }
@@ -477,23 +581,58 @@ fun SourceContentScreen(ref: ContentRef, viewModel: SourceContentViewModel = hil
 internal fun sourceDetailMatches(tracks: List<Track>, query: String): List<IndexedValue<Track>> {
     val terms = query.trim().split(Regex("\\s+")).filter(String::isNotEmpty)
     return tracks.withIndex().filter { (_, track) ->
-        val text = listOf(track.title, track.artists.joinToString(" ") { it.name }, track.album.title).joinToString(" ")
-        terms.all { text.contains(it, ignoreCase = true) }
+        terms.all { term ->
+            track.title.contains(term, ignoreCase = true) ||
+                track.artists.any { it.name.contains(term, ignoreCase = true) } ||
+                track.album.title.contains(term, ignoreCase = true)
+        }
     }
 }
 
-private fun LazyListScope.sourceDetailPagingStatus(state: SourceContentState, onRetry: () -> Unit, onMore: () -> Unit, automatic: Boolean = true) {
-    val detailRef = state.detail?.ref
-    if (state.loading && state.items.isEmpty() && !state.hasMore && state.error == null &&
-        (detailRef is PlaylistRef || detailRef is AlbumRef)) item("source-detail-first-page-loading") { LoadingView() }
+private fun LazyListScope.sourceDetailPagingStatus(
+    state: SourceContentState,
+    onRetry: () -> Unit,
+    onMore: () -> Unit,
+    automatic: Boolean = true,
+    showLoading: Boolean = true,
+    horizontalPadding: Dp = 0.dp,
+) {
+    if (showLoading && state.loading && state.items.isEmpty() && !state.hasMore && state.error == null) {
+        sourceTrackSkeletons(state, "source-detail-first-page-loading", horizontalPadding)
+    }
     if (state.error != null) item("source-detail-retry") {
         GlasmioListRow(sourceErrorMessage(state.error), trailing = { Text("重试") }, onClick = onRetry)
     }
-    if (state.hasMore && state.error == null) item("source-detail-append:${state.nextOffset}") {
-        if (automatic) LaunchedEffect(state.providerId, state.providerVersion, state.accountRevision,
-            state.nextOffset, state.nextCursor, state.loading) { if (!state.loading) onMore() }
-        else if (!state.loading) GlasmioListRow(stringResource(R.string.artist_catalog_search_continue), onClick = onMore)
-        if (state.loading) LoadingView()
+    if (state.hasMore && state.error == null && (automatic || showLoading)) {
+        item("source-detail-append:${state.nextOffset}") {
+            if (automatic) LaunchedEffect(state.providerId, state.providerVersion, state.accountRevision,
+                state.nextOffset, state.nextCursor, state.loading) { if (!state.loading) onMore() }
+            else if (!state.loading) GlasmioListRow(stringResource(R.string.artist_catalog_search_continue), onClick = onMore)
+        }
+        if (showLoading && state.loading) {
+            sourceTrackSkeletons(state, "source-detail-append-loading", horizontalPadding)
+        }
+    }
+}
+
+private fun LazyListScope.sourceTrackSkeletons(
+    state: SourceContentState,
+    key: String,
+    horizontalPadding: Dp = 0.dp,
+) {
+    val total = when (val detail = state.detail) {
+        is SourceItem.PlaylistItem -> detail.playlist.trackCount
+        is SourceItem.AlbumItem -> detail.album.trackCount
+        is SourceItem.ArtistItem -> detail.artist.trackCount
+        is SourceItem.TrackItem -> 1
+        null -> null
+    }
+    val loadedCount = state.items.count { it is SourceItem.TrackItem }
+    val count = total?.takeIf { it > 0 }?.let { (it - loadedCount).coerceAtLeast(0) } ?: 4
+    items(count = count, key = { index -> "$key:$index" }, contentType = { "track-skeleton" }) {
+        ShimmerHost(Modifier.padding(horizontal = horizontalPadding)) {
+            TrackItemShimmer(isTablet = false, flatDetailStyle = true)
+        }
     }
 }
 
@@ -503,7 +642,7 @@ private fun SourceArtistDetail(
     ref: ArtistRef,
     state: SourceContentState,
     provider: MusicProvider?,
-    busy: Boolean,
+    followLoading: Boolean,
     followed: Boolean?,
     viewModel: SourceContentViewModel,
     onInformation: () -> Unit,
@@ -512,6 +651,7 @@ private fun SourceArtistDetail(
     onFollow: () -> Unit,
     onPlay: (List<Track>, Int) -> Unit,
     onMore: (Track, Rect) -> Unit,
+    menuAnchorState: GlasmioMenuAnchorState,
 ) {
     val nav = LocalNavController.current
     val player = LocalPlayerConnection.current
@@ -548,7 +688,7 @@ private fun SourceArtistDetail(
                         DetailTrackRow(track.toMediaMetadata(), index + 1, showArtwork = true,
                             isCurrentTrack = track.toMediaMetadata().mediaId == currentId, isPlaying = playing,
                             isFavorite = track.toMediaMetadata().mediaId in favoriteIds, selected = null, onClick = { onPlay(tracks, index) },
-                            onMoreClick = { onMore(track, it) })
+                            onMoreClick = { onMore(track, it) }, menuAnchorState = menuAnchorState)
                         if (index < minOf(10, tracks.size) - 1) DetailTrackDivider()
                     }
                 }
@@ -559,10 +699,10 @@ private fun SourceArtistDetail(
                 Column {
                     SectionTitle(stringResource(R.string.artist_albums), onClick = onAllAlbums,
                         landscape = landscape, topPadding = 16.dp)
-                    LazyRow(contentPadding = PaddingValues(horizontal = if (landscape)
-                        com.ljyh.mei.constants.DetailPageHorizontalPadding else 20.dp),
+                    LazyRow(contentPadding = glasmioHorizontalContentPadding(PaddingValues(horizontal = if (landscape)
+                        com.ljyh.mei.constants.DetailPageHorizontalPadding else 20.dp)),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.swipeBackExcluded()) {
+                        modifier = Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded()) {
                         items(albums, key = { it.ref.albumId }) { album ->
                             ArtistAlbumCard(album.title, album.artworkUrl, album.trackCount,
                                 com.ljyh.mei.constants.homePlaylistCardSize(landscape)) {
@@ -581,39 +721,50 @@ private fun SourceArtistDetail(
                 }
             }
         }
-        val latestRelease: @Composable () -> Unit = {
-            albums.maxByOrNull { it.publishedAtMs ?: Long.MIN_VALUE }?.let { album ->
-                if (landscape) SectionTitle(stringResource(R.string.artist_latest_release), bottomPadding = 12.dp, landscape = true)
-                SourceArtistFeaturedAlbum(album, provider, state.accountRevision, viewModel,
-                    latestArtworkHeight, landscape, onOpen = { navigateSourceContent(nav, album.ref) })
+        val latestAlbum = albums.maxByOrNull { it.publishedAtMs ?: Long.MIN_VALUE }
+        val latestRelease: (@Composable () -> Unit)? = if (latestAlbum == null) null else {
+            {
+                val onOpen = { navigateSourceContent(nav, latestAlbum.ref) }
+                if (landscape) {
+                    SectionTitle(stringResource(R.string.artist_latest_release), onClick = onOpen, landscape = true)
+                }
+                SourceArtistFeaturedAlbum(latestAlbum, provider, state.accountRevision, viewModel,
+                    latestArtworkHeight, landscape, onOpen = onOpen)
             }
         }
+        val popularSongs: (@Composable (Dp) -> Unit)? = if (tracks.isEmpty()) null else {
+            { viewportWidth ->
+                Column {
+                    SectionTitle(stringResource(R.string.artist_hot_songs), onClick = onAllSongs, landscape = true)
+                    ArtistPopularSongs(tracks.take(10).map { it.toMediaMetadata() }, favoriteIds, viewportWidth,
+                        onClick = { onPlay(tracks, it) },
+                        onMore = { metadata, bounds -> tracks.firstOrNull { it.ref == metadata.trackRef }?.let { onMore(it, bounds) } },
+                        menuAnchorState = menuAnchorState,
+                        onHeightChanged = { popularHeightPx = it })
+                }
+            }
+        }
+        val showHeaderShimmer = state.detail == null && state.loading
         ArtistDetailPageLayout(title = state.title, background = background, scrollState = scroll,
+            coverUrl = state.artworkUrl.takeUnless { showHeaderShimmer }.orEmpty(),
             landscape = landscape, popularSongsHeightPx = popularHeightPx, onBack = nav::navigateUp,
             header = { _ ->
-                if (state.detail == null && state.loading) ArtistHeaderShimmer(landscape) else ArtistDetailHeader(
+                if (showHeaderShimmer) ArtistHeaderShimmer(landscape) else ArtistDetailHeader(
                     name = state.title, subtitle = subtitle, cover = state.artworkUrl, accent = accent,
                     canPlayHotSongs = tracks.isNotEmpty() && player != null,
-                    isFollowed = followed == true, isFollowLoading = busy,
+                    isFollowed = followed == true, isFollowLoading = followLoading,
                     onInfoClick = onInformation,
                     onPlayHotSongs = { if (tracks.isNotEmpty()) onPlay(tracks, 0) },
                     onFollowClick = onFollow,
-                    landscape = landscape, canFollow = canFollow)
+                    landscape = landscape, canFollow = canFollow,
+                    artistLogo = state.artistLogo.takeIf { artist?.ref == ref })
             }, latestRelease = latestRelease, songSection = songSection, albumSection = albumSection,
-            popularSongs = {
-                if (tracks.isNotEmpty()) {
-                    SectionTitle(stringResource(R.string.artist_hot_songs), onClick = onAllSongs, landscape = true)
-                    ArtistPopularSongs(tracks.take(10).map { it.toMediaMetadata() }, favoriteIds, currentId, playing,
-                        onClick = { onPlay(tracks, it) },
-                        onMore = { metadata, bounds -> tracks.firstOrNull { it.ref == metadata.trackRef }?.let { onMore(it, bounds) } },
-                        onHeightChanged = { popularHeightPx = it })
-                }
-            }, footer = {
+            popularSongs = popularSongs, footer = {
                 state.error?.let { error -> item("artist-error") {
                     GlasmioListRow(sourceErrorMessage(error), trailing = { Text("重试") }, onClick = viewModel::refresh)
                 } }
             })
-        SourceTrackActions(selection, onDismissMenu, viewModel)
+        SourceTrackActions(selection, onDismissMenu, viewModel, menuAnchorState = menuAnchorState)
     }
 }
 
@@ -630,7 +781,7 @@ private fun SourceArtistFeaturedAlbum(
     var loading by remember(album.ref, provider, revision, contentRevision) { mutableStateOf(false) }
     var error by remember(album.ref, provider, revision, contentRevision) { mutableStateOf<SourceErrorCode?>(null) }
     var attempt by remember(album.ref) { mutableIntStateOf(0) }
-    var saved by remember(album.ref, provider, revision, contentRevision) { mutableStateOf<Boolean?>(null) }
+    var saved by remember(album.ref, provider, revision) { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(album.ref, provider, revision, contentRevision, attempt) {
         loading = canSave
         error = null
@@ -650,7 +801,10 @@ private fun SourceArtistFeaturedAlbum(
         information = {
             ArtistFeaturedAlbumInformation(album.title, album.trackCount, releaseDate, landscape)
         }, action = {
-            if (canSave) Box(Modifier.size(44.dp).clickable(enabled = !busy && !loading, role = androidx.compose.ui.semantics.Role.Button) {
+            if (canSave) Box(Modifier.size(44.dp).clickable(
+                interactionSource = null, indication = null, enabled = !busy && !loading,
+                role = androidx.compose.ui.semantics.Role.Button,
+            ) {
                 when {
                     saved != null -> viewModel.setSaved(album.ref, saved != true)
                     error == SourceErrorCode.AUTH_REQUIRED || error == SourceErrorCode.AUTH_EXPIRED ->
@@ -679,6 +833,7 @@ fun SourceArtistCatalogScreen(ref: ArtistRef, albums: Boolean, viewModel: Source
     var query by rememberSaveable(ref, albums, stateSaver = androidx.compose.ui.text.input.TextFieldValue.Saver) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue()) }
     var searchActive by remember(ref, albums) { mutableStateOf(false) }
     var menu by remember(ref) { mutableStateOf<Pair<Track, Rect>?>(null) }
+    val trackMenuAnchor = rememberGlasmioMenuAnchorState()
     val tracks = state.items.filterIsInstance<SourceItem.TrackItem>().map { it.track }
     val records = state.sections.flatMap { it.items }.filterIsInstance<SourceItem.AlbumItem>().map { it.album }
     val visibleTracks = remember(tracks, query.text) { sourceDetailMatches(tracks, query.text) }
@@ -745,12 +900,13 @@ fun SourceArtistCatalogScreen(ref: ArtistRef, albums: Boolean, viewModel: Source
                     detail = if (landscape) com.ljyh.mei.utils.TimeUtils.formatDuration(track.durationMs) else "",
                     onClick = { play(tracks, indexed.index) },
                     modifier = Modifier.padding(horizontal = if (landscape) 32.dp else 20.dp),
-                    album = track.album.title, favorite = track.toMediaMetadata().mediaId in favoriteIds, showDivider = indexed != visibleTracks.lastOrNull(),
-                    onMore = { menu = track to it })
+                    album = track.album.title, favorite = track.toMediaMetadata().mediaId in favoriteIds,
+                    showDivider = indexed != visibleTracks.lastOrNull(), fullWidthTrackPress = true,
+                    onMore = { menu = track to it }, menuAnchorState = trackMenuAnchor)
             }
             sourceDetailPagingStatus(state, viewModel::refresh, {
                 if (query.text.isBlank()) viewModel.loadMore() else viewModel.continueArtistCatalogSearch()
-            }, automatic = false)
+            }, automatic = false, horizontalPadding = if (landscape) 32.dp else 20.dp)
         }
         if (!state.loading && state.error == null && (if (albums) records.isEmpty() && !state.albumsHasMore else tracks.isEmpty() && !state.hasMore)) {
             item("artist-catalog-empty") {
@@ -758,27 +914,38 @@ fun SourceArtistCatalogScreen(ref: ArtistRef, albums: Boolean, viewModel: Source
                     modifier = Modifier.padding(20.dp), color = LocalGlassColors.current.secondaryContent)
             }
         }
-        if (state.loading) item("artist-catalog-loading") { LoadingView() }
+        if (albums && state.loading) item("artist-catalog-loading") { LoadingView() }
         if (albums && state.error != null) item("artist-catalog-error") {
             GlasmioListRow(sourceErrorMessage(state.error!!), onClick = viewModel::refresh)
         }
     }
-    SourceTrackActions(menu, { menu = null }, viewModel)
+    SourceTrackActions(menu, { menu = null }, viewModel, menuAnchorState = trackMenuAnchor)
 }
 
-internal fun LazyListScope.sourceContentStatus(state: SourceContentState, onRetry: () -> Unit, onMore: () -> Unit) {
-    if (state.loading) item("source-content-loading") { LoadingView() }
+internal fun LazyListScope.sourceContentStatus(
+    state: SourceContentState,
+    onRetry: () -> Unit,
+    onMore: () -> Unit,
+    trackRows: Boolean = state.items.any { it is SourceItem.TrackItem } || state.detail is SourceItem.TrackItem,
+) {
+    if (state.loading) {
+        if (trackRows) sourceTrackSkeletons(state, "source-content-loading")
+        else item("source-content-loading") { LoadingView() }
+    }
     state.error?.let { error -> item("source-content-error") { GlasmioGroupedList(Modifier.padding(top = 10.dp)) {
         GlasmioListRow(sourceErrorMessage(error), trailing = { Text("重试") }, onClick = onRetry)
     } } }
     if (!state.loading && !state.hasMore && !state.albumsHasMore && state.error == null && state.items.isEmpty() && state.sections.isEmpty()) item("source-content-empty") {
         GlasmioGroupedList(Modifier.padding(top = 10.dp)) { GlasmioListRow("暂无内容", showTopSeparator = false, showDisclosure = false) }
     }
-    if (!state.loading && state.hasMore && state.error == null) item("source-content-more:${state.nextOffset}") {
-        LaunchedEffect(state.providerId, state.providerVersion, state.accountRevision, state.nextOffset, state.nextCursor) {
-            onMore()
+    if (!state.loading && state.hasMore && state.error == null) {
+        item("source-content-more:${state.nextOffset}") {
+            LaunchedEffect(state.providerId, state.providerVersion, state.accountRevision, state.nextOffset, state.nextCursor) {
+                onMore()
+            }
+            if (!trackRows) LoadingView()
         }
-        LoadingView()
+        if (trackRows) sourceTrackSkeletons(state, "source-content-more-loading")
     }
 }
 
@@ -842,6 +1009,25 @@ fun SourcePlaylistEditorScreen(providerId: String, playlistId: String? = null, v
 @Composable
 fun SourcePlaylistPickerScreen(track: TrackRef, viewModel: SourceContentViewModel = hiltViewModel()) {
     val nav = LocalNavController.current
+    SourcePlaylistPicker(track, viewModel, onDismiss = { nav.navigateUp() }, asSheet = false)
+}
+
+@Composable
+internal fun SourcePlaylistPickerSheet(
+    track: TrackRef,
+    onDismiss: () -> Unit,
+    viewModel: SourceContentViewModel = hiltViewModel(key = "player-playlist-picker"),
+) {
+    SourcePlaylistPicker(track, viewModel, onDismiss, asSheet = true)
+}
+
+@Composable
+private fun SourcePlaylistPicker(
+    track: TrackRef,
+    viewModel: SourceContentViewModel,
+    onDismiss: () -> Unit,
+    asSheet: Boolean,
+) {
     val state by viewModel.state.collectAsState()
     val message by viewModel.message.collectAsState()
     val busy by viewModel.busy.collectAsState()
@@ -850,26 +1036,46 @@ fun SourcePlaylistPickerScreen(track: TrackRef, viewModel: SourceContentViewMode
     var showCreate by remember(track.providerId, provider, state.accountRevision) { mutableStateOf(false) }
     val canCreate = SourceCapability.PLAYLIST_EDIT in provider?.capabilities.orEmpty() &&
         PlaylistEditAction.CREATE in (provider as? PlaylistEditCapability)?.playlistEditActions.orEmpty()
-    LaunchedEffect(track) { viewModel.open(SourceContentRequest.Library(LibraryCollection.CREATED_PLAYLISTS, track.providerId)) }
-    val editable = state.items.filterIsInstance<SourceItem.PlaylistItem>()
+    LaunchedEffect(track) {
+        if (asSheet) viewModel.dismissMessage()
+        viewModel.open(SourceContentRequest.Library(LibraryCollection.CREATED_PLAYLISTS, track.providerId))
+    }
+    // A player overlay can reopen for another source while its previous library is still loaded.
+    val pickerState = if (asSheet && state.providerId != track.providerId) {
+        SourceContentState(loading = true)
+    } else state
+    val editable = pickerState.items.filterIsInstance<SourceItem.PlaylistItem>()
         .filter { PlaylistEditAction.ADD_TRACKS in it.playlist.editableActions }
-    MeiloXPinnedListPage("添加到歌单", onNavigateBack = nav::navigateUp,
-        bottomPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
-        verticalArrangement = Arrangement.spacedBy(0.dp)) {
+    val dismissal = if (asSheet) rememberMeiloXSheetDismissal(onDismiss) else null
+    val onAdded: () -> Unit = if (dismissal != null) {
+        { dismissal.requestDismiss() }
+    } else onDismiss
+    val rows: LazyListScope.() -> Unit = {
         if (canCreate) item("create-playlist") {
-            GlasmioGroupedList(Modifier.padding(top = 10.dp, bottom = 24.dp)) {
+            GlasmioGroupedList(Modifier.padding(top = if (asSheet) 0.dp else 10.dp, bottom = 24.dp)) {
                 GlasmioListRow(stringResource(R.string.create_playlist_title), systemName = "plus.circle",
-                    showTopSeparator = false, enabled = !busy && !state.loading && state.account != null,
+                    showTopSeparator = false, enabled = !busy && !pickerState.loading && pickerState.account != null,
                     onClick = { showCreate = true })
             }
         }
-        groupedLazyItems(editable, key = { it.ref.playlistId }, firstItemTopPadding = if (canCreate) 0.dp else 10.dp) { item, index ->
-            GlasmioListRow(item.title, showTopSeparator = index > 0, enabled = !busy,
-                onClick = { viewModel.addTracks(item.ref, listOf(track)) { nav.navigateUp() } })
+        groupedLazyItems(editable, key = { it.ref.playlistId }, firstItemTopPadding = if (asSheet || canCreate) 0.dp else 10.dp) { item, index ->
+            GlasmioListRow(item.title, showTopSeparator = index > 0, enabled = !busy && dismissal?.isDismissing != true,
+                onClick = { viewModel.addTracks(item.ref, listOf(track), onAdded) })
         }
-        sourceContentStatus(state.copy(items = editable), viewModel::refresh, viewModel::loadMore)
+        sourceContentStatus(pickerState.copy(items = editable), viewModel::refresh, viewModel::loadMore)
     }
-    if (showCreate && canCreate) com.ljyh.mei.ui.component.playlist.CreatePlaylistSheet(
+    if (dismissal != null) {
+        AddToPlaylistSheet(stringResource(R.string.add_to_playlist_title), dismissal, content = rows)
+    } else {
+        MeiloXPinnedListPage(
+            "添加到歌单",
+            onNavigateBack = onDismiss,
+            bottomPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+            content = rows,
+        )
+    }
+    if (showCreate && canCreate) CreatePlaylistSheet(
         onDismiss = { showCreate = false },
         onConfirm = { name, privacy ->
             showCreate = false

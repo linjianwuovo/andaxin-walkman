@@ -29,6 +29,7 @@ import com.ljyh.mei.ui.component.player.PlayerViewModel
 import com.ljyh.mei.ui.component.utils.LifecycleStartedEffect
 import com.ljyh.mei.ui.model.LyricData
 import com.ljyh.mei.utils.lyric.createDefaultLyricData
+import com.ljyh.mei.utils.lyric.lyricStorageKey
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import timber.log.Timber
@@ -64,9 +65,6 @@ class PlayerStateContainer(
         internal set
 
     lateinit var mediaMetadata: State<MediaMetadata?>
-        internal set
-
-    lateinit var lyricResult: State<LyricData>
         internal set
 
     lateinit var qqLyricSearch: State<Resource<SearchResult>>
@@ -157,7 +155,6 @@ fun rememberPlayerStateContainer(
     container.canSkipNext = playerConnection.canSkipNext.collectAsStateWithLifecycle()
     container.isFMMode = playerConnection.isFMMode.collectAsStateWithLifecycle()
 
-    container.lyricResult = playerViewModel.lyric.collectAsStateWithLifecycle()
     container.qqLyricSearch = playerViewModel.searchResult.collectAsStateWithLifecycle()
     container.checkSongLike = playerViewModel.like.collectAsStateWithLifecycle()
     container.canLike = playerViewModel.canLike.collectAsStateWithLifecycle()
@@ -241,16 +238,19 @@ fun rememberPlayerStateContainer(
         }
     }
 
-    LaunchedEffect(container.mediaMetadata.value?.id) {
-        container.mediaMetadata.value?.let { meta ->
-            container.currentSongId = meta.id.toString()
-            playerViewModel.lyricManager.loadLyrics(meta)
-            container.lyricLine = playerViewModel.lyricManager.lyricData.value
-        }
-    }
+    val lyricManager = playerViewModel.lyricManager
+    val lyricMetadata = container.mediaMetadata.value
+    val lyricKey = lyricMetadata?.lyricStorageKey()
+    LifecycleStartedEffect(container, lyricManager, lyricKey) {
+        container.currentSongId = lyricKey
+        if (lyricKey == null || lyricMetadata == null ||
+            playerConnection.player.currentMediaItem?.metadata?.lyricStorageKey() != lyricKey
+        ) return@LifecycleStartedEffect
 
-    LaunchedEffect(container.lyricResult.value) {
-        container.lyricLine = container.lyricResult.value
+        lyricManager.loadLyrics(lyricMetadata)
+        lyricManager.lyricData.collect { lyricResult ->
+            if (lyricManager.songId == lyricKey) container.lyricLine = lyricResult
+        }
     }
 
     LaunchedEffect(nextMediaItem) {

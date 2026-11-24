@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.text.contextmenu.data.TextContextMenuItem
 import androidx.compose.foundation.text.contextmenu.data.TextContextMenuKeys
@@ -78,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.neoruaa.glasmio.glass.render.Backdrop
 import com.kyant.capsule.ContinuousRoundedRectangle
+import io.github.neoruaa.glasmio.core.glasmioSafeDrawing
 import io.github.neoruaa.glasmio.core.IosTypography
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.core.LocalGlassColors
@@ -150,7 +150,7 @@ fun GlasmioTextSelectionMenu(
     var rootCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null, neverEqualPolicy()) }
     var toolbarBounds by remember { mutableStateOf<Rect?>(null) }
     val editingHost = LocalGlasmioTextEditingHost.current
-    val safeInsets = WindowInsets.safeDrawing.union(WindowInsets.ime)
+    val safeInsets = WindowInsets.glasmioSafeDrawing.union(WindowInsets.ime)
     val layoutDirection = LocalLayoutDirection.current
     val windowSize = LocalWindowInfo.current.containerSize
     DisposableEffect(expanded, moreExpanded) {
@@ -325,8 +325,6 @@ fun GlasmioTextSelectionHost(
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null, neverEqualPolicy()) }
     var toolbarBounds by remember { mutableStateOf<Rect?>(null) }
     var retainedPresentation by remember { mutableStateOf<TextSelectionToolbarPresentation?>(null) }
-    val latestCoordinates by rememberUpdatedState(coordinates)
-    val latestToolbarBounds by rememberUpdatedState(toolbarBounds)
     DisposableEffect(toolbar) { onDispose { toolbar.hide() } }
     CompositionLocalProvider(
         LocalTextToolbar provides toolbar,
@@ -338,8 +336,10 @@ fun GlasmioTextSelectionHost(
                 .pointerInput(toolbar) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        val point = latestCoordinates?.takeIf { it.isAttached }?.localToScreen(down.position)
-                        if (point != null && toolbar.status == TextToolbarStatus.Shown && latestToolbarBounds?.contains(point) != true) toolbar.hide()
+                        if (toolbar.status == TextToolbarStatus.Shown) {
+                            val point = coordinates?.takeIf { it.isAttached }?.localToScreen(down.position)
+                            if (point != null && toolbarBounds?.contains(point) != true) toolbar.hide()
+                        }
                     }
                 },
         ) {
@@ -348,10 +348,10 @@ fun GlasmioTextSelectionHost(
                     .trackBackdropPosition(editingHost.recording) else Modifier,
             )) { content() }
             GlasmioTextEditingOverlay(editingHost, backdrop)
-            val root = coordinates?.takeIf { it.isAttached }
             val session = toolbar.session
             val legacy = toolbar.legacy
-            val activePresentation = if (root != null && (session != null || legacy != null)) {
+            val root = if (session != null || legacy != null) coordinates?.takeIf { it.isAttached } else null
+            val activePresentation = if (root != null) {
                 val editingBounds = editingHost.active?.takeIf { it.chromeVisible }?.selectionBounds()
                 val screenBounds = editingBounds ?: if (session != null) {
                     val bounds = session.dataProvider.contentBounds(root)

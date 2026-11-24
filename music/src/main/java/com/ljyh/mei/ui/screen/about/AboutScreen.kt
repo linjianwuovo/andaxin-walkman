@@ -8,23 +8,17 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,32 +27,17 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.datastore.preferences.core.edit
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.kyant.capsule.ContinuousRoundedRectangle
-import com.ljyh.mei.BuildConfig
 import com.ljyh.mei.R
-import com.ljyh.mei.constants.BetaUpdatesEnabledKey
 import com.ljyh.mei.constants.DevModeKey
 import com.ljyh.mei.constants.Github
-import io.github.neoruaa.glasmio.ui.GlasmioIconButton
-import com.ljyh.mei.ui.component.MeiloXSwitch
-import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
-import io.github.neoruaa.glasmio.icons.SfIcon
-import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.ui.screen.Screen
-import com.ljyh.mei.ui.component.VersionUpdateAlert
 import com.ljyh.mei.utils.rememberPreference
-import com.ljyh.mei.utils.dataStore
-import com.ljyh.mei.utils.VersionUpdateChecker
-import com.ljyh.mei.utils.VersionUpdateResult
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 @Composable
@@ -67,50 +46,16 @@ fun AboutScreen(viewModel: AboutViewModel = hiltViewModel()) {
     val navController = LocalNavController.current
     val insets = LocalPlayerAwareWindowInsets.current.asPaddingValues()
     val (devMode, onDevModeChange) = rememberPreference(DevModeKey, false)
-    val betaUpdatesEnabled by rememberPreference(BetaUpdatesEnabledKey, false)
+    // 库模块没有自己的 versionName，这里问宿主要；检测更新归宿主关于页那一张卡管
+    @Suppress("DEPRECATION")
+    val pkgInfo = remember(context) {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
+    }
+    val appVersion = pkgInfo?.versionName?.trim().orEmpty()
+    val appVersionCode = pkgInfo?.longVersionCode ?: 0L
+    // 库模块里的 R.string.app_name 是上游的 MeiloX，这里读宿主装出来的真实应用名
+    val appLabel = remember(context) { context.applicationInfo.loadLabel(context.packageManager).toString() }
     var clickCount by remember { mutableIntStateOf(0) }
-    val updateCheckScope = rememberCoroutineScope()
-    var isCheckingUpdate by remember { mutableStateOf(false) }
-    var isSavingBetaPreference by remember { mutableStateOf(false) }
-    var updateResult by remember { mutableStateOf<VersionUpdateResult?>(null) }
-
-    fun setBetaUpdatesEnabled(enabled: Boolean) {
-        if (isCheckingUpdate || isSavingBetaPreference) return
-        isSavingBetaPreference = true
-        updateCheckScope.launch {
-            try {
-                context.dataStore.edit { preferences ->
-                    preferences[BetaUpdatesEnabledKey] = enabled
-                }
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Exception) {
-                updateResult = VersionUpdateResult.Failed
-            } finally {
-                isSavingBetaPreference = false
-            }
-        }
-    }
-
-    fun checkForUpdates() {
-        if (isCheckingUpdate || isSavingBetaPreference) return
-        isCheckingUpdate = true
-        updateCheckScope.launch {
-            try {
-                val checkBetaUpdates = context.dataStore.data.first()[BetaUpdatesEnabledKey] ?: false
-                updateResult = VersionUpdateChecker.check(
-                    BuildConfig.VERSION_NAME,
-                    betaUpdatesEnabled = checkBetaUpdates,
-                )
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Exception) {
-                updateResult = VersionUpdateResult.Failed
-            } finally {
-                isCheckingUpdate = false
-            }
-        }
-    }
 
     MeiloXPinnedListPage(
         title = stringResource(R.string.settings_about),
@@ -137,12 +82,12 @@ fun AboutScreen(viewModel: AboutViewModel = hiltViewModel()) {
                             }
                         },
                 )
-                Text("MeiloX", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text(appLabel, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text(
                     stringResource(
                         R.string.about_version,
-                        BuildConfig.VERSION_NAME,
-                        BuildConfig.BUILD_COMMIT_SHA.take(8).ifBlank { "unknown" },
+                        appVersion.ifBlank { "unknown" },
+                        appVersionCode.toString(),
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -153,28 +98,6 @@ fun AboutScreen(viewModel: AboutViewModel = hiltViewModel()) {
                 AboutEntry("chevron.left.forwardslash.chevron.right", stringResource(R.string.about_github)) { openUrl(context, Github) }
                 AboutEntry("ladybug", stringResource(R.string.about_feedback)) { openUrl(context, "$Github/issues") }
                 AboutEntry("apple.terminal", stringResource(R.string.about_logs)) { Screen.Log.navigate(navController) }
-                AboutEntry(
-                    "arrow.clockwise",
-                    if (isCheckingUpdate) {
-                        stringResource(R.string.about_checking_updates)
-                    } else {
-                        stringResource(R.string.about_check_updates)
-                    },
-//                    stringResource(R.string.about_check_updates_description),
-                ) { checkForUpdates() }
-                GlasmioListRow(
-                    title = stringResource(R.string.about_check_beta_updates),
-                    systemName = "moon",
-                    enabled = !isCheckingUpdate && !isSavingBetaPreference,
-                    onClick = { setBetaUpdatesEnabled(!betaUpdatesEnabled) },
-                    trailing = {
-                        MeiloXSwitch(
-                            checked = betaUpdatesEnabled,
-                            onCheckedChange = ::setBetaUpdatesEnabled,
-                            enabled = !isCheckingUpdate && !isSavingBetaPreference,
-                        )
-                    },
-                )
             }
         }
         item {
@@ -200,7 +123,7 @@ fun AboutScreen(viewModel: AboutViewModel = hiltViewModel()) {
         }
         item {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 24.dp).fillMaxWidth()) {
-                Text("MeiloX · ${LocalDate.now().year}", style = MaterialTheme.typography.labelSmall)
+                Text("$appLabel · ${LocalDate.now().year}", style = MaterialTheme.typography.labelSmall)
                 Text(
                     stringResource(R.string.about_compose),
                     style = MaterialTheme.typography.labelSmall,
@@ -210,10 +133,6 @@ fun AboutScreen(viewModel: AboutViewModel = hiltViewModel()) {
         }
     }
 
-    VersionUpdateAlert(
-        result = updateResult,
-        onDismiss = { updateResult = null },
-    )
 }
 
 @Composable

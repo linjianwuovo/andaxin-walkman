@@ -23,6 +23,7 @@ data class SourceSettings(
     val preferredSearchProvider: String = ProviderIds.NETEASE,
     val disabledTrackFallbacks: Set<String> = emptySet(),
     val manualMatches: Map<String, String> = emptyMap(),
+    val allowAlternateVersions: Boolean = false,
 )
 
 @Singleton

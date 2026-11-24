@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -63,6 +67,7 @@ import java.time.YearMonth
  * 契约与坑写在 `CaptureDormBoard` 顶上。
  */
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
@@ -153,13 +158,15 @@ fun DormBoardScreen(open: (String) -> Unit, onBack: () -> Unit) {
                     // 六个 0 和"没拿到"是两句话：前者会被读成"这月一次没签"，而月历上明明有任务
                     Text(b.staticsWhy ?: "签到统计没拿到。", fontSize = Type.micro, color = ink.faint)
                 } else {
-                    Row(Modifier.fillMaxWidth()) {
+                    FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = if (LocalDensity.current.fontScale > 1.3f) 2 else 3,
+                        horizontalArrangement = Arrangement.spacedBy(Gap.sm), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                         StatCell("已签", st.signed, if (ink.dark) Palette.NightTeal else Palette.TealInk, Modifier.weight(1f))
                         StatCell("未签", st.notSigned, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
                         StatCell("本月总计", st.monthTotal, if (ink.dark) Palette.NightAmber else Palette.AmberInk, Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(Gap.md))
-                    Row(Modifier.fillMaxWidth()) {
+                    FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = if (LocalDensity.current.fontScale > 1.3f) 2 else 3,
+                        horizontalArrangement = Arrangement.spacedBy(Gap.sm), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                         StatCell("请假", st.leave, ink.strong, Modifier.weight(1f))
                         StatCell("离校", st.offCampus, ink.strong, Modifier.weight(1f))
                         StatCell("扫码", st.qrCode, ink.strong, Modifier.weight(1f))
@@ -238,7 +245,7 @@ private fun StatCell(label: String, value: Int, color: Color, modifier: Modifier
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(Gap.xxs))
-        Text(label, fontSize = Type.micro, color = ink.faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, fontSize = Type.micro, lineHeight = Type.microLine, color = ink.muted, textAlign = TextAlign.Center)
     }
 }
 
@@ -289,7 +296,7 @@ private fun MonthCalendar(
     cells.chunked(7).forEach { week ->
         Row(Modifier.fillMaxWidth()) {
             week.forEach { d ->
-                Box(Modifier.weight(1f).height(34.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.weight(1f).heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
                     if (d == null) return@Box
                     val iso = d.toString()
                     val isToday = d == today
@@ -298,7 +305,7 @@ private fun MonthCalendar(
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .size(30.dp)
+                            .fillMaxWidth().heightIn(min = 48.dp)
                             .background(
                                 when {
                                     picked == iso -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)

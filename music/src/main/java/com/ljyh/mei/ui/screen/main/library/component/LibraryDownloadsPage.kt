@@ -14,6 +14,7 @@ import com.ljyh.mei.ui.navigation.meiloxHeaderAction
 import com.ljyh.mei.ui.component.utils.rememberAlertContent
 import io.github.neoruaa.glasmio.core.IosTypography
 import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.icons.SfIcon
 import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
@@ -129,7 +130,7 @@ internal fun LibraryDownloadsPage(
     val sortAnchor = rememberGlasmioMenuAnchorState()
     var sortOpen by remember { mutableStateOf(false) }
     var selectedKey by remember { mutableStateOf<String?>(null) }
-    var menuAnchor by remember { mutableStateOf<Rect?>(null) }
+    val trackMenuAnchor = rememberGlasmioMenuAnchorState()
     var info by remember { mutableStateOf<Song?>(null) }
     var deleteEntry by remember { mutableStateOf<DownloadLibraryEntry?>(null) }
     var permissionDenied by rememberSaveable { mutableStateOf(false) }
@@ -274,8 +275,13 @@ internal fun LibraryDownloadsPage(
         }
         items(entries, key = { it.key }, contentType = { "offline-song" }) { entry ->
             Box(Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp)) {
-                DownloadLibraryRow(entry, onPlay = { play(entry) }, onMore = { selectedKey = entry.key; menuAnchor = it },
-                    showDivider = entry.key != entries.lastOrNull()?.key)
+                DownloadLibraryRow(
+                    entry = entry,
+                    onPlay = { play(entry) },
+                    onMore = { selectedKey = entry.key },
+                    menuAnchorState = trackMenuAnchor,
+                    showDivider = entry.key != entries.lastOrNull()?.key,
+                )
             }
         }
     }
@@ -311,7 +317,9 @@ internal fun LibraryDownloadsPage(
             }
         }
         DownloadTrackMenu(
-            song = song, task = task, anchorBounds = menuAnchor,
+            song = song,
+            task = task,
+            menuAnchorState = trackMenuAnchor,
             canPlay = entry.canPlay && player != null,
             matchTitle = stringResource(R.string.local_library_match),
             onDismiss = { selectedKey = null },
@@ -371,7 +379,14 @@ internal fun LibraryDownloadsPage(
 }
 
 @Composable
-internal fun DownloadLibraryRow(entry: DownloadLibraryEntry, onPlay: () -> Unit, onMore: (Rect) -> Unit, landscape: Boolean = rememberDeviceInfo().isLandscape, showDivider: Boolean = true) {
+internal fun DownloadLibraryRow(
+    entry: DownloadLibraryEntry,
+    onPlay: () -> Unit,
+    onMore: (Rect) -> Unit,
+    landscape: Boolean = rememberDeviceInfo().isLandscape,
+    showDivider: Boolean = true,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
+) {
     val colors = LocalGlassColors.current
     val task = entry.task
     val detail = when (task?.status) {
@@ -392,7 +407,9 @@ internal fun DownloadLibraryRow(entry: DownloadLibraryEntry, onPlay: () -> Unit,
             suffix = detail,
             suffixColor = if (task?.status == DownloadStatus.FAILED) colors.destructive else colors.secondaryContent,
             onClick = if (entry.canPlay) onPlay else null,
+            fullWidthTrackPress = true,
             onMore = onMore,
+            menuAnchorState = menuAnchorState,
             showDivider = showDivider,
             footer = {
                 if (task != null && task.status != DownloadStatus.COMPLETED && task.status != DownloadStatus.FAILED) {

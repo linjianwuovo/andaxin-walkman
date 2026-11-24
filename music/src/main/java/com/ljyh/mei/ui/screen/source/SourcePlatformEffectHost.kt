@@ -42,6 +42,7 @@ import com.ljyh.mei.ui.component.sheet.rememberMeiloXSheetDismissal
 import com.ljyh.mei.ui.component.sheet.rememberMeiloXSheetScrollEdge
 import io.github.neoruaa.glasmio.core.IosTypography
 import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.core.glasmioSafeDrawing
 import io.github.neoruaa.glasmio.glass.GlassEmphasis
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.ui.*
@@ -97,7 +98,11 @@ fun SourcePlatformEffectHost(effects: SourcePlatformEffects) {
     if (page != null) Dialog(
         onDismissRequest = { page?.fail(SourceErrorCode.CANCELLED) },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) { SourceWebEffectHost(effects.web, Modifier.fillMaxSize()) }
+    ) {
+        com.ljyh.mei.ui.navigation.MeiloXStandalonePageScope {
+            SourceWebEffectHost(effects.web, Modifier.fillMaxSize())
+        }
+    }
 }
 
 /** The shared effect keeps the original outgoing-SMS instructions and explicit confirmation. */
@@ -171,7 +176,9 @@ private fun SourceQrScanner(request: SourcePlatformRequest) {
     }
     Dialog(onDismissRequest = { request.fail(SourceErrorCode.CANCELLED) },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()) {
+        Column(Modifier.fillMaxSize().background(Color.Black)
+            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Vertical)
+                .union(WindowInsets.glasmioSafeDrawing.only(WindowInsetsSides.Horizontal)))) {
             GlasmioSheetTopToolbar("扫描二维码", actions = {
                 GlasmioSheetToolbarButton(onClick = { request.fail(SourceErrorCode.CANCELLED) }) { SfIcon("xmark", "关闭") }
             })

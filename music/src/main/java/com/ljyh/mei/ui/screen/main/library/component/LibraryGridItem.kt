@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.screen.main.library.component
 
+import com.ljyh.mei.ui.component.home.homeArtworkBorder
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -34,10 +35,11 @@ fun LibraryGridItem(
         modifier = modifier
             .clickable { onClick() }
     ) {
+        val coverShape = ContinuousRoundedRectangle(10.dp)
         Card(
-            shape = ContinuousRoundedRectangle(10.dp),
+            shape = coverShape,
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            modifier = Modifier.aspectRatio(1f)
+            modifier = Modifier.aspectRatio(1f).homeArtworkBorder(coverShape)
         ) {
             AsyncImage(
                 model = cover,

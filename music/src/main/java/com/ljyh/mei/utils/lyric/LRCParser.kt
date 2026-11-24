@@ -22,10 +22,12 @@ object LRCParser : ILyricsParser {
      * @return 包含合并后歌词的 SyncedLyrics 对象。
      */
     fun parse(mainLrc: String, translationLrc: String?): SyncedLyrics {
-        val lyricsLines = LrcMetadataHelper.removeAttributes(mainLrc.lines())
+        val rawLines = mainLrc.lines()
+        val mainOffsetMs = extractLyricHeaderOffsetMs(rawLines)
+        val lyricsLines = LrcMetadataHelper.removeAttributes(rawLines)
 
         var data = lyricsLines
-            .flatMap { line -> parseLine(line) }
+            .flatMap { line -> parseLine(line, mainOffsetMs) }
             .sortedBy { it.start }
 
         if (!translationLrc.isNullOrBlank()) {
@@ -49,9 +51,10 @@ object LRCParser : ILyricsParser {
      * 这个实现保留了原始功能：处理元数据和在同一文件中交错的翻译行。
      */
     override fun parse(lines: List<String>): SyncedLyrics {
+        val mainOffsetMs = extractLyricHeaderOffsetMs(lines)
         val lyricsLines = LrcMetadataHelper.removeAttributes(lines)
         val data = lyricsLines
-            .flatMap { line -> parseLine(line) }
+            .flatMap { line -> parseLine(line, mainOffsetMs) }
             .combineRawWithTranslation()
             .rearrangeTime()
             .map { it.toSyncedLine() }
@@ -61,7 +64,7 @@ object LRCParser : ILyricsParser {
     }
 
 
-    private fun parseLine(content: String): List<UncheckedSyncedLine> {
+    private fun parseLine(content: String, headerOffsetMs: Int = 0): List<UncheckedSyncedLine> {
         val line = content.trim()
 
         // 查找所有时间戳
@@ -81,7 +84,7 @@ object LRCParser : ILyricsParser {
         return timeStamps.map { match ->
             val time = match.groups[1]?.value ?: ""
             UncheckedSyncedLine(
-                start = time.parseAsTime(),
+                start = shiftHeaderTimestamp(time.parseAsTime(), headerOffsetMs),
                 end = 0,
                 content = lyricText,
                 translation = null
@@ -93,6 +96,7 @@ object LRCParser : ILyricsParser {
      */
     private fun List<UncheckedSyncedLine>.mergeWithExternalTranslation(translationLrc: String): List<UncheckedSyncedLine> {
         val mainLines = this
+        val transOffsetMs = extractLyricHeaderOffsetMs(translationLrc)
 
         val translationLines = translationLrc.lines().mapNotNull { line ->
             translationLrcRegex.matchEntire(line.trim())?.let { match ->
@@ -100,7 +104,7 @@ object LRCParser : ILyricsParser {
                     val time = match.groupValues[1] + ":" + match.groupValues[2] + "." + match.groupValues[3]
                     val text = match.groupValues[4].trim()
                     if (text.startsWith("//")) null
-                    else TranslationLine(time.parseAsTime(), text)
+                    else TranslationLine(shiftHeaderTimestamp(time.parseAsTime(), transOffsetMs), text)
                 } catch (e: Exception) { null }
             }
         }

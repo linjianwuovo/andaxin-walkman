@@ -2,6 +2,7 @@ package com.andaxin.feature.schedule
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -12,9 +13,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -36,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -129,6 +133,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
     val today = remember(minute) { Periods.today() }
     val periodNow = remember(minute) { Periods.periodNow() }
     var showDayMode by remember { mutableStateOf(false) }
+    val fontScale = LocalDensity.current.fontScale
 
     // 这一屏也支持下拉：整周没拿到时，下面会给一条「重试」，但用户更习惯直接拽一下
     Refreshable({ model.refresh() }, modifier.fillMaxSize()) {
@@ -149,13 +154,23 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
                 .padding(horizontal = Gap.screen),
         ) {
             Spacer(Modifier.height(Gap.md))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                Text("课程表", fontSize = Type.display, fontWeight = FontWeight.SemiBold, color = ink.strong)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "课程表", fontSize = Type.display, fontWeight = FontWeight.SemiBold,
+                    color = ink.strong, modifier = Modifier.weight(1f),
+                )
                 Text(
                     text = if (showDayMode) "看整周" else "只看今天",
                     fontSize = Type.meta,
+                    lineHeight = Type.metaLine,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.pressClick(shrink = false) { showDayMode = !showDayMode }.padding(vertical = Gap.sm),
+                    modifier = Modifier.pressClick(shrink = false) { showDayMode = !showDayMode }
+                        .heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically)
+                        .padding(horizontal = Gap.sm),
                 )
             }
 
@@ -241,19 +256,23 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
             val todayMornings = mornings.filter { it.day == today }
             val morningRows = mornings.groupBy { it.day }.values.maxOfOrNull { it.size }?.coerceAtMost(2) ?: 0
 
-            if (showDayMode) {
-                DayList(lessons.filter { it.day == today }.ifEmpty { lessons }, today, todayMornings)
-            } else {
+            if (state.slots.isEmpty() && state.firstLoad) {
+                Sheet { com.andaxin.shell.EmptyState("正在加载课表…") }
+            } else if (state.slots.isEmpty() && state.error == null) {
+                Sheet { com.andaxin.shell.EmptyState("这一周没有课") }
+            } else if (state.slots.isNotEmpty() && showDayMode) {
+                val todayLessons = lessons.filter { it.day == today }
+                if (todayLessons.isNotEmpty() || todayMornings.isNotEmpty()) {
+                    DayList(todayLessons, today, todayMornings)
+                } else {
+                    Sheet { com.andaxin.shell.EmptyState("今天没有课") }
+                }
+            } else if (state.slots.isNotEmpty()) {
                 Grid(
                     lessons, mornings, today, periodNow,
-                    rowHeightFor(viewport, morningRows),
+                    rowHeightFor(viewport, morningRows).coerceAtLeast(ROW_HEIGHT.dp * fontScale),
                     state.weekOffset, state.courseColors,
                 )
-            }
-
-            if (lessons.isEmpty() && !state.firstLoad && state.error == null) {
-                Spacer(Modifier.height(Gap.xl))
-                Text("这一周没有课。", fontSize = Type.body, color = ink.faint)
             }
 
             // 原来这里连着摆两遍同一个原因（一行灰字 + 一条 ErrorLine），只留带「重试」的那条
@@ -320,10 +339,14 @@ private fun Grid(
         (1..7).filter { it in busy || it == today }
     }
 
-    Row(Modifier.fillMaxWidth()) {
+    val fontScale = LocalDensity.current.fontScale
+    val headerHeight = HEADER_HEIGHT.dp * fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val gridWidth = if (fontScale > 1.3f) maxOf(maxWidth, (GUTTER.dp + Gap.xxs + 72.dp * days.size) * fontScale) else maxWidth
+    Row(Modifier.horizontalScroll(rememberScrollState()).width(gridWidth)) {
         // 左列：先垫一个和星期头等高的占位，节次才对得齐 —— 这一处就是原来错位的根
-        Column(Modifier.width(GUTTER.dp)) {
-            Spacer(Modifier.height(HEADER_HEIGHT.dp))
+        Column(Modifier.width(GUTTER.dp * fontScale)) {
+            Spacer(Modifier.height(headerHeight))
             // 「早」这一格：只有两个字的位置，没有钟点 —— 校方那几条 `ksjc=0` 本来就没给时间
             if (morningRows > 0) {
                 Box(
@@ -374,7 +397,7 @@ private fun Grid(
                     .padding(horizontal = 1.dp),
             ) {
                 Column(
-                    Modifier.fillMaxWidth().height(HEADER_HEIGHT.dp),
+                    Modifier.fillMaxWidth().height(headerHeight),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
@@ -444,6 +467,7 @@ private fun Grid(
             }
         }
     }
+}
 }
 
 /** 一门课一格。[span] 是连排几节，就占几行高。 */
@@ -525,7 +549,7 @@ private val COURSE_COLORS = listOf(
  * 十二颗以内一门一色；真超过十二门，多的按 `mod` 回头重用 —— 那是色板到头，不是算错。
  */
 
-/** 「只看今天」那一档：一张卡里一行一节、中间分隔线，不再一门课一张卡。 */
+/** 「只看今天」按节次列出课程，并保留清晰的时间和地点副信息。 */
 @Composable
 private fun DayList(slots: List<TimetableSlot>, today: Int, runs: List<TimetableSlot>) {
     val ink = LocalInk.current
@@ -541,13 +565,14 @@ private fun DayList(slots: List<TimetableSlot>, today: Int, runs: List<Timetable
     runs.groupBy { it.course }.forEach { (name, same) ->
         val room = same.firstOrNull { it.room.isNotBlank() }?.room.orEmpty()
         Text(
-            text = "早 · " + listOfNotNull(name.takeIf { it.isNotBlank() }, room.takeIf { it.isNotBlank() })
-                .joinToString(" · "),
+            text = listOf("早", name, room).filter { it.isNotBlank() }.joinToString(" · "),
             fontSize = Type.meta,
-            color = ink.faint,
+            lineHeight = Type.metaLine,
+            color = ink.muted,
             modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),
         )
     }
+    if (sorted.isEmpty()) return
     Sheet {
         sorted.forEachIndexed { i, slot ->
             RowLine(

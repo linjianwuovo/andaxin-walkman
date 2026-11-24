@@ -4,8 +4,12 @@ import io.github.neoruaa.glasmio.ui.GlasmioTextField
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +38,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,6 +60,7 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.Sheet
 import com.andaxin.shell.Chip
 import com.andaxin.core.design.Type
+import io.github.neoruaa.glasmio.icons.GlasmioIcon
 
 /*
  * AI 课堂的两屏：课程列表 + 课堂详情（课件 / 直录播 / 考勤 / 上课 / 小组）。
@@ -342,8 +350,8 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                             }
                         ),
                 ) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(Modifier.weight(1f)) {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Gap.xs)) {
+                        Column(Modifier.fillMaxWidth()) {
                             // 章顶格、节缩进一格：层级就靠这一下看出来，不靠我们自己编号
                             Text(
                                 text = item.title,
@@ -375,9 +383,9 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
                                         fontSize = Type.meta, color = ink.faint,
                                     )
                                     else -> sectionItems!!.forEach { s ->
-                                        Row(Modifier.fillMaxWidth().padding(vertical = Gap.xs)) {
-                                            Text(s.title, fontSize = Type.body, color = ink.body, modifier = Modifier.weight(1f))
-                                            Text(s.right, fontSize = Type.tiny, color = ink.ghost)
+                                        Column(Modifier.fillMaxWidth().padding(vertical = Gap.xs), verticalArrangement = Arrangement.spacedBy(Gap.xxs)) {
+                                            Text(s.title, fontSize = Type.body, color = ink.body)
+                                            if (s.right.isNotBlank()) Text(s.right, fontSize = Type.meta, color = ink.muted)
                                         }
                                     }
                                 }
@@ -406,6 +414,7 @@ fun CourseDetailScreen(courseId: String, open: (String) -> Unit, onBack: () -> U
  * 这一发我们**还没现打过**，所以五个数一起摆 —— 万一服务端少给一个键，界面上是 0，
  * 而不是整栏消失（整栏消失会让人以为接口没接）。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SignCounts(a: AiAttendance) {
     val ink = LocalInk.current
@@ -416,7 +425,12 @@ private fun SignCounts(a: AiAttendance) {
         "旷课" to a.absent,
         "请假" to a.leave,
     )
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.xs)) {
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        maxItemsInEachRow = if (LocalDensity.current.fontScale > 1.3f) 2 else 5,
+        horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+        verticalArrangement = Arrangement.spacedBy(Gap.sm),
+    ) {
         cells.forEach { (name, n) ->
             Column(
                 Modifier
@@ -468,98 +482,114 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
     var codeOk by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    val accent = MaterialTheme.colorScheme.primary
+    val controlHeight = maxOf(48.dp, 24.dp * LocalDensity.current.fontScale + 24.dp)
     ScaffoldPage(title = "AI 课堂", onBack = onBack) {
-        Sheet {
-            Text("签到码", fontSize = Type.title, color = ink.strong)
-            Spacer(Modifier.height(Gap.xs))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GlasmioTextField(
-                    value = code,
-                    onValueChange = { raw ->
-                        code = raw.filter { it.isDigit() }.take(6)
-                        codeMsg = null
-                    },
-                    placeholder = "老师报的 6 位数字",
-                    // Miuix 那对 label/floating 槽在 Glasmio 收成一个 placeholder:上一行已转过去
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(Gap.sm))
-                val codeReady = !codeBusy && code.length == 6
-                GlasmioButton(
-                    onClick = {
-                        codeBusy = true
-                        codeMsg = null
-                        codeOk = false
-                        scope.launch {
-                            graph.fifApi.signByCode(code).fold(
-                                onSuccess = { codeOk = true; codeMsg = it },
-                                onFailure = { codeOk = false; codeMsg = it.message ?: "没签上" },
-                            )
-                            codeBusy = false
-                        }
-                    },
-                    enabled = codeReady,
-                    navigationSurfaceColor = MaterialTheme.colorScheme.primary,
+        Sheet(contentPadding = Gap.lg) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Gap.md)) {
+                Box(
+                    Modifier.size(40.dp).clip(Radius.field).background(accent.copy(alpha = 0.10f)),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        if (codeBusy) "签…" else "签到",
-                        fontSize = Type.body,
-                        color = if (codeReady) MaterialTheme.colorScheme.onPrimary else ink.faint,
-                    )
+                    GlasmioIcon("textformat.123", contentDescription = null, tint = accent, size = 22.dp)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("课堂签到", fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = ink.strong)
+                    Text("输入老师提供的 6 位数字", fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
                 }
             }
+            Spacer(Modifier.height(Gap.lg))
+            GlasmioTextField(
+                value = code,
+                onValueChange = { raw ->
+                    code = raw.filter { it.isDigit() }.take(6)
+                    codeMsg = null
+                },
+                placeholder = "输入 6 位签到码",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth().heightIn(min = controlHeight),
+            )
+            Spacer(Modifier.height(Gap.md))
+            val codeReady = !codeBusy && code.length == 6
+            GlasmioButton(
+                onClick = {
+                    codeBusy = true
+                    codeMsg = null
+                    codeOk = false
+                    scope.launch {
+                        graph.fifApi.signByCode(code).fold(
+                            onSuccess = { codeOk = true; codeMsg = it },
+                            onFailure = { codeOk = false; codeMsg = it.message ?: "没签上" },
+                        )
+                        codeBusy = false
+                    }
+                },
+                enabled = codeReady,
+                sampleBackdrop = false,
+                navigationSurfaceColor = accent,
+                modifier = Modifier.fillMaxWidth().heightIn(min = controlHeight),
+            ) {
+                Text(
+                    if (codeBusy) "正在签到…" else "确认签到",
+                    fontSize = Type.body,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    color = if (codeReady) MaterialTheme.colorScheme.onPrimary else ink.faint,
+                )
+            }
             codeMsg?.let {
-                Spacer(Modifier.height(Gap.xs))
+                Spacer(Modifier.height(Gap.md))
                 Text(
                     it,
                     fontSize = Type.meta,
+                    lineHeight = Type.metaLine,
                     color = if (codeOk) (if (ink.dark) Palette.NightTeal else Palette.TealInk)
                     else MaterialTheme.colorScheme.error,
                 )
             }
         }
-        Spacer(Modifier.height(Gap.sm))
-        Sheet(modifier = Modifier.pressClick { open("aiclass/scan") }) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(Modifier.weight(1f)) {
-                    Text("扫码签到", fontSize = Type.title, color = ink.strong)
-                    Spacer(Modifier.height(Gap.xs))
-                    Text("对着课堂上的二维码", fontSize = Type.meta, color = ink.muted)
+        Spacer(Modifier.height(Gap.md))
+        val fontScale = LocalDensity.current.fontScale
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (maxWidth < 320.dp || fontScale > 1.3f) {
+                Column(verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
+                    AiClassShortcut("扫码签到", "扫描课堂二维码", "qrcode.viewfinder", { open("aiclass/scan") })
+                    AiClassShortcut("公开课", "浏览开放课程", "book.closed", { open("opencourse") })
                 }
-                Text("去扫码", fontSize = Type.meta, color = MaterialTheme.colorScheme.primary)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(Gap.md)) {
+                    AiClassShortcut("扫码签到", "扫描课堂二维码", "qrcode.viewfinder", { open("aiclass/scan") }, Modifier.weight(1f))
+                    AiClassShortcut("公开课", "浏览开放课程", "book.closed", { open("opencourse") }, Modifier.weight(1f))
+                }
             }
         }
-        Spacer(Modifier.height(Gap.sm))
-        Hairline()
-        Spacer(Modifier.height(Gap.lg))
-
-        // 公开课和"我选的课"不是一回事，但入口放这儿最顺：都是 FIF 那侧，同一个单点登录
-        Sheet(modifier = Modifier.pressClick { open("opencourse") }) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(Modifier.weight(1f)) {
-                    Text("公开课", fontSize = Type.title, color = ink.strong)
-                    Spacer(Modifier.height(Gap.xs))
-                    Text("平台上开着的课，没选也能看目录", fontSize = Type.meta, color = ink.muted)
-                }
-                Text("去看", fontSize = Type.meta, color = MaterialTheme.colorScheme.primary)
-            }
-        }
-        Spacer(Modifier.height(Gap.sm))
-        Hairline()
-        Spacer(Modifier.height(Gap.lg))
+        Spacer(Modifier.height(Gap.xl))
+        Text("我的课程", fontSize = Type.title, fontWeight = FontWeight.SemiBold, color = ink.strong)
+        Spacer(Modifier.height(Gap.md))
         when {
-            loading -> Text("正在加载 AI 课堂课程…", fontSize = Type.body, color = ink.faint)
-            why != null -> {
-                LoadWhy(why)
-                Spacer(Modifier.height(Gap.sm))
-                GlasmioButton(onClick = {
-                    loading = true
-                    why = null
-                    retry++
-                }) { Text("重试", fontSize = Type.body) }
+            loading -> Sheet {
+                Text("正在加载课程…", fontSize = Type.body, lineHeight = Type.bodyLine, color = ink.muted)
             }
-            courses.isEmpty() -> Text("当前学期没有 AI 课堂课程。", fontSize = Type.body, color = ink.faint)
+            why != null -> Sheet {
+                Text("课程暂不可用", fontSize = Type.body, fontWeight = FontWeight.Medium, color = ink.strong)
+                Spacer(Modifier.height(Gap.xs))
+                LoadWhy(why, wide = false)
+                Spacer(Modifier.height(Gap.sm))
+                GlasmioButton(
+                    onClick = {
+                        loading = true
+                        why = null
+                        retry++
+                    },
+                    sampleBackdrop = false,
+                    modifier = Modifier.heightIn(min = controlHeight),
+                ) { Text("重新加载", fontSize = Type.body, color = ink.strong) }
+            }
+            courses.isEmpty() -> Sheet {
+                Text("暂无课程", fontSize = Type.body, fontWeight = FontWeight.Medium, color = ink.strong)
+                Spacer(Modifier.height(Gap.xs))
+                Text("当前学期没有 AI 课堂课程。", fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
+            }
         }
         courses.forEach { c ->
             Sheet(
@@ -573,22 +603,46 @@ fun AiClassListScreen(open: (String) -> Unit, onBack: () -> Unit) {
                             url = c.cover,
                             contentDescription = c.name,
                             cacheDir = graph.context.cacheDir,
-                            modifier = Modifier.size(width = 56.dp, height = 40.dp),
+                            modifier = Modifier.size(width = 56.dp, height = 56.dp).clip(Radius.field),
                         )
                         Spacer(Modifier.width(Gap.md))
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(c.name, fontSize = Type.title, color = ink.strong)
+                        Text(c.name, fontSize = Type.title, lineHeight = Type.bodyLine, fontWeight = FontWeight.Medium, color = ink.strong)
                         if (c.teacher.isNotBlank()) {
                             Spacer(Modifier.height(Gap.xs))
-                            Text(c.teacher, fontSize = Type.meta, color = ink.muted)
+                            Text(c.teacher, fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
                         }
                     }
-                    Text("进课", fontSize = Type.meta, color = ink.faint)
+                    Spacer(Modifier.width(Gap.sm))
+                    Text("›", fontSize = Type.title, color = ink.faint)
                 }
             }
         }
-
         Spacer(Modifier.height(Gap.md))
+    }
+}
+
+@Composable
+private fun AiClassShortcut(
+    title: String,
+    subtitle: String,
+    symbol: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val ink = LocalInk.current
+    val accent = MaterialTheme.colorScheme.primary
+    Sheet(modifier = modifier.pressClick(onClick = onClick), contentPadding = Gap.lg) {
+        GlasmioIcon(
+            if (symbol == "qrcode.viewfinder") "camera.viewfinder" else symbol,
+            contentDescription = null,
+            tint = accent,
+            size = 24.dp,
+        )
+        Spacer(Modifier.height(Gap.md))
+        Text(title, fontSize = Type.title, fontWeight = FontWeight.Medium, color = ink.strong)
+        Spacer(Modifier.height(Gap.xs))
+        Text(subtitle, fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
     }
 }

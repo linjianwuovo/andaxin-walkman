@@ -9,8 +9,12 @@
 
 package io.github.neoruaa.glasmio.glass.render
 
+import androidx.compose.ui.unit.IntRect
+import io.github.neoruaa.glasmio.glass.boundedSampleRegion
 import io.github.neoruaa.glasmio.glass.NativeGlassAtlasBackingCopy
 import io.github.neoruaa.glasmio.glass.NativeGlassAtlasPasses
+import io.github.neoruaa.glasmio.glass.hasDeferredSharedCapture
+import io.github.neoruaa.glasmio.glass.observeDetachedSharedBackdrop
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +51,7 @@ import androidx.compose.ui.node.ObserverModifierNode
 import androidx.compose.ui.node.observeReads
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.node.requireGraphicsContext
+import androidx.compose.ui.node.requireLayoutDirection
 import androidx.compose.ui.node.requireView
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.unit.Constraints
@@ -61,6 +66,7 @@ import io.github.neoruaa.glasmio.glass.render.backdrops.recordingSignature
 import io.github.neoruaa.glasmio.glass.render.highlight.Highlight
 import io.github.neoruaa.glasmio.glass.render.highlight.HighlightElement
 import io.github.neoruaa.glasmio.glass.render.internal.ShapeProvider
+import io.github.neoruaa.glasmio.glass.render.internal.withFullHardwareBacking
 import io.github.neoruaa.glasmio.glass.render.internal.recordLayer
 import io.github.neoruaa.glasmio.glass.render.shadow.InnerShadow
 import io.github.neoruaa.glasmio.glass.render.shadow.InnerShadowElement
@@ -74,6 +80,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.ceil
+import kotlin.math.floor
 
 private val DefaultHighlight = { Highlight.Default }
 private val DefaultShadow = { Shadow.Default }
@@ -226,7 +233,7 @@ private class DrawBackdropElement(
     override fun create(): DrawBackdropNode {
         return DrawBackdropNode(
             backdrop = backdrop,
-            shapeProvider = shapeProvider,
+            initialShapeProvider = shapeProvider,
             effects = effects,
             layerBlock = layerBlock,
             exportedBackdrop = exportedBackdrop,
@@ -319,7 +326,7 @@ private class DrawBackdropElement(
 
 private class DrawBackdropNode(
     private var backdrop: Backdrop,
-    var shapeProvider: ShapeProvider,
+    initialShapeProvider: ShapeProvider,
     var effects: BackdropEffectScope.() -> Unit,
     var layerBlock: (GraphicsLayerScope.() -> Unit)?,
     var exportedBackdrop: LayerBackdrop?,
@@ -333,6 +340,8 @@ private class DrawBackdropNode(
     var sampleBounds: (() -> Rect)?,
 ) : LayoutModifierNode, DrawModifierNode, GlobalPositionAwareModifierNode, ObserverModifierNode, Modifier.Node() {
 
+    // The retained layer block must refresh its outline even when only the shape changes.
+    var shapeProvider by mutableStateOf(initialShapeProvider)
     var luminanceOnly by mutableStateOf(luminanceOnly)
 
     private val effectScope =
@@ -378,6 +387,11 @@ private class DrawBackdropNode(
     private var luminanceSampleSourceColorFilter: Any? = null
     private var luminanceSampleSourceBlendMode: Any? = null
     private val onBackdropSourceChanged: () -> Unit = {
+        if (isAttached) {
+            // A source signature describes geometry. Its pixels may change while its bounds stay fixed.
+            recordedSourceSignature = null
+            invalidateDraw()
+        }
         if (isAttached && luminanceState != null) {
             luminanceRevision++
             luminanceSourceDirty = true
@@ -392,7 +406,8 @@ private class DrawBackdropNode(
     private val layoutLayerBlock: GraphicsLayerScope.() -> Unit = {
         // The native background owns its SDF coverage, including the exterior key/fill strip.
         // Clip foreground explicitly below instead of cropping the entire control layer.
-        clip = !completedLayout
+        clip = !completedLayout &&
+            !shapeProvider.shape.createOutline(size, requireLayoutDirection(), this).needsConcaveClip()
         shape = shapeProvider.shape
         compositingStrategy = if (completedLayout) androidx.compose.ui.graphics.CompositingStrategy.Auto
             else androidx.compose.ui.graphics.CompositingStrategy.Offscreen
@@ -532,6 +547,8 @@ private class DrawBackdropNode(
     }
     private val recordAtlasConsumerBlock: DrawScope.() -> Unit = { atlasBackingLayer?.let { drawLayer(it) } }
 
+    private var recordedConsumerSize = IntSize.Zero
+
     private fun DrawScope.drawRecordedBackdrop() {
         val layer = graphicsLayer ?: return
         val scale = effectScope.samplingScale
@@ -543,7 +560,7 @@ private class DrawBackdropNode(
                 canvas.translate(-origin.x, -origin.y)
                 // Runtime image filters report unbounded output. Bound the final draw to
                 // its complete recorded consumer, including the atlas sampled by the effect.
-                canvas.clipRect(0f, 0f, layer.size.width.toFloat(), layer.size.height.toFloat())
+                canvas.clipRect(0f, 0f, recordedConsumerSize.width.toFloat(), recordedConsumerSize.height.toFloat())
             } else {
                 if (scale != 1f) canvas.scale(1f / scale, 1f / scale)
                 if (padding != 0f) canvas.translate(-padding, -padding)
@@ -552,6 +569,19 @@ private class DrawBackdropNode(
         } finally {
             canvas.restore()
         }
+    }
+
+    private fun boundedSourcePixels(size: IntSize): IntRect? {
+        if (!effectScope.nativeGlassHardwareRendering || onDrawBackdrop !== DefaultOnDrawBackdrop ||
+            effectScope.auxiliaryBackdrop != null || size.width > 16384 || size.height > 16384) return null
+        val consumer = layoutCoordinates?.takeIf { it.isAttached } ?: return null
+        val region = backdrop.boundedSampleRegion(consumer, effectScope.fullSize) ?: return null
+        val scale = effectScope.samplingScale
+        if (scale !in .125f..4f || !region.isFinite || padding !in 0f..16384f) return null
+        fun first(edge: Float, limit: Int) = floor(edge.toDouble() * scale + padding - 2.0).toInt().coerceIn(0, limit)
+        fun last(edge: Float, limit: Int) = ceil(edge.toDouble() * scale + padding + 2.0).toInt().coerceIn(0, limit)
+        return IntRect(first(region.left, size.width), first(region.top, size.height),
+            last(region.right, size.width), last(region.bottom, size.height))
     }
 
     private val drawBackdropLayer: DrawScope.() -> Unit = {
@@ -565,6 +595,7 @@ private class DrawBackdropNode(
             val outputSize = effectScope.materialOutputSize
             val consumerSize = if (outputSize == null) recordingSize else IntSize(
                 maxOf(recordingSize.width, outputSize.width), maxOf(recordingSize.height, outputSize.height))
+            recordedConsumerSize = consumerSize
             val source = if (luminanceState != null) {
                 luminanceSourceLayer ?: requireGraphicsContext().createGraphicsLayer().also {
                     luminanceSourceLayer = it
@@ -589,6 +620,7 @@ private class DrawBackdropNode(
                 } else if (mipAtlas != null) passes.recordPyramid(
                     mipAtlas,
                     inputEffects = producerEffects,
+                    sourceSupport = if (mipAtlas.canPropagateSourceBounds && producerEffects.isEmpty()) boundedSourcePixels(baseSize) else null,
                     record = { target, targetSize, block ->
                         recordLayer(this@DrawBackdropNode, target, targetSize, block)
                     },
@@ -607,14 +639,21 @@ private class DrawBackdropNode(
                 atlasProducerLayer = previous
                 // The final layer's raw repaint evaluates the producer over the complete
                 // atlas before the final effect is composed into the visible shape.
+                // Material and control consumers sample only their original packed tile rectangles.
+                // Extending its private input subset to the real backing lets Skia use hardware edges.
+                val finalInputSize = if (effectScope.nativeGlassHardwareRendering && effectScope.nativeMaterialCompleted &&
+                    mipAtlas != null && (mipAtlas.textureStages.isNotEmpty() || mipAtlas.hasControlPlanes) &&
+                    android.os.Build.VERSION.SDK_INT >= 36) {
+                    consumerSize.withFullHardwareBacking()
+                } else consumerSize
                 if (NativeGlassAtlasBackingCopy) {
                     val backing = atlasBackingLayer ?: context.createGraphicsLayer().also { atlasBackingLayer = it }
                     backing.clip = true
                     backing.compositingStrategy = androidx.compose.ui.graphics.layer.CompositingStrategy.Offscreen
                     backing.renderEffect = null
                     recordLayer(this@DrawBackdropNode, backing, recordingSize, recordAtlasBackingBlock)
-                    recordLayer(this@DrawBackdropNode, layer, consumerSize, recordAtlasConsumerBlock)
-                } else recordLayer(this@DrawBackdropNode, layer, consumerSize, recordAtlasBackingBlock)
+                    recordLayer(this@DrawBackdropNode, layer, finalInputSize, recordAtlasConsumerBlock)
+                } else recordLayer(this@DrawBackdropNode, layer, finalInputSize, recordAtlasBackingBlock)
             } else if (source != null) {
                 recordLayer(this@DrawBackdropNode, layer, consumerSize, recordBackdropFromLuminanceBlock)
             } else {
@@ -639,6 +678,9 @@ private class DrawBackdropNode(
     }
 
     override fun ContentDrawScope.draw() {
+        if (backdrop.hasDeferredSharedCapture()) {
+            backdrop.observeDetachedSharedBackdrop(this@DrawBackdropNode, layoutCoordinates, drawContext.canvas)
+        }
         if (luminanceState != null) {
             luminanceLogicalSize = size
             if (luminanceLogicalDensity.density != density || luminanceLogicalDensity.fontScale != fontScale) {
@@ -652,10 +694,11 @@ private class DrawBackdropNode(
             drawContent()
             return
         }
-        val managed = nativeGlassNeedsColorManagement(requireView())
+        val view = requireView()
+        val managed = nativeGlassNeedsColorManagement(view)
         val colorSpaceChanged = effectScope.colorManagedNativeGlass != managed
         effectScope.colorManagedNativeGlass = managed
-        val headroom = nativeGlassDisplayHeadroom(requireView())
+        val headroom = nativeGlassDisplayHeadroom(view)
         val headroomChanged = effectScope.nativeGlassHeadroom != headroom
         effectScope.nativeGlassHeadroom = headroom
         val geometryChanged = effectScope.update(this, samplingScale(size, this))
@@ -664,15 +707,25 @@ private class DrawBackdropNode(
             effectsDirty = false
         }
 
-        onDrawBehind?.invoke(this)
         if (effectScope.nativeMaterialCompleted) {
+            onDrawBehind?.invoke(this)
             drawBackdropLayer()
             withForegroundClip {
                 onDrawSurface?.invoke(this)
                 this@draw.drawContent()
                 onDrawFront?.invoke(this)
             }
+        } else if (shapeProvider.shape.createOutline(size, layoutDirection, this).needsConcaveClip()) {
+            // The hardware outline clip can omit protrusions from concave shapes.
+            withForegroundClip {
+                onDrawBehind?.invoke(this)
+                drawBackdropLayer()
+                onDrawSurface?.invoke(this)
+                this@draw.drawContent()
+                onDrawFront?.invoke(this)
+            }
         } else {
+            onDrawBehind?.invoke(this)
             drawBackdropLayer()
             onDrawSurface?.invoke(this)
             drawContent()
@@ -698,6 +751,8 @@ private class DrawBackdropNode(
             exportedBackdrop?.notifySourceRecorded()
         }
     }
+
+    private fun Outline.needsConcaveClip(): Boolean = this is Outline.Generic && !path.isConvex
 
     private inline fun DrawScope.withForegroundClip(block: DrawScope.() -> Unit) {
         val canvas = drawContext.canvas
@@ -738,7 +793,7 @@ private class DrawBackdropNode(
 
     private fun observeBackdropSource() {
         sourceObservation?.invoke()
-        sourceObservation = if (isAttached && luminanceState != null)
+        sourceObservation = if (isAttached)
             backdrop.observeSourceChanges(onBackdropSourceChanged) else null
     }
 

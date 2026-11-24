@@ -77,11 +77,7 @@ fun CommentItem(
             Column(Modifier.weight(1f)) {
                 CommentIdentity(comment.user.nickname, comment.timeStr)
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    comment.content,
-                    style = IosTypography.subheadline.copy(fontSize = 15.sp, lineHeight = 22.sp),
-                    color = colors.content,
-                )
+                CommentBody(comment, IosTypography.subheadline.copy(fontSize = 15.sp, lineHeight = 22.sp))
                 CommentActions(
                     state = likes[comment.commentId] ?: CommentLikeState(comment.liked, comment.likedCount),
                     isPending = comment.commentId in pendingLikes,

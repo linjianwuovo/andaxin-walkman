@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.guava.await
+import timber.log.Timber
 
 internal open class QuickJsException(message: String) : Exception(message)
 internal class QuickJsSandboxDeadException(message: String = "Source engine is unavailable") : QuickJsException(message)
@@ -164,7 +165,7 @@ internal class QuickJsSandbox private constructor(
                 }
                 catch (error: Exception) {
                     if (!evaluation.future.isCancelled && !evaluation.acknowledged.get() && !evaluation.cancelSent.get()) {
-                        android.util.Log.w("SourceJsIo", "Input writer failed kind=${error.javaClass.simpleName}")
+                        Timber.tag("SourceJsIo").w("Input writer failed kind=%s", error.javaClass.simpleName)
                         cancel(evaluation)
                         evaluation.future.setException(QuickJsDataInputException())
                     }
@@ -295,18 +296,39 @@ internal class QuickJsSandbox private constructor(
                 sandbox = value
                 binder.linkToDeath(value.death, 0)
                 if (!future.set(value)) value.close()
-            } catch (_: Exception) {
-                future.setException(QuickJsSandboxDeadException())
-                unbind()
+            } catch (error: Exception) {
+                fail("CONNECTED_EXCEPTION", error)
             }
         }
         override fun onServiceDisconnected(name: ComponentName) {
+            if (unbound.get()) return
+            Timber.tag("ScriptRuntime").w("Sandbox binding failed reason=DISCONNECTED")
             sandbox?.die()
             future.setException(QuickJsSandboxDeadException())
             unbind()
         }
-        override fun onBindingDied(name: ComponentName) { onServiceDisconnected(name); unbind() }
-        override fun onNullBinding(name: ComponentName) { future.setException(QuickJsSandboxDeadException()); unbind() }
+        override fun onBindingDied(name: ComponentName) {
+            if (unbound.get()) return
+            Timber.tag("ScriptRuntime").w("Sandbox binding failed reason=BINDING_DIED")
+            sandbox?.die()
+            future.setException(QuickJsSandboxDeadException())
+            unbind()
+        }
+        override fun onNullBinding(name: ComponentName) = fail("NULL_BINDING")
+        fun fail(reason: String, error: Exception? = null) {
+            if (unbound.get()) return
+            Timber.tag("ScriptRuntime").w(
+                "Sandbox binding failed reason=%s kind=%s", reason, error?.javaClass?.simpleName ?: "none",
+            )
+            future.setException(QuickJsSandboxDeadException())
+            unbind()
+        }
+        fun timeout() {
+            if (future.setException(QuickJsSandboxDeadException())) {
+                Timber.tag("ScriptRuntime").w("Sandbox binding failed reason=TIMEOUT timeoutMs=5000")
+                unbind()
+            }
+        }
         fun unbind() { if (unbound.compareAndSet(false, true)) runCatching { context.unbindService(this) } }
     }
 
@@ -328,13 +350,10 @@ internal class QuickJsSandbox private constructor(
                 val intent = Intent(app, QuickJsEngineService::class.java)
                 val name = "source_js_" + UUID.randomUUID().toString().replace("-", "")
                 if (!app.bindIsolatedService(intent, Context.BIND_AUTO_CREATE, name, callbacks, binding)) {
-                    future.setException(QuickJsSandboxDeadException())
-                    binding.unbind()
+                    binding.fail("REFUSED")
                 }
-                timer.schedule({
-                    if (future.setException(QuickJsSandboxDeadException())) binding.unbind()
-                }, 5_000, TimeUnit.MILLISECONDS)
-            } catch (_: Exception) { future.setException(QuickJsSandboxDeadException()); binding.unbind() }
+                timer.schedule({ binding.timeout() }, 5_000, TimeUnit.MILLISECONDS)
+            } catch (error: Exception) { binding.fail("BIND_EXCEPTION", error) }
             future.addListener({ if (future.isCancelled) { binding.sandbox?.close(); binding.unbind() } }, MoreExecutors.directExecutor())
             return future
         }

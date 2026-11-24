@@ -1,6 +1,11 @@
 package com.ljyh.mei.ui.component.player.component
 
+import android.os.SystemClock
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,6 +19,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -29,13 +35,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.ljyh.mei.R
 import com.ljyh.mei.constants.MusicQuality
 import com.ljyh.mei.playback.LocalPlaybackInfo
+import com.ljyh.mei.ui.local.LocalPlayerConnection
 import io.github.neoruaa.glasmio.ui.GlasmioMenuItem
 import io.github.neoruaa.glasmio.ui.GlasmioMenu
 import io.github.neoruaa.glasmio.icons.SfIcon
+import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -91,116 +100,160 @@ fun PlayerQualityDropdown(
     onMenuVisibilityChanged: (Boolean) -> Unit = {},
     viewportBounds: Rect? = null,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val menuVisibilityChanged by rememberUpdatedState(onMenuVisibilityChanged)
-    val requestQualities by rememberUpdatedState(onMenuOpened)
-    LaunchedEffect(mediaId) {
-        if (expanded) requestQualities()
-    }
-    DisposableEffect(Unit) {
-        onDispose { menuVisibilityChanged(false) }
-    }
-    val pendingTitle = stringResource(R.string.player_quality_pending)
-    val hasResolvedQuality = isPlayingLocalSource || quality != null
-    val qualityTitle = when {
-        isPlayingLocalSource -> localPlaybackQualityTitle(localPlaybackInfo)
-        quality != null -> stringResource(quality.labelRes)
-        else -> pendingTitle
-    }
-    val titleAlpha = remember(qualityTitle, hasResolvedQuality) {
-        Animatable(if (hasResolvedQuality) 0f else 1f)
-    }
-    LaunchedEffect(titleAlpha) {
-        // Animatable follows the system animator duration scale, including disabled motion.
-        if (hasResolvedQuality) titleAlpha.animateTo(1f, tween(160))
-    }
-    val statusTitle = when {
-        isLoading -> stringResource(R.string.track_quality_loading)
-        availableQualities.isEmpty() && localPlaybackInfo == null -> stringResource(R.string.track_quality_unavailable)
-        else -> null
-    }
-
-    GlasmioMenu(
-        expanded = expanded,
-        onExpandedChange = {
-            if (it && !expanded) {
-                menuVisibilityChanged(true)
-                onMenuOpened()
+    val connection = LocalPlayerConnection.current
+    val mixStatus = connection?.autoMixStatus?.collectAsStateWithLifecycle()
+    val isMixing by rememberIsAutoMixing(mixStatus)
+    var showMixLabel by remember { mutableStateOf(false) }
+    var mixedAt by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(isMixing) {
+        if (isMixing) {
+            mixedAt = SystemClock.uptimeMillis()
+            showMixLabel = true
+        } else {
+            if (showMixLabel && mixStatus?.value?.progress == 1f) {
+                delay((AutoMixIndicatorFirstCycleMs - (SystemClock.uptimeMillis() - mixedAt)).coerceAtLeast(0L))
             }
-            expanded = it
-        },
-        // Keep the anchor in place until the popup has finished collapsing.
-        onClosed = { menuVisibilityChanged(false) },
-        itemCount = availableQualities.size + (if (localPlaybackInfo != null) 1 else 0) +
-            (if (statusTitle != null) 1 else 0),
+            showMixLabel = false
+        }
+    }
+    AnimatedContent(
+        targetState = showMixLabel,
         modifier = modifier,
-        fullScreen = true,
-        centerHorizontally = true,
-        expandFromAnchor = Alignment.CenterHorizontally,
-        viewportBounds = viewportBounds,
-        anchor = { onClick ->
-            Row(
-                modifier = Modifier
-                    .background(backgroundColor, ContinuousRoundedRectangle(cornerRadius))
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
-                    .clickable(
-                    interactionSource = null,
-                    indication = null,
-                    role = Role.Button,
-                    onClick = onClick,
-                ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                SfIcon(
-                    systemName = "waveform",
-                    contentDescription = null,
-                    tint = color,
-                    size = 10.dp,
-                    modifier = Modifier.padding(end = 4.dp),
-                )
-                Text(
-                    text = qualityTitle,
-                    style = style,
-                    color = color,
-                    modifier = Modifier.widthIn(max = 136.dp)
-                        .graphicsLayer { alpha = titleAlpha.value },
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+        transitionSpec = {
+            val enter = if (targetState) {
+                tween<Float>(AutoMixIndicatorFadeMs, AutoMixQualityBadgeFadeMs, AutoMixIndicatorFadeEasing)
+            } else {
+                tween(AutoMixQualityBadgeFadeMs, AutoMixIndicatorFadeMs)
+            }
+            val exit = if (targetState) {
+                tween<Float>(AutoMixQualityBadgeFadeMs)
+            } else {
+                tween(AutoMixIndicatorFadeMs, easing = AutoMixIndicatorFadeEasing)
+            }
+            (fadeIn(enter) togetherWith fadeOut(exit)) using null
+        },
+        contentAlignment = Alignment.Center,
+        label = "Player progress badge",
+    ) { showMix ->
+        if (showMix) {
+            if (mixStatus != null) AutoMixProgressBadge(mixStatus, style)
+            return@AnimatedContent
+        }
+        var expanded by remember { mutableStateOf(false) }
+        val menuVisibilityChanged by rememberUpdatedState(onMenuVisibilityChanged)
+        val requestQualities by rememberUpdatedState(onMenuOpened)
+        LaunchedEffect(isMixing) {
+            if (isMixing) expanded = false
+        }
+        LaunchedEffect(mediaId) {
+            if (expanded) requestQualities()
+        }
+        DisposableEffect(Unit) {
+            onDispose { menuVisibilityChanged(false) }
+        }
+        val pendingTitle = stringResource(R.string.player_quality_pending)
+        val hasResolvedQuality = isPlayingLocalSource || quality != null
+        val qualityTitle = when {
+            isPlayingLocalSource -> localPlaybackQualityTitle(localPlaybackInfo)
+            quality != null -> stringResource(quality.labelRes)
+            else -> pendingTitle
+        }
+        val titleAlpha = remember(qualityTitle, hasResolvedQuality) {
+            Animatable(if (hasResolvedQuality) 0f else 1f)
+        }
+        LaunchedEffect(titleAlpha) {
+            // Animatable follows the system animator duration scale, including disabled motion.
+            if (hasResolvedQuality) titleAlpha.animateTo(1f, tween(160))
+        }
+        val statusTitle = when {
+            isLoading -> stringResource(R.string.track_quality_loading)
+            availableQualities.isEmpty() && localPlaybackInfo == null -> stringResource(R.string.track_quality_unavailable)
+            else -> null
+        }
+
+        GlasmioMenu(
+            expanded = expanded,
+            onExpandedChange = {
+                if (it && !expanded) {
+                    menuVisibilityChanged(true)
+                    onMenuOpened()
+                }
+                expanded = it
+            },
+            // Keep the anchor in place until the popup has finished collapsing.
+            onClosed = { menuVisibilityChanged(false) },
+            itemCount = availableQualities.size + (if (localPlaybackInfo != null) 1 else 0) +
+                (if (statusTitle != null) 1 else 0),
+            fullScreen = true,
+            centerHorizontally = true,
+            expandFromAnchor = Alignment.CenterHorizontally,
+            viewportBounds = viewportBounds,
+            anchorEnabled = !isMixing,
+            anchor = { onClick ->
+                Row(
+                    modifier = Modifier
+                        .background(backgroundColor, ContinuousRoundedRectangle(cornerRadius))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .clickable(
+                            interactionSource = null,
+                            indication = null,
+                            enabled = !isMixing,
+                            role = Role.Button,
+                            onClick = onClick,
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    SfIcon(
+                        systemName = "waveform",
+                        contentDescription = null,
+                        tint = color,
+                        size = 10.dp,
+                        modifier = Modifier.padding(end = 4.dp),
+                    )
+                    Text(
+                        text = qualityTitle,
+                        style = style,
+                        color = color,
+                        modifier = Modifier.widthIn(max = 136.dp)
+                            .graphicsLayer { alpha = titleAlpha.value },
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            },
+        ) { childBackdrop, close ->
+            localPlaybackInfo?.let { info ->
+                GlasmioMenuItem(
+                    title = localPlaybackQualityTitle(info, includeSource = true),
+                    onClick = {
+                        onLocalSourceSelected()
+                        close()
+                    },
+                    systemName = if (isPlayingLocalSource) "checkmark" else null,
+                    backdrop = childBackdrop,
                 )
             }
-        },
-    ) { childBackdrop, close ->
-        localPlaybackInfo?.let { info ->
-            GlasmioMenuItem(
-                title = localPlaybackQualityTitle(info, includeSource = true),
-                onClick = {
-                    onLocalSourceSelected()
-                    close()
-                },
-                systemName = if (isPlayingLocalSource) "checkmark" else null,
-                backdrop = childBackdrop,
-            )
-        }
-        availableQualities.forEach { option ->
-            GlasmioMenuItem(
-                title = stringResource(option.labelRes),
-                onClick = {
-                    onQualitySelected(option)
-                    close()
-                },
-                systemName = if (!isPlayingLocalSource && option == quality) "checkmark" else null,
-                backdrop = childBackdrop,
-            )
-        }
-        statusTitle?.let {
-            GlasmioMenuItem(
-                title = it,
-                onClick = {},
-                enabled = false,
-                backdrop = childBackdrop,
-            )
+            availableQualities.forEach { option ->
+                GlasmioMenuItem(
+                    title = stringResource(option.labelRes),
+                    onClick = {
+                        onQualitySelected(option)
+                        close()
+                    },
+                    systemName = if (!isPlayingLocalSource && option == quality) "checkmark" else null,
+                    backdrop = childBackdrop,
+                )
+            }
+            statusTitle?.let {
+                GlasmioMenuItem(
+                    title = it,
+                    onClick = {},
+                    enabled = false,
+                    backdrop = childBackdrop,
+                )
+            }
         }
     }
 }

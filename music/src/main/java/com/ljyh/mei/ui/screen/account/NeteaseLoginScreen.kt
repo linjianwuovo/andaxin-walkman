@@ -179,7 +179,7 @@ fun NeteaseWebLoginScreen(viewModel: NeteaseLoginViewModel = hiltViewModel()) {
             ) { Text(stringResource(R.string.retry)) }
             if (!detected) GlasmioButton(
                 onClick = { showCookieLoginSheet = true },
-                modifier = Modifier.align(Alignment.BottomCenter).glasmioAdaptiveContent()
+                modifier = Modifier.align(Alignment.BottomCenter)
                     .padding(horizontal = 18.dp, vertical = 12.dp).fillMaxWidth(),
                 style = GlassSurfaceStyle.Navigation,
             ) {
