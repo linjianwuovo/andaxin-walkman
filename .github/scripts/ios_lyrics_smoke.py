@@ -687,9 +687,14 @@ def capture(sim, case, work, artifacts, timeout=READY_SECONDS):
                 report["png"] = inspect_png(image)
                 shutil.copyfile(image, artifacts / image.name)
             finally:
+                capture_failed = sys.exc_info()[0] is not None
                 try:
                     if process.poll() is None:
                         sim.terminate()
+                except (SmokeError, OSError, subprocess.SubprocessError) as exc:
+                    report["cleanup_error"] = " ".join(str(exc).split())[:600]
+                    if not capture_failed:
+                        raise
                 finally:
                     stop(process)
         report["status"] = "passed"
@@ -742,7 +747,13 @@ def collect(repo, sha, executable, temp, artifacts, udid):
             for case in CASES:
                 evidence["cases"].append(capture(sim, case, work, artifacts))
         finally:
-            sim.cleanup()
+            capture_failed = sys.exc_info()[0] is not None
+            try:
+                sim.cleanup()
+            except (SmokeError, OSError, subprocess.SubprocessError) as exc:
+                evidence["cleanup_failure"] = " ".join(str(exc).split())[:600]
+                if not capture_failed:
+                    raise
 
     try:
         isolated_fixture(repo, sha, executable, temp, before, build_and_capture)
