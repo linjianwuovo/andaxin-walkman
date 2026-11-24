@@ -193,15 +193,19 @@ import androidx.compose.ui.unit.dp
         if (showLyrics) LyricsBackdrop(artwork, Modifier.matchParentSize())
 '''),
             ("                key(song.id, lines) { KaraokeLyricsView(controller, lines, lyricModifier) }", f'''                key(song.id, lines) {{
-                    KaraokeLyricsView(
-                        controller, lines, lyricModifier,
-                        onFixtureLayout = if (lyricsVisualCase == null) null else {{ layout -> lyricLayout = layout }},
-                        onFixtureFollowSettled = if (lyricsVisualCase == null) null else {{
+                    val probeLayout: ((String) -> Unit)? =
+                        if (lyricsVisualCase == null) null else ({{ layout: String -> lyricLayout = layout }})
+                    val probeSettled: (() -> Unit)? =
+                        if (lyricsVisualCase == null) null else ({{
                             if (!followSettled) {{
                                 platform.Foundation.NSLog("{MARKER}:FOLLOW_SETTLED:$lyricsVisualCase")
                                 followSettled = true
                             }}
-                        }},
+                        }})
+                    KaraokeLyricsView(
+                        controller, lines, lyricModifier,
+                        onFixtureLayout = probeLayout,
+                        onFixtureFollowSettled = probeSettled,
                     )
                 }}'''),
             ("private fun KaraokeLyricsView(controller: MusicController, lines: List<LyricLine>, modifier: Modifier) {", '''private fun KaraokeLyricsView(
