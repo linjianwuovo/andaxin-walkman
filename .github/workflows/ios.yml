@@ -56,6 +56,9 @@ jobs:
       - name: Verify committed production inputs
         run: python3 .github/scripts/ios_lyrics_smoke.py guard write "$RUNNER_TEMP/ios-production-source.json"
 
+      - name: Test shared music protocols and metadata
+        run: ./gradlew :shared:jvmTest --tests 'com.andaxin.feature.music.*' --console=plain
+
       - name: 链真机 release framework（本机做不了的那步，在这出证据）
         run: |
           # 102 那发死在这一步，但不是代码：maven.aliyun.com 那个 mirror 回了一次 502，
@@ -278,6 +281,18 @@ jobs:
           # 装进去的那份 plist 到底长什么样：xcodebuild 警告说缺启动屏，而仓库那份现在已改成由 project.yml 生成
           echo "--- 产物里的 Info.plist 关键键"
           plutil -p "$APP/Info.plist" 2>/dev/null | grep -iE "UILaunchScreen|UISupportedInterfaceOrientations|UIRequiresFullScreen|CFBundleIdentifier|MinimumOSVersion|NSExceptionDomains" || echo "读不到 $APP/Info.plist"
+
+      - name: Capture iOS parity pages and large text
+        id: parity_capture
+        timeout-minutes: 8
+        run: python3 .github/scripts/ios_parity_smoke.py --udid "$SIM_UDID" --artifacts "$RUNNER_TEMP/ios-parity-visual"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && (steps.parity_capture.outcome == 'success' || steps.parity_capture.outcome == 'failure') }}
+        with:
+          name: ios-parity-visual
+          path: ${{ runner.temp }}/ios-parity-visual/
+          if-no-files-found: error
 
       - name: Capture deterministic native iOS lyrics
         timeout-minutes: 25

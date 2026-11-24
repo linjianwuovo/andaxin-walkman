@@ -20,6 +20,7 @@ internal object MusicStore {
     private const val KEY_POSITION = "music.position"
     private const val KEY_PLAYING = "music.playing"
     private const val KEY_RECENT = "music.recent"
+    private const val KEY_RECENT_TIMES = "music.recent.playedAt"
     private const val KEY_LIKED = "music.liked"
     private const val KEY_PLAY_MODE = "music.playMode"
     private const val KEY_SEARCH_HISTORY = "music.searchHistory"
@@ -71,9 +72,20 @@ internal object MusicStore {
 
     fun loadRecent(): List<MusicSong> = decodeQueue(defaults.stringForKey(KEY_RECENT).orEmpty())
 
-    fun saveRecent(songs: List<MusicSong>) {
-        defaults.setObject(encodeQueue(songs.take(30)), forKey = KEY_RECENT)
+    fun saveRecent(songs: List<MusicSong>, playedAt: Map<Long, Long> = emptyMap()) {
+        val recent = songs.take(100)
+        defaults.setObject(encodeQueue(recent), forKey = KEY_RECENT)
+        val times = recent.mapNotNull { song -> playedAt[song.id]?.let { song.id.toString() to it } }.toMap()
+        defaults.setObject(times, forKey = KEY_RECENT_TIMES)
     }
+
+    fun loadRecentTimes(): Map<Long, Long> =
+        (defaults.dictionaryForKey(KEY_RECENT_TIMES) as? Map<*, *>)
+            ?.mapNotNull { (id, time) ->
+                val key = (id as? String)?.toLongOrNull()
+                val value = (time as? Number)?.toLong()
+                if (key != null && value != null) key to value else null
+            }?.toMap().orEmpty()
 
     fun loadLikedIds(): Set<Long> = (defaults.arrayForKey(KEY_LIKED) as? List<*>)
         ?.mapNotNull { (it as? Number)?.toLong() }
@@ -174,6 +186,13 @@ internal object MusicStore {
     }
 
     fun loadCustomPlaylists(): Map<String, List<Long>> {
+        defaults.dictionaryForKey("music.customPlaylists.v2")?.let { saved ->
+            return saved.entries.mapNotNull { (key, value) ->
+                val name = key as? String ?: return@mapNotNull null
+                val ids = (value as? List<*>)?.mapNotNull { (it as? Number)?.toLong() } ?: return@mapNotNull null
+                name to ids.filter { it > 0L }.distinct()
+            }.toMap()
+        }
         val raw = defaults.stringForKey(KEY_CUSTOM_PLAYLISTS).orEmpty()
         if (raw.isBlank()) return emptyMap()
         return raw.split(";").mapNotNull { entry ->
@@ -185,9 +204,17 @@ internal object MusicStore {
     }
 
     fun saveCustomPlaylists(playlists: Map<String, List<Long>>) {
-        val raw = playlists.entries.joinToString(";") { entry ->
-            entry.key + "=" + entry.value.joinToString(",")
-        }
-        defaults.setObject(raw, forKey = KEY_CUSTOM_PLAYLISTS)
+        defaults.setObject(playlists.mapValues { (_, ids) -> ids.distinct().map { it as Any } }, forKey = "music.customPlaylists.v2")
     }
+    fun loadDownloadedSongs(): List<MusicSong> = decodeQueue(defaults.stringForKey("music.download.songs").orEmpty())
+    fun saveDownloadedSongs(songs: List<MusicSong>) { defaults.setObject(encodeQueue(songs), forKey = "music.download.songs") }
+    fun loadDownloadPaths(): Map<Long, String> = (defaults.dictionaryForKey("music.download.paths") ?: emptyMap<Any?, Any?>()).entries.mapNotNull { (key, value) ->
+        val id = (key as? String)?.toLongOrNull() ?: return@mapNotNull null
+        val name = value as? String ?: return@mapNotNull null
+        id to name
+    }.toMap()
+    fun saveDownloadPaths(paths: Map<Long, String>) { defaults.setObject(paths.mapKeys { it.key.toString() }, forKey = "music.download.paths") }
+    fun loadLibrarySongs(): List<MusicSong> = decodeQueue(defaults.stringForKey("music.library.songs").orEmpty())
+    fun saveLibrarySongs(songs: List<MusicSong>) { defaults.setObject(encodeQueue(songs), forKey = "music.library.songs") }
+
 }

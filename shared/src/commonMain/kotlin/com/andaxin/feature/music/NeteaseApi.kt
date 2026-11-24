@@ -6,6 +6,7 @@ import com.andaxin.core.net.formUrlEncode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -145,14 +146,19 @@ private fun intOrNull(obj: JsonElement?, key: String): Int? = runCatching { obj?
 private fun arrayOrEmpty(obj: JsonElement?, key: String): List<JsonElement> = runCatching { obj?.jsonObject?.get(key)?.jsonArray?.toList() }.getOrNull().orEmpty()
 private fun firstCover(obj: JsonElement?): String = listOf("coverImgUrl", "picUrl", "pic56x56Url", "cover", "img1v1Url").mapNotNull { contentOrNull(obj, it) }.firstOrNull().orEmpty()
 private fun parseSongElement(obj: JsonElement): MusicSong {
-    val sid = longOrNull(obj, "id") ?: 0L
-    val name = contentOrNull(obj, "name").orEmpty()
-    val artists = arrayOrEmpty(obj, "artists").mapNotNull { contentOrNull(it, "name") };
-        val albumName = (obj.jsonObject?.get("album")?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull).orEmpty()
-    val albumId = longOrNull(obj.jsonObject?.get("album"), "id") ?: 0L
-    val artist = artists.firstOrNull().orEmpty()
-    val artistId = arrayOrEmpty(obj, "artists").firstOrNull()?.let { longOrNull(it, "id") } ?: 0L
-    return MusicSong(sid, name, artist, albumName, firstCover(obj.jsonObject?.get("album")), 0L, artistId, albumId)
+    val artists = arrayOrEmpty(obj, "artists").ifEmpty { arrayOrEmpty(obj, "ar") }
+    val album = obj.jsonObject["album"]?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+        ?: obj.jsonObject["al"]?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+    return MusicSong(
+        id = longOrNull(obj, "id") ?: 0L,
+        name = contentOrNull(obj, "name").orEmpty(),
+        artist = artists.mapNotNull { contentOrNull(it, "name") }.joinToString(" / "),
+        album = contentOrNull(album, "name").orEmpty(),
+        cover = firstCover(album),
+        duration = longOrNull(obj, "duration") ?: longOrNull(obj, "dt") ?: 0L,
+        artistId = artists.firstOrNull()?.let { longOrNull(it, "id") } ?: 0L,
+        albumId = longOrNull(album, "id") ?: 0L,
+    )
 }
 
 fun parseSearchSongs(json: String): List<MusicSong> = runCatching {
@@ -328,3 +334,146 @@ fun parseLyrics(json: String): List<LyricLine> = runCatching {
     }.orEmpty()
     parseLyricPayload(chosen)
 }.getOrElse { emptyList() }
+
+data class MusicSongPage(val songs: List<MusicSong>, val more: Boolean, val total: Int)
+
+data class MusicHistoryEntry(val song: MusicSong, val playedAt: Long?)
+
+data class MusicHistoryPage(val entries: List<MusicHistoryEntry>, val remoteEnabled: Boolean)
+
+/** Device-local history transition. A resumed/restarted current item must not be recorded again. */
+fun recordLocalPlayback(
+    existing: List<MusicHistoryEntry>,
+    song: MusicSong,
+    playedAt: Long,
+    isNewTrack: Boolean,
+    maximum: Int = 100,
+): List<MusicHistoryEntry> {
+    if (!isNewTrack || song.id <= 0L || maximum <= 0) return existing
+    return (listOf(MusicHistoryEntry(song, playedAt)) + existing.filterNot { it.song.id == song.id })
+        .take(maximum)
+}
+
+fun neteaseRecentSongsCall(musicU: String, limit: Int = 100): HttpCall {
+    require(musicU.isNotBlank()) { "请先登录网易云" }
+    return HttpCall(
+        method = "POST",
+        url = "https://music.163.com/api/play-record/song/list",
+        headers = baseHeaders(musicU),
+        body = HttpBody.Form(listOf("limit" to limit.coerceIn(1, 100).toString())),
+    )
+}
+
+fun parseRecentSongs(json: String): MusicHistoryPage {
+    val root = checkedMusicRoot(json)
+    val data = root["data"]?.jsonObject ?: return MusicHistoryPage(emptyList(), remoteEnabled = false)
+    val entries = data["list"]?.jsonArray.orEmpty().mapNotNull { item ->
+        val entry = item.jsonObject
+        val songObject = entry["song"] ?: entry["simpleSong"] ?: return@mapNotNull null
+        val song = parseSongElement(songObject)
+        if (song.id <= 0L) return@mapNotNull null
+        val time = longOrNull(item, "playTime") ?: longOrNull(item, "playedAt")
+        MusicHistoryEntry(song, time)
+    }
+    return MusicHistoryPage(entries, remoteEnabled = true)
+}
+
+fun mergeRecentSongs(
+    local: List<MusicHistoryEntry>,
+    remote: List<MusicHistoryEntry>?,
+    maximum: Int = 100,
+): List<MusicHistoryEntry> {
+    data class Candidate(val entry: MusicHistoryEntry, val order: Int)
+    val chosen = linkedMapOf<Long, Candidate>()
+    (local + remote.orEmpty()).forEachIndexed { index, entry ->
+        val prior = chosen[entry.song.id]
+        val newer = prior == null || when {
+            entry.playedAt == null -> false
+            prior.entry.playedAt == null -> true
+            else -> entry.playedAt > prior.entry.playedAt
+        }
+        if (newer) chosen[entry.song.id] = Candidate(entry, prior?.order ?: index)
+    }
+    return chosen.values.sortedWith { left, right ->
+        when {
+            left.entry.playedAt == null && right.entry.playedAt == null -> left.order.compareTo(right.order)
+            left.entry.playedAt == null -> 1
+            right.entry.playedAt == null -> -1
+            left.entry.playedAt != right.entry.playedAt -> right.entry.playedAt.compareTo(left.entry.playedAt)
+            else -> left.order.compareTo(right.order)
+        }
+    }.take(maximum.coerceAtLeast(0)).map { it.entry }
+}
+
+fun neteasePodcastRadiosCall(categoryId: Long = 0L, musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = if (categoryId > 0L) "https://music.163.com/api/djradio/recommend?cateId=$categoryId"
+          else "https://music.163.com/api/djradio/recommend/v1",
+    headers = baseHeaders(musicU),
+)
+
+fun neteasePodcastProgramsCall(radioId: Long, limit: Int = 30, offset: Int = 0, musicU: String? = null): HttpCall = HttpCall(
+    method = "GET",
+    url = "https://music.163.com/api/dj/program/byradio?radioId=$radioId&limit=${limit.coerceIn(1, 100)}&offset=${offset.coerceAtLeast(0)}&asc=false",
+    headers = baseHeaders(musicU),
+)
+
+fun neteaseCloudSongsCall(musicU: String, limit: Int = 50, offset: Int = 0): HttpCall {
+    require(musicU.isNotBlank()) { "请先登录网易云" }
+    return HttpCall(
+        method = "GET",
+        url = "https://music.163.com/api/v1/cloud/get?limit=${limit.coerceIn(1, 100)}&offset=${offset.coerceAtLeast(0)}",
+        headers = baseHeaders(musicU),
+    )
+}
+
+private fun checkedMusicRoot(json: String): JsonObject {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val code = root["code"]?.jsonPrimitive?.intOrNull
+    check(code == null || code == 200) {
+        if (code == 301 || code == 302) "登录已失效，请重新登录网易云"
+        else contentOrNull(root, "message") ?: contentOrNull(root, "msg") ?: "音乐服务暂不可用（$code）"
+    }
+    return root
+}
+
+fun parsePodcastRadios(json: String): List<MusicCatalogItem> =
+    checkedMusicRoot(json)["djRadios"]?.jsonArray.orEmpty().mapNotNull { item ->
+        val id = longOrNull(item, "id") ?: return@mapNotNull null
+        val name = contentOrNull(item, "name") ?: return@mapNotNull null
+        MusicCatalogItem(id, name, firstCover(item), intOrNull(item, "programCount") ?: 0)
+    }
+
+fun parsePodcastPrograms(json: String): MusicSongPage {
+    val root = checkedMusicRoot(json)
+    val songs = root["programs"]?.jsonArray.orEmpty().mapNotNull { program ->
+        val main = program.jsonObject["mainSong"] ?: return@mapNotNull null
+        val parsed = parseSongElement(main)
+        if (parsed.id <= 0L) return@mapNotNull null
+        parsed.copy(
+            name = contentOrNull(program, "name") ?: parsed.name,
+            cover = contentOrNull(program, "coverUrl") ?: parsed.cover,
+            duration = longOrNull(program, "duration") ?: parsed.duration,
+        )
+    }
+    return MusicSongPage(songs, root["more"]?.jsonPrimitive?.booleanOrNull ?: false, intOrNull(root, "count") ?: songs.size)
+}
+
+fun parseCloudSongs(json: String): MusicSongPage {
+    val root = checkedMusicRoot(json)
+    val songs = root["data"]?.jsonArray.orEmpty().mapNotNull { entry ->
+        val simple = entry.jsonObject["simpleSong"]
+        val parsed = simple?.let(::parseSongElement)
+        val id = longOrNull(entry, "songId") ?: parsed?.id ?: return@mapNotNull null
+        if (id <= 0L) return@mapNotNull null
+        MusicSong(
+            id = id,
+            name = contentOrNull(entry, "songName") ?: parsed?.name.orEmpty(),
+            artist = parsed?.artist?.takeIf { it.isNotBlank() } ?: contentOrNull(entry, "artist").orEmpty(),
+            album = parsed?.album?.takeIf { it.isNotBlank() } ?: contentOrNull(entry, "album").orEmpty(),
+            cover = parsed?.cover.orEmpty(), duration = parsed?.duration ?: 0L,
+            artistId = parsed?.artistId ?: 0L, albumId = parsed?.albumId ?: 0L,
+        )
+    }
+    return MusicSongPage(songs, root["hasMore"]?.jsonPrimitive?.booleanOrNull ?: false, intOrNull(root, "count") ?: songs.size)
+}

@@ -25,6 +25,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         bar.configureWithDefaultBackground()
         UINavigationBar.appearance().standardAppearance = bar
         UINavigationBar.appearance().scrollEdgeAppearance = bar
+        IosMusicDownloads.shared.restore()
         return true
     }
 
@@ -42,4 +43,17 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         cfg.delegateClass = SceneDelegate.self
         return cfg
     }
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        if identifier == "com.andaxin.music.downloads" {
+            IosMusicDownloads.shared.handleBackgroundEvents(completion: completionHandler)
+        } else {
+            completionHandler()
+        }
+    }
+
 }

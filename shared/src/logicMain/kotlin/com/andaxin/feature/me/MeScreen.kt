@@ -1,5 +1,7 @@
 package com.andaxin.feature.me
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -250,8 +252,10 @@ fun MeScreen(deps: MeDeps, open: (String) -> Unit = {}, modifier: Modifier = Mod
 @Composable
 private fun EntryGrid(entries: List<Entry>, icon: (@Composable (key: String) -> Unit)?, open: (String) -> Unit) {
     val ink = LocalInk.current
-    Sheet(modifier = Modifier.enterFade()) {
-        entries.chunked(3).forEachIndexed { rowIdx, row ->
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = (maxWidth / (104.dp * LocalDensity.current.fontScale.coerceAtLeast(1f))).toInt().coerceIn(1, 6)
+        Sheet(modifier = Modifier.enterFade()) {
+        entries.chunked(columns).forEachIndexed { rowIdx, row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { e ->
                     Column(
@@ -271,23 +275,24 @@ private fun EntryGrid(entries: List<Entry>, icon: (@Composable (key: String) -> 
                             fontWeight = FontWeight.Medium,
                             color = ink.strong,
                             textAlign = TextAlign.Center,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(Modifier.height(1.dp))
+                        Spacer(Modifier.height(Gap.xs))
                         Text(
                             text = e.note,
                             fontSize = Type.micro,
-                            color = ink.ghost,
+                            color = ink.muted,
                             textAlign = TextAlign.Center,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
-            if (rowIdx != entries.chunked(3).lastIndex) Hairline()
+            if (rowIdx != entries.chunked(columns).lastIndex) Hairline()
         }
+    }
     }
 }

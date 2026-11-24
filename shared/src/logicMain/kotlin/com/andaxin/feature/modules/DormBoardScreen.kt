@@ -1,5 +1,7 @@
 package com.andaxin.feature.modules
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -289,7 +291,7 @@ private fun MonthCalendar(
     cells.chunked(7).forEach { week ->
         Row(Modifier.fillMaxWidth()) {
             week.forEach { d ->
-                Box(Modifier.weight(1f).height(34.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.weight(1f).heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
                     if (d == null) return@Box
                     val iso = d.toString()
                     val isToday = d == today
@@ -298,7 +300,7 @@ private fun MonthCalendar(
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .size(30.dp)
+                            .fillMaxWidth().heightIn(min = 48.dp)
                             .background(
                                 when {
                                     picked == iso -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)

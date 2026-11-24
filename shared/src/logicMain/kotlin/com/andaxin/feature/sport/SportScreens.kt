@@ -1,5 +1,9 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.andaxin.feature.sport
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -183,17 +187,17 @@ private fun PlanCard(plan: SportPlan?, ink: InkSet) {
     val primary = MaterialTheme.colorScheme.primary
     val planKm = plan?.planKm
     val doneKm = plan?.doneKm
-    val ratio = if (planKm != null && planKm > 0 && doneKm != null && doneKm.isFinite()) {
+    val ratio = if (planKm != null && planKm > 0 && doneKm != null) {
         (doneKm / planKm).toFloat().coerceIn(0f, 1f)
     } else null
     val left = plan?.leftKm ?: if (planKm != null && doneKm != null) (planKm - doneKm) else null
 
     Sheet {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+        FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = if (LocalDensity.current.fontScale > 1.3f) 1 else 2, horizontalArrangement = Arrangement.spacedBy(Gap.md), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
             Column(Modifier.weight(1f)) {
                 Text("本学期跑步", fontSize = Type.micro, color = ink.faint)
                 Spacer(Modifier.height(Gap.xs))
-                Row(verticalAlignment = Alignment.Bottom) {
+                FlowRow(verticalArrangement = Arrangement.spacedBy(Gap.xs)) {
                     Text(
                         text = km2(doneKm),
                         style = Type.tabular,
@@ -325,7 +329,7 @@ private fun TodayCell(label: String, value: String, date: String, modifier: Modi
     Column(modifier) {
         Text(label, fontSize = Type.micro, color = ink.faint)
         Spacer(Modifier.height(2.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
+        Column {
             Text(
                 text = if (value == "—") "—" else "$value km",
                 fontSize = Type.title,
@@ -333,7 +337,7 @@ private fun TodayCell(label: String, value: String, date: String, modifier: Modi
                 color = ink.strong,
             )
             if (date.isNotBlank()) {
-                Spacer(Modifier.width(Gap.xs))
+                Spacer(Modifier.height(Gap.xs))
                 Text(date, fontSize = Type.tinier, color = ink.faint, modifier = Modifier.padding(bottom = 3.dp))
             }
         }
@@ -444,7 +448,7 @@ fun SportRunScreen(onBack: () -> Unit) {
             }
             Spacer(Modifier.height(Gap.lg))
             Sheet {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.xl), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                     Stat("距离", f2(done.km) + " km")
                     Stat("时长", mmss(done.seconds))
                     Stat(
@@ -549,7 +553,7 @@ fun SportRunScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(Gap.lg))
         Sheet {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.xl), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                 Stat("距离", f2(state.km) + " km")
                 Stat("时长", mmss(state.seconds))
                 Stat("配速", state.pacePerKm)
@@ -662,7 +666,7 @@ fun SportRecordsScreen(open: (String) -> Unit, onBack: () -> Unit) {
                 Spacer(Modifier.height(Gap.sm))
                 Hairline()
                 Spacer(Modifier.height(Gap.sm))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.xl), verticalArrangement = Arrangement.spacedBy(Gap.md)) {
                     Text(r.pacePerKm + " · " + f1(r.minutes) + " 分钟", fontSize = Type.meta, color = ink.faint)
                     Text(
                         text = if (r.valid) "有效" else r.invalidReason,

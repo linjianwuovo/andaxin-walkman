@@ -1,6 +1,12 @@
 package com.andaxin.core.store
 
 import com.andaxin.core.concurrency.nowMillis
+import okio.IOException
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
+import kotlin.random.Random
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -85,8 +91,14 @@ class SessionStore(private val store: Store) {
      * 所以留一个纯计数器性质的时间戳在这儿，谁要"重登之后重新拉一次"就 key 在它上面。
      * 存的是毫秒时间戳，不含任何凭据。
      */
-    suspend fun save(token: com.andaxin.data.capture.TokenBundle) {
+    suspend fun save(token: com.andaxin.data.capture.TokenBundle) = aiMutex.withLock {
+        currentCoroutineContext().ensureActive()
+        val principal = aiPrincipal(token.userCode, token.userType)
+        val previous = aiOwner()
+        val owner = previous?.takeIf { it.startsWith("$principal:") }
+            ?: "$principal:${Random.nextBytes(16).joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }}"
         store.setMany(
+            KEY_AI_OWNER to owner,
             Store.KEY_TOKEN to token.accessToken,
             KEY_REFRESH to token.refreshToken,
             Store.KEY_USER_CODE to token.userCode,
@@ -162,22 +174,50 @@ class SessionStore(private val store: Store) {
      * 那时候清掉口令就等于把自己锁在门外（`refresh.do` 服务端是死的，重登只能靠口令）。
      * 他自己按「退出登录」走的是默认 false —— 人都要退了，不该继续存着钥匙。
      */
-    suspend fun signOut(keepPassword: Boolean = false) = store.setMany(
-        Store.KEY_TOKEN to null,
-        // 学号跟着口令走：留了口令却把学号擦掉，那份密文就成了解不开的孤儿 ——
-        // `reloginFromVault()` 第一步要的就是学号。10-21 凌晨装机撞中的正是这个：
-        // 会话掉了、「我的」上明明写着"已记住，到期或被顶号时能自己重登"，
-        // 结果那颗「用这台机器记住的口令登进去」按下去只会说"登不进去"。
-        Store.KEY_USER_CODE to if (keepPassword) store.peekString(store.snapshot(), Store.KEY_USER_CODE) else null,
-        KEY_REFRESH to null,
-        KEY_USER_NAME to null,
-        KEY_USER_TYPE to null,
-        KEY_EXPIRES_AT to null,
-        KEY_BROWSING to null,
-        KEY_PW_BLOB to if (keepPassword) store.peekString(store.snapshot(), KEY_PW_BLOB) else null,
-    )
+    suspend fun signOut(keepPassword: Boolean = false) = aiMutex.withLock {
+        currentCoroutineContext().ensureActive()
+        store.setMany(
+            KEY_AI_OWNER to null,
+            Store.KEY_TOKEN to null,
+            // 学号跟着口令走：留了口令却把学号擦掉，那份密文就成了解不开的孤儿 ——
+            // `reloginFromVault()` 第一步要的就是学号。10-21 凌晨装机撞中的正是这个：
+            // 会话掉了、「我的」上明明写着"已记住，到期或被顶号时能自己重登"，
+            // 结果那颗「用这台机器记住的口令登进去」按下去只会说"登不进去"。
+            Store.KEY_USER_CODE to if (keepPassword) store.peekString(store.snapshot(), Store.KEY_USER_CODE) else null,
+            KEY_REFRESH to null,
+            KEY_USER_NAME to null,
+            KEY_USER_TYPE to null,
+            KEY_EXPIRES_AT to null,
+            KEY_BROWSING to null,
+            KEY_PW_BLOB to if (keepPassword) store.peekString(store.snapshot(), KEY_PW_BLOB) else null,
+        )
+    }
+
+    /** Token refresh retains the owner; sign-out/new login starts a distinct school session. */
+    internal suspend fun aiOwner(): String? {
+        currentCoroutineContext().ensureActive()
+        val p = store.snapshot()
+        val token = store.peekString(p, Store.KEY_TOKEN)
+        val code = store.peekString(p, Store.KEY_USER_CODE)
+        if (token.isNullOrBlank() || code.isNullOrBlank()) return null
+        val principal = aiPrincipal(code, store.peekString(p, KEY_USER_TYPE) ?: "1")
+        return store.peekString(p, KEY_AI_OWNER)?.takeIf { it.startsWith("$principal:") }
+            ?: "$principal:legacy"
+    }
+
+    internal suspend fun <T> withAiOwner(owner: String, block: suspend () -> T): T = aiMutex.withLock {
+        currentCoroutineContext().ensureActive()
+        if (aiOwner() != owner) throw IOException("校内账号已变更，请重试")
+        val value = block()
+        currentCoroutineContext().ensureActive()
+        value
+    }
 
     private companion object {
+        private val aiMutex = Mutex()
+        private const val KEY_AI_OWNER = "auth.aiOwner"
+        private fun aiPrincipal(code: String, type: String): String = "${code.length}:$code${type.length}:$type"
+
         const val KEY_ONBOARDED = "app.onboarded"
         const val KEY_BROWSING = "app.browsing"
         const val KEY_DORM = "profile.dorm"

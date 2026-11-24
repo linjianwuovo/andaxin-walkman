@@ -121,7 +121,7 @@ class UpdateFeed {
 
     companion object {
         /** 仓的首页。检测更新拼直链用它，关于页那一行「GitHub 仓库」点的也是它。 */
-        const val BASE = "https://github.com/linjianwuovo/andaxin"
+        const val BASE = "https://github.com/linjianwuovo/andaxin-walkman"
         const val ATOM = "$BASE/releases.atom"
 
         /** GitHub 不看 UA，但我们也不冒充学校的壳（那条 `okhttp/4.9.3` 是给校方那几发用的）。 */

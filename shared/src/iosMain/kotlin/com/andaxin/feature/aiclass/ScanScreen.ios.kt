@@ -1,147 +1,232 @@
 package com.andaxin.feature.aiclass
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import com.andaxin.core.design.Gap
-import com.andaxin.core.design.Palette
+import com.andaxin.core.design.LocalInk
 import com.andaxin.core.design.Type
+import com.andaxin.shell.Sheet
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.readValue
 import kotlinx.coroutines.suspendCancellableCoroutine
-import platform.AVFoundation.AVAuthorizationStatusAuthorized
-import platform.AVFoundation.AVCaptureConnection
-import platform.AVFoundation.AVCaptureDevice
-import platform.AVFoundation.AVCaptureDeviceInput
-import platform.AVFoundation.AVCaptureMetadataOutput
-import platform.AVFoundation.AVCaptureMetadataOutputObjectsDelegateProtocol
-import platform.AVFoundation.AVCaptureOutput
-import platform.AVFoundation.AVCaptureSession
-import platform.AVFoundation.AVCaptureSessionPresetHigh
-import platform.AVFoundation.AVCaptureVideoPreviewLayer
-import platform.AVFoundation.AVLayerVideoGravityResizeAspectFill
-import platform.AVFoundation.AVMediaTypeVideo
-import platform.AVFoundation.AVMetadataMachineReadableCodeObject
-import platform.AVFoundation.AVMetadataObjectTypeQRCode
-import platform.AVFoundation.authorizationStatusForMediaType
-import platform.AVFoundation.requestAccessForMediaType
+import platform.AVFoundation.*
+import platform.CoreGraphics.CGRectZero
 import platform.UIKit.UIView
 import platform.darwin.NSObject
+import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
+import platform.darwin.dispatch_queue_create
 import kotlin.coroutines.resume
 
-/*
- * 扫码签到这一格在 iOS 上的实现，签名跟 app 那份 `ScanScreen.kt` 一致（`onBack` + `onSignUrl`），
- * 所以共享层里那颗「扫码签到」两端都点得动。
- *
- * 相机这一套全是 AVFoundation 现成件：session → 后置 device → input → metadata output →
- * 预览层挂在 UIView 的 layer 上，`update` 里跟着视图边界改 frame。识别只开 QR 一种。
- *
- * 一处与安卓不同，写在这儿：安卓扫到之后走 `QrSignScreen`，它 loadUrl 前先往 sttp.fifedu.com
- * 塞几个 cookie（那边注释写着"否则第一跳就是未登录那一版"）。iOS 这版把扫到的整条 URL 直接
- * 交给应用内网页，不塞 cookie —— 那条 URL 自己带 `token=…`，学校那个页面读的就是查询参数。
- * 真机上要是页面说未登录，缺的就是 WKHTTPCookieStore 那一步，别第一反应怀疑没扫到码。
- */
+@OptIn(ExperimentalForeignApi::class)
+private class CameraPreviewView(private val preview: AVCaptureVideoPreviewLayer) : UIView(frame = CGRectZero.readValue()) {
+    init {
+        clipsToBounds = true
+        layer.addSublayer(preview)
+    }
+
+    override fun layoutSubviews() {
+        super.layoutSubviews()
+        preview.frame = bounds
+    }
+}
+
 @OptIn(ExperimentalForeignApi::class)
 @Composable
 fun ScanScreen(onBack: () -> Unit, onSignUrl: (String) -> Unit = {}) {
-    var granted by remember {
-        mutableStateOf(AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo) == AVAuthorizationStatusAuthorized)
-    }
+    val ink = LocalInk.current
+    var granted by remember { mutableStateOf(AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo) == AVAuthorizationStatusAuthorized) }
     var asked by remember { mutableStateOf(false) }
     var hit by remember { mutableStateOf(false) }
     var code by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        if (granted) return@LaunchedEffect
-        // 系统授权框只肯弹一次：被拒过之后 requestAccess 直接回 false，所以那一格要说去系统设置
-        val ok = suspendCancellableCoroutine { c ->
-            AVCaptureDevice.requestAccessForMediaType(AVMediaTypeVideo) { c.resume(it) }
-        }
-        granted = ok
-        asked = true
-    }
-
-    // 见下面 update 里那句 tick：一次"过一帧再量一次"的重排信号
-    val tick = remember { androidx.compose.runtime.mutableIntStateOf(0) }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(64); tick.intValue++ }
-
+    var camera by remember { mutableStateOf<AVCaptureDevice?>(null) }
+    var cameraError by remember { mutableStateOf<String?>(null) }
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var maxZoom by remember { mutableFloatStateOf(1f) }
+    val latestOnSignUrl by rememberUpdatedState(onSignUrl)
     val session = remember { AVCaptureSession() }
     val preview = remember { AVCaptureVideoPreviewLayer(session = session) }
-    DisposableEffect(Unit) { onDispose { session.stopRunning() } }
-
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if (granted) {
-            UIKitView(
-                factory = {
-                    val view = UIView()
-                    preview.videoGravity = AVLayerVideoGravityResizeAspectFill
-                    view.layer.addSublayer(preview)
-                    session.sessionPreset = AVCaptureSessionPresetHigh
-
-                    AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeVideo)?.let { dev ->
-                        AVCaptureDeviceInput(device = dev, error = null)?.let { input ->
-                            if (session.canAddInput(input)) session.addInput(input)
-                        }
-                    }
-                    AVCaptureMetadataOutput().let { out ->
-                        if (session.canAddOutput(out)) {
-                            session.addOutput(out)
-                            out.setMetadataObjectsDelegate(
-                                object : NSObject(), AVCaptureMetadataOutputObjectsDelegateProtocol {
-                                    override fun captureOutput(
-                                        output: AVCaptureOutput,
-                                        didOutputMetadataObjects: List<*>,
-                                        fromConnection: AVCaptureConnection,
-                                    ) {
-                                        if (hit) return
-                                        val s = (didOutputMetadataObjects?.firstOrNull() as? AVMetadataMachineReadableCodeObject)
-                                            ?.stringValue
-                                        if (s.isNullOrBlank()) return
-                                        // 一次会话只认第一张码：识别回调是连着的，不锁住会连开三页网页
-                                        hit = true
-                                        code = s
-                                        session.stopRunning()
-                                        onSignUrl(s)
-                                    }
-                                },
-                                queue = dispatch_get_main_queue(),
-                            )
-                            out.metadataObjectTypes = listOf(AVMetadataObjectTypeQRCode)
-                        }
-                    }
-                    session.startRunning()
-                    view
-                },
-                // 预览层的 frame 首帧量到的是 0（UIKitView 先 factory 后 update，而这一刻视图
-                // 还没排版完），而 update 只在重组时跑 —— 于是"权限给了、画面全白"，105 他手机上
-                // 就是这个。拿一个 tick 强制在下一帧再重组一次，把 frame 补上。
-                update = { view ->
-                    tick.value
-                    preview.frame = view.bounds
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            Text(
-                text = if (asked) "没给相机权限，扫不了码。要签到的话去系统 设置 → 隐私与安全 → 相机 里放开安大信。"
-                    else "正在问相机权限…",
-                fontSize = Type.body,
-                color = Palette.Cream,
-                modifier = Modifier.align(Alignment.Center).padding(Gap.screen),
-            )
+    val cameraQueue = remember { dispatch_queue_create("com.andaxin.scanner", null) }
+    val delegate = remember {
+        object : NSObject(), AVCaptureMetadataOutputObjectsDelegateProtocol {
+            override fun captureOutput(output: AVCaptureOutput, didOutputMetadataObjects: List<*>, fromConnection: AVCaptureConnection) {
+                if (hit) return
+                val value = (didOutputMetadataObjects.firstOrNull() as? AVMetadataMachineReadableCodeObject)?.stringValue
+                if (value.isNullOrBlank()) return
+                code = value
+                if (value.startsWith("http", ignoreCase = true)) {
+                    hit = true
+                    dispatch_async(cameraQueue) { session.stopRunning() }
+                    latestOnSignUrl(value)
+                }
+            }
         }
+    }
+    LaunchedEffect(Unit) {
+        if (granted) return@LaunchedEffect
+        granted = suspendCancellableCoroutine { continuation ->
+            AVCaptureDevice.requestAccessForMediaType(AVMediaTypeVideo) { allowed ->
+                if (continuation.isActive) continuation.resume(allowed)
+            }
+        }
+        asked = true
+    }
+    DisposableEffect(session) { onDispose { dispatch_async(cameraQueue) { session.stopRunning() } } }
+    fun changeZoom(value: Float) {
+        val device = camera ?: return
+        val target = value.coerceIn(1f, maxZoom)
+        if (device.lockForConfiguration(null)) {
+            try {
+                device.videoZoomFactor = target.toDouble()
+                zoom = target
+            } finally {
+                device.unlockForConfiguration()
+            }
+        }
+    }
+    Column(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState()).padding(horizontal = Gap.screen, vertical = Gap.md),
+        verticalArrangement = Arrangement.spacedBy(Gap.lg),
+    ) {
+        Text("对准课堂二维码，识别后自动进入签到", fontSize = Type.body, lineHeight = Type.bodyLine, color = ink.muted)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            Box(
+                Modifier.fillMaxWidth().aspectRatio(if (maxWidth > 600.dp) 1.65f else 0.95f)
+                    .clip(RoundedCornerShape(28.dp)).background(Color.Black)
+                    .pointerInput(camera, maxZoom) { detectTransformGestures { _, _, scale, _ -> changeZoom(zoom * scale) } },
+            ) {
+                if (granted) {
+                    UIKitView(
+                        factory = {
+                            preview.videoGravity = AVLayerVideoGravityResizeAspectFill
+                            val view = CameraPreviewView(preview)
+                            session.sessionPreset = AVCaptureSessionPresetHigh
+                            val device = AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeVideo)
+                            val input = device?.let { AVCaptureDeviceInput(device = it, error = null) }
+                            if (device == null || input == null || !session.canAddInput(input)) {
+                                cameraError = "相机暂不可用，请返回后重试"
+                            } else {
+                                session.addInput(input)
+                                camera = device
+                                maxZoom = device.maxAvailableVideoZoomFactor.toFloat().coerceAtLeast(1f)
+                                val output = AVCaptureMetadataOutput()
+                                if (session.canAddOutput(output)) {
+                                    session.addOutput(output)
+                                    output.setMetadataObjectsDelegate(delegate, queue = dispatch_get_main_queue())
+                                    output.metadataObjectTypes = listOf(AVMetadataObjectTypeQRCode)
+                                    dispatch_async(cameraQueue) { session.startRunning() }
+                                } else cameraError = "相机无法识别二维码，请返回后重试"
+                            }
+                            view
+                        },
+                        update = { view -> preview.frame = view.bounds },
+                        properties = UIKitInteropProperties(interactionMode = null),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    ScanViewfinder()
+                    Text(
+                        "将二维码放入框内", color = Color.White, fontSize = Type.meta,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = Gap.lg, start = Gap.md, end = Gap.md),
+                    )
+                    if (cameraError == null && camera != null) {
+                        Row(
+                            Modifier.align(Alignment.BottomCenter).padding(Gap.md).horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                        ) {
+                            val steps = listOf(1f, 2f, 4f, maxZoom).filter { it <= maxZoom }.distinct()
+                            steps.forEach { level ->
+                                val selected = kotlin.math.abs(zoom - level) < 0.1f
+                                Box(
+                                    Modifier.clip(CircleShape).background(if (selected) Color.White else Color.Black.copy(alpha = 0.60f))
+                                        .clickable(role = Role.Button) { changeZoom(level) }.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                                        .padding(horizontal = Gap.sm, vertical = Gap.sm),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(if (level == maxZoom && maxZoom > 4f) "最大" else "${level.toInt()}×", fontSize = Type.meta, color = if (selected) Color.Black else Color.White)
+                                }
+                            }
+                        }
+                    }
+                }
+                val message = cameraError ?: if (!granted) {
+                    if (asked) "请在系统设置 → 安大信中允许相机权限" else "正在请求相机权限…"
+                } else null
+                if (message != null) Text(message, color = Color.White, fontSize = Type.body, lineHeight = Type.bodyLine, modifier = Modifier.align(Alignment.Center).padding(Gap.xl))
+            }
+        }
+        Sheet {
+            Text(if (code == null) "等待识别" else "识别结果", fontSize = Type.title, color = ink.strong)
+            Spacer(Modifier.height(Gap.sm))
+            SelectionContainer {
+                Text(code ?: "无需拍照。保持二维码清晰，识别成功后将自动继续。", fontSize = Type.body, lineHeight = Type.bodyLine, color = ink.muted)
+            }
+        }
+        Spacer(Modifier.height(Gap.lg))
+    }
+}
+
+@Composable
+private fun ScanViewfinder() {
+    val accent = MaterialTheme.colorScheme.primary
+    Canvas(Modifier.fillMaxSize()) {
+        val side = minOf(size.width * 0.66f, size.height * 0.52f, 240.dp.toPx())
+        val x = (size.width - side) / 2f
+        val y = (size.height - side) / 2f
+        val shade = Color.Black.copy(alpha = 0.32f)
+        drawRect(shade, Offset.Zero, Size(size.width, y))
+        drawRect(shade, Offset(0f, y + side), Size(size.width, size.height - y - side))
+        drawRect(shade, Offset(0f, y), Size(x, side))
+        drawRect(shade, Offset(x + side, y), Size(size.width - x - side, side))
+        val corner = 24.dp.toPx()
+        val width = 3.dp.toPx()
+        for ((cx, cy) in listOf(x to y, x + side to y, x to y + side, x + side to y + side)) {
+            drawLine(accent, Offset(cx, cy), Offset(cx + if (cx == x) corner else -corner, cy), width)
+            drawLine(accent, Offset(cx, cy), Offset(cx, cy + if (cy == y) corner else -corner), width)
+        }
+        drawLine(Color.White.copy(alpha = 0.35f), Offset(x + corner / 2f, y + side / 2f), Offset(x + side - corner / 2f, y + side / 2f), 1.dp.toPx())
     }
 }

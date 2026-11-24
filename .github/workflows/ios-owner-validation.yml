@@ -1,0 +1,175 @@
+name: iOS owner source validation
+
+on:
+  push:
+    branches: [fix/ios-owner-about-sync-20261121]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-owner-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/fix/ios-owner-about-sync-20261121'
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Record and verify accepted production sources
+        run: |
+          mkdir -p "$RUNNER_TEMP/ios-owner-validation"
+          cat > "$RUNNER_TEMP/ios-owner-validation/source-sha256.txt" <<'HASHES'
+          6560507d9e710177d6af51ae9317fc0b9f4019b8d1e22095f5644477066b2ca2  shared/src/iosMain/kotlin/com/andaxin/shared/IosScreens.kt
+          71dbc4a34a11cb8fe369e187dfe289d0ba18f071fda96950a9e39a257102e179  shared/src/logicMain/kotlin/com/andaxin/core/store/Session.kt
+          d372eb6c25356b852f0d99deed1763cd7104a4fd49121c0c7d736a9da11396a2  shared/src/logicMain/kotlin/com/andaxin/data/capture/AiCourses.kt
+          d68cc441757db2b3f75a7c8040300e1259fb5c45e248ae51ad2c9a8f9bc22234  shared/src/logicMain/kotlin/com/andaxin/data/capture/FifSession.kt
+          7e12165c3aaac37fd8130ee4b41ea04588b8fa8e31c451d80aef08cf3b7e4dc9  shared/src/logicMain/kotlin/com/andaxin/data/capture/UpdateFeed.kt
+          HASHES
+          set -o pipefail
+          shasum -a 256 -c "$RUNNER_TEMP/ios-owner-validation/source-sha256.txt" | tee "$RUNNER_TEMP/ios-owner-validation/source-before.log"
+          git rev-parse HEAD > "$RUNNER_TEMP/ios-owner-validation/commit.txt"
+          chmod +x gradlew
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: mac-gradle-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', 'gradle.properties') }}
+          restore-keys: |
+            mac-gradle-
+
+      - name: Link iOS ARM64 release framework
+        run: |
+          set -o pipefail
+          ./gradlew :shared:linkReleaseFrameworkIosArm64 --console=plain 2>&1 | tee "$RUNNER_TEMP/ios-owner-validation/framework-build.log"
+          shasum -a 256 shared/build/bin/iosArm64/releaseFramework/shared.framework/shared > "$RUNNER_TEMP/ios-owner-validation/framework-sha256.txt"
+
+      - name: Generate Xcode project
+        run: |
+          mkdir -p shared/build/xcodeFrameworks
+          cp -R shared/build/bin/iosArm64/releaseFramework/shared.framework shared/build/xcodeFrameworks/shared.framework
+          brew install xcodegen
+          cd iosApp
+          xcodegen -s project.yml
+
+      - name: Build simulator application without launching
+        run: |
+          set -o pipefail
+          xcodebuild -version | tee "$RUNNER_TEMP/ios-owner-validation/xcode-version.log"
+          xcodebuild -project iosApp/AndaXin.xcodeproj -scheme AndaXin \
+            -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/ios-owner-derived-data" \
+            -resultBundlePath "$RUNNER_TEMP/ios-owner-validation/build.xcresult" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee "$RUNNER_TEMP/ios-owner-validation/xcode-build.log"
+
+      - name: Build unsigned device application without launching
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/AndaXin.xcodeproj -scheme AndaXin \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/ios-owner-device-derived-data" \
+            -resultBundlePath "$RUNNER_TEMP/ios-owner-validation/device-build.xcresult" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee "$RUNNER_TEMP/ios-owner-validation/device-build.log"
+
+      - name: Verify production sources after build
+        if: always()
+        run: |
+          set -o pipefail
+          shasum -a 256 -c "$RUNNER_TEMP/ios-owner-validation/source-sha256.txt" | tee "$RUNNER_TEMP/ios-owner-validation/source-after.log"
+
+      - name: Package unsigned IPA and record artifact metadata
+        run: |
+          set -o pipefail
+          APP="$RUNNER_TEMP/ios-owner-device-derived-data/Build/Products/Release-iphoneos/AndaXin.app"
+          PACKAGE="$RUNNER_TEMP/ios-owner-validation/unsigned-ipa"
+          test -d "$APP"
+          test ! -d "$APP/Frameworks/shared.framework"
+          mkdir -p "$PACKAGE/Payload"
+          cp -R "$APP" "$PACKAGE/Payload/"
+          ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV.fetch(0)).fetch("targets").fetch("AndaXin").fetch("settings").fetch("base"))' iosApp/project.yml > "$RUNNER_TEMP/ios-owner-validation/package-settings.json"
+          cd "$PACKAGE"
+          zip -qry AndaXin-unsigned.ipa Payload
+          python3 - "$APP" "$RUNNER_TEMP/ios-owner-validation" "$GITHUB_SHA" <<'PY'
+          import hashlib
+          import json
+          import plistlib
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          app, evidence, commit = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+          settings = json.loads((evidence / "package-settings.json").read_text())
+          info = plistlib.loads((app / "Info.plist").read_bytes())
+          for key, setting in (("CFBundleShortVersionString", "MARKETING_VERSION"),
+                               ("CFBundleVersion", "CURRENT_PROJECT_VERSION")):
+              assert info[key] == str(settings[setting]), key
+          executable = info["CFBundleExecutable"]
+          assert executable and executable not in (".", "..") and Path(executable).name == executable
+          assert (evidence / "commit.txt").read_text().strip() == commit
+          ipa = Path("AndaXin-unsigned.ipa")
+          with zipfile.ZipFile(ipa) as archive:
+              assert archive.testzip() is None
+              for name in ("Info.plist", executable, "Assets.car"):
+                  entry = archive.getinfo("Payload/AndaXin.app/" + name)
+                  assert entry.file_size > 0, name
+              assert not any(n.startswith("Payload/AndaXin.app/Frameworks/shared.framework/") for n in archive.namelist())
+          notice = "Unsigned IPA. Re-sign with your own credentials before installation. This is not a signed IPA or TestFlight build."
+          Path("README.txt").write_text(notice + "\n", encoding="utf-8")
+          manifest = {
+              "commit": commit,
+              "bundle_identifier": info["CFBundleIdentifier"],
+              "bundle_version": info["CFBundleVersion"],
+              "short_version": info["CFBundleShortVersionString"],
+              "signing": "unsigned; CODE_SIGNING_ALLOWED=NO",
+              "installation": notice,
+              "ipa": {"file": ipa.name, "bytes": ipa.stat().st_size,
+                      "sha256": hashlib.sha256(ipa.read_bytes()).hexdigest()},
+              "framework_sha256": (evidence / "framework-sha256.txt").read_text().strip(),
+              "production_source_sha256": (evidence / "source-sha256.txt").read_text(),
+          }
+          Path("manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
+          rm -rf Payload
+
+      - name: Upload unsigned IPA for user re-signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-owner-unsigned-ipa-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios-owner-validation/unsigned-ipa/AndaXin-unsigned.ipa
+            ${{ runner.temp }}/ios-owner-validation/unsigned-ipa/manifest.json
+            ${{ runner.temp }}/ios-owner-validation/unsigned-ipa/README.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-owner-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios-owner-validation/
+            !${{ runner.temp }}/ios-owner-validation/unsigned-ipa/
+          if-no-files-found: error
+          retention-days: 7

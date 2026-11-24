@@ -257,15 +257,19 @@ import androidx.compose.ui.unit.dp
         if (showLyrics) LyricsBackdrop(artwork, Modifier.matchParentSize())
 '''),
             ("                key(song.id, lines) { KaraokeLyricsView(controller, lines, lyricModifier) }", f'''                key(song.id, lines) {{
-                    KaraokeLyricsView(
-                        controller, lines, lyricModifier,
-                        onFixtureLayout = if (lyricsVisualCase == null) null else {{ layout -> lyricLayout = layout }},
-                        onFixtureFollowSettled = if (lyricsVisualCase == null) null else {{ ->
+                    val probeLayout: ((String) -> Unit)? =
+                        if (lyricsVisualCase == null) null else ({{ layout: String -> lyricLayout = layout }})
+                    val probeSettled: (() -> Unit)? =
+                        if (lyricsVisualCase == null) null else ({{ ->
                             if (!followSettled) {{
                                 platform.Foundation.NSLog("{MARKER}:FOLLOW_SETTLED:$lyricsVisualCase")
                                 followSettled = true
                             }}
-                        }},
+                        }})
+                    KaraokeLyricsView(
+                        controller, lines, lyricModifier,
+                        onFixtureLayout = probeLayout,
+                        onFixtureFollowSettled = probeSettled,
                     )
                 }}'''),
             ("private fun KaraokeLyricsView(controller: MusicController, lines: List<LyricLine>, modifier: Modifier) {", '''private fun KaraokeLyricsView(
@@ -683,11 +687,20 @@ class Simulator:
             operation = "appearance"
         elif command == "io":
             operation = "screenshot"
+        argv = ["xcrun", "simctl", command, self.udid, *args]
         try:
-            return run(["xcrun", "simctl", command, self.udid, *args], self.cwd, timeout)
+            result = subprocess.run(argv, cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
         except Exception as exc:
             exc.smoke_operation = operation
             raise
+        if result.returncode != 0:
+            detail = " ".join((result.stdout + result.stderr).decode("utf-8", errors="replace").split())[:400]
+            suffix = f": {detail}" if detail else ""
+            error = SmokeError(f"xcrun simctl {command} failed (exit {result.returncode}){suffix}")
+            error.returncode = result.returncode
+            error.smoke_operation = operation
+            raise error
+        return result.stdout
 
     def details(self):
         listing = json.loads(run(["xcrun", "simctl", "list", "devices", "available", "--json"], self.cwd))
@@ -697,10 +710,32 @@ class Simulator:
         runtime, item = matches[0]
         return {"udid": self.udid, "model": item["name"], "runtime": runtime}
 
+    def uninstall_if_present(self):
+        try:
+            result = subprocess.run(
+                ["xcrun", "simctl", "uninstall", self.udid, BUNDLE],
+                cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30,
+            )
+        except Exception as exc:
+            exc.smoke_operation = "uninstall"
+            raise
+        if result.returncode == 0:
+            return
+        # simctl returns 117 when the bundle is not installed; tolerate only that case.
+        output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+        if result.returncode == 117 and re.search(r"(not installed|no such app|application .* not found)", output, re.IGNORECASE):
+            return
+        detail = " ".join(output.split())[:400]
+        suffix = f": {detail}" if detail else ""
+        error = SmokeError(f"xcrun simctl uninstall failed (exit {result.returncode}){suffix}")
+        error.returncode = result.returncode
+        error.smoke_operation = "uninstall"
+        raise error
+
     def prepare(self, app):
         self.sim("bootstatus", "-b", timeout=120)
         # Clear any app data from the generic smoke on precisely this simulator.
-        self.sim("uninstall", BUNDLE)
+        self.uninstall_if_present()
         self.sim("install", str(app))
         self.sim("ui", "appearance", "light")
         self.sim("status_bar", "override", "--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active",
@@ -722,7 +757,7 @@ class Simulator:
     def cleanup(self):
         cleanup_actions([
             ("simulator-cleanup", "status-bar-clear", lambda: self.sim("status_bar", "clear")),
-            ("simulator-cleanup", "uninstall", lambda: self.sim("uninstall", BUNDLE)),
+            ("simulator-cleanup", "uninstall", self.uninstall_if_present),
         ])
 
 
