@@ -1,5 +1,6 @@
 package com.ljyh.mei
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -32,6 +33,7 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WidgetDeepLink.read(intent)
         enableEdgeToEdge()
         CrashHandler.init(this)
         if (BuildConfig.DEBUG) {
@@ -43,5 +45,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             MusicScreen()
         }
+    }
+
+    /** singleTop 再进（从最近任务/再次点组件）：深链在这一条里，不会重走 onCreate。 */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        WidgetDeepLink.read(intent)
     }
 }

@@ -1,6 +1,7 @@
 package com.ljyh.mei.utils
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.room.withTransaction
@@ -13,6 +14,7 @@ import com.ljyh.mei.source.api.TrackRefCodec
 import com.ljyh.mei.source.api.ProviderIds
 import com.ljyh.mei.data.model.room.DownloadStatus
 import com.ljyh.mei.data.model.room.DownloadTask
+import com.ljyh.mei.data.model.room.Song
 import com.ljyh.mei.di.AppDatabase
 import com.ljyh.mei.playback.DownloadWorker
 import com.ljyh.mei.playback.SongDownloadInfo
@@ -28,9 +30,50 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 
 /** Serializes MediaStore publication with scanner database reconciliation. */
 internal val localAudioPublicationMutex = Mutex()
+
+private fun downloadedArtworkFile(context: Context, audioPath: String): File {
+    val key = MessageDigest.getInstance("SHA-256").digest(audioPath.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+    return File(context.filesDir, "download-artwork/$key.img")
+}
+
+internal fun saveDownloadedArtwork(context: Context, audioPath: String, bytes: ByteArray): String? {
+    if (bytes.isEmpty() || bytes.size > ImageUtils.MAX_COVER_BYTES) return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    val target = downloadedArtworkFile(context, audioPath)
+    return runCatching {
+        val parent = checkNotNull(target.parentFile)
+        check(parent.isDirectory || parent.mkdirs())
+        val temporary = File.createTempFile(".cover-", ".tmp", parent)
+        try {
+            temporary.writeBytes(bytes)
+            Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            Uri.fromFile(target).toString()
+        } finally {
+            temporary.delete()
+        }
+    }.getOrElse { error ->
+        Timber.w(error, "Unable to retain downloaded artwork")
+        null
+    }
+}
+
+internal fun deleteDownloadedArtwork(context: Context, audioPath: String?) {
+    audioPath?.let { downloadedArtworkFile(context, it).delete() }
+}
+
+internal fun Song.withoutDownload(context: Context, fallbackArtwork: String): Song {
+    val localCover = path?.let { Uri.fromFile(downloadedArtworkFile(context, it)).toString() }
+    return copy(path = null, cover = if (cover == localCover) fallbackArtwork else cover)
+}
 
 object DownloadManager {
     private const val SONG_WORK_NAME_PREFIX = "download_song_"
@@ -169,15 +212,18 @@ object DownloadManager {
                     } ?: return@withLock true
                     val (task, path) = snapshot
                     cancelRequest(context, task)
-                    db.withTransaction {
+                    val deleted = db.withTransaction {
                         val current = db.downloadDao().getBySongId(songId) ?: return@withTransaction true
-                        val currentPath = db.songDao().getSong(songId).first()?.path
+                        val song = db.songDao().getById(songId)
+                        val currentPath = song?.path
                         if (current.requestId != task.requestId || currentPath != path) return@withTransaction false
                         if (!removeDownloadedPath(context, path)) return@withTransaction false
                         db.downloadDao().delete(songId)
-                        db.songDao().updatePath(songId, null)
+                        song?.let { db.songDao().updateSong(it.withoutDownload(context, task.songCover)) }
                         true
                     }
+                    if (deleted) deleteDownloadedArtwork(context, path)
+                    deleted
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -221,7 +267,10 @@ object DownloadManager {
                         }
                     }.onFailure { Timber.w(it, "Unable to remove downloaded file for %s", task.songId) }
                 }
-                db.songDao().updatePath(task.songId, null)
+                if (song != null) {
+                    db.songDao().updateSong(song.withoutDownload(context, task.songCover))
+                    deleteDownloadedArtwork(context, song.path)
+                }
             }
         } }
     }

@@ -3,6 +3,7 @@ package com.ljyh.mei.playback
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.StuckPlayerException
+import androidx.media3.datasource.HttpDataSource
 import com.ljyh.mei.constants.MusicQuality
 import java.util.Locale
 import java.util.Base64
@@ -12,7 +13,11 @@ import com.ljyh.mei.source.api.TrackRef
 import com.ljyh.mei.source.api.ProviderInstanceId
 import com.ljyh.mei.source.api.AudioResource
 import com.ljyh.mei.source.api.MusicProvider
+import com.ljyh.mei.source.api.SourceErrorCode
+import com.ljyh.mei.source.api.SourceException
+import com.ljyh.mei.source.api.SourceRuntimeUnavailableException
 import com.ljyh.mei.source.core.audioResourceIdentity
+import com.ljyh.mei.source.core.PlaybackResolutionException
 
 private const val PLAYBACK_CACHE_KEY_VERSION = "meilox-media-v3"
 
@@ -23,7 +28,11 @@ internal fun shouldInvalidatePlaybackOwner(
 
 /** Normalizes quality values from preferences, API responses, and enum names. */
 internal fun normalizePlaybackQuality(quality: String): String =
-    quality.trim().lowercase(Locale.ROOT).ifBlank { MusicQuality.EXHIGH.text }
+    when (val normalized = quality.trim().lowercase(Locale.ROOT)) {
+        "" -> MusicQuality.EXHIGH.text
+        "higher" -> MusicQuality.STANDARD.text
+        else -> normalized
+    }
 
 /** Only advertised player levels are supported; unknown server formats need a fallback. */
 internal fun isSupportedPlaybackQuality(quality: String?): Boolean =
@@ -40,58 +49,62 @@ internal fun effectivePlaybackQuality(sourceQuality: String?, attemptedQuality: 
  * Returns the requested quality followed by the progressively lower qualities
  * supported by the NetEase player endpoint.
  */
-internal fun playbackQualityFallbacks(requestedQuality: String): List<String> = when (
-    normalizePlaybackQuality(requestedQuality)
-) {
-    MusicQuality.STANDARD.text -> listOf(MusicQuality.STANDARD.text)
-    MusicQuality.EXHIGH.text -> listOf(
-        MusicQuality.EXHIGH.text,
-        MusicQuality.STANDARD.text,
-    )
-    MusicQuality.LOSSLESS.text -> listOf(
-        MusicQuality.LOSSLESS.text,
-        MusicQuality.EXHIGH.text,
-        MusicQuality.STANDARD.text,
-    )
-    MusicQuality.HIRES.text -> listOf(
-        MusicQuality.HIRES.text,
-        MusicQuality.LOSSLESS.text,
-        MusicQuality.EXHIGH.text,
-        MusicQuality.STANDARD.text,
-    )
-    MusicQuality.JYEFFECT.text -> listOf(
-        MusicQuality.JYEFFECT.text,
-        MusicQuality.LOSSLESS.text,
-        MusicQuality.EXHIGH.text,
-        MusicQuality.STANDARD.text,
-    )
-    MusicQuality.SKY.text -> listOf(
-        MusicQuality.SKY.text,
-        MusicQuality.JYEFFECT.text,
-        MusicQuality.LOSSLESS.text,
-        MusicQuality.EXHIGH.text,
-        MusicQuality.STANDARD.text,
-    )
-    MusicQuality.JYMASTER.text -> listOf(
-        MusicQuality.JYMASTER.text,
-        MusicQuality.HIRES.text,
-        MusicQuality.LOSSLESS.text,
-        MusicQuality.EXHIGH.text,
-        MusicQuality.STANDARD.text,
-    )
-    MusicQuality.DOLBY.text -> listOf(
-        MusicQuality.DOLBY.text,
-        MusicQuality.SKY.text,
-        MusicQuality.JYEFFECT.text,
-        MusicQuality.HIRES.text,
-        MusicQuality.LOSSLESS.text,
-        MusicQuality.EXHIGH.text,
-        MusicQuality.STANDARD.text,
-    )
-    else -> listOf(
-        MusicQuality.EXHIGH.text,
-        MusicQuality.STANDARD.text,
-    )
+internal fun playbackQualityFallbacks(
+    requestedQuality: String,
+    allowDolby: Boolean = true,
+): List<String> {
+    val fallbacks = when (normalizePlaybackQuality(requestedQuality)) {
+        MusicQuality.STANDARD.text -> listOf(MusicQuality.STANDARD.text)
+        MusicQuality.EXHIGH.text -> listOf(
+            MusicQuality.EXHIGH.text,
+            MusicQuality.STANDARD.text,
+        )
+        MusicQuality.LOSSLESS.text -> listOf(
+            MusicQuality.LOSSLESS.text,
+            MusicQuality.EXHIGH.text,
+            MusicQuality.STANDARD.text,
+        )
+        MusicQuality.HIRES.text -> listOf(
+            MusicQuality.HIRES.text,
+            MusicQuality.LOSSLESS.text,
+            MusicQuality.EXHIGH.text,
+            MusicQuality.STANDARD.text,
+        )
+        MusicQuality.JYEFFECT.text -> listOf(
+            MusicQuality.JYEFFECT.text,
+            MusicQuality.LOSSLESS.text,
+            MusicQuality.EXHIGH.text,
+            MusicQuality.STANDARD.text,
+        )
+        MusicQuality.SKY.text -> listOf(
+            MusicQuality.SKY.text,
+            MusicQuality.JYEFFECT.text,
+            MusicQuality.LOSSLESS.text,
+            MusicQuality.EXHIGH.text,
+            MusicQuality.STANDARD.text,
+        )
+        MusicQuality.JYMASTER.text -> listOf(
+            MusicQuality.JYMASTER.text,
+            MusicQuality.HIRES.text,
+            MusicQuality.LOSSLESS.text,
+            MusicQuality.EXHIGH.text,
+            MusicQuality.STANDARD.text,
+        )
+        MusicQuality.DOLBY.text -> listOf(
+            MusicQuality.DOLBY.text,
+            MusicQuality.SKY.text,
+            MusicQuality.JYEFFECT.text,
+            MusicQuality.HIRES.text,
+            MusicQuality.LOSSLESS.text,
+            MusicQuality.EXHIGH.text,
+            MusicQuality.STANDARD.text,
+        )
+        else -> listOf(
+            MusicQuality.EXHIGH.text,
+            MusicQuality.STANDARD.text,
+        )
+    }
+    return if (allowDolby) fallbacks else fallbacks.filter { it != MusicQuality.DOLBY.text }
 }
 
 /** Identifies the exact media bytes returned for a logical quality. */
@@ -196,6 +209,24 @@ internal fun shouldRetryOnlinePlaybackSource(errorCode: Int): Boolean = when (er
     PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
     PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> true
     else -> false
+}
+
+/** Shared runtime and network outages must not reject resources or advance the queue. */
+internal fun isTemporaryPlaybackFailure(errorCode: Int, cause: Throwable?): Boolean {
+    // Script audio wraps HTTP failures as NETWORK while retaining the HTTP cause.
+    if (generateSequence(cause) { it.cause }.take(16).any { it is HttpDataSource.InvalidResponseCodeException }) {
+        return false
+    }
+    if (errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+        errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+    ) return true
+    return generateSequence(cause) { it.cause }.take(16).any {
+        it is SourceRuntimeUnavailableException ||
+            it is SourceException && it.code in setOf(SourceErrorCode.NETWORK, SourceErrorCode.TIMEOUT) ||
+            it is PlaybackResolutionException && it.attempts.any { attempt ->
+                attempt.error == SourceErrorCode.NETWORK || attempt.error == SourceErrorCode.TIMEOUT
+            }
+    }
 }
 
 /** Recovers only Media3's confirmed loading or playback stalls, not generic runtime failures. */

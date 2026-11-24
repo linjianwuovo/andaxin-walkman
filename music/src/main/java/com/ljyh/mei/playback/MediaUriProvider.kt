@@ -139,8 +139,8 @@ class MediaUriProvider @Inject constructor(
         resolvedCacheQuality(mediaId, cacheKey) == null ||
             sourceIsRejected(mediaId, cacheKey.substringAfterLast(':'))
 
-    suspend fun resolveMediaUri(mediaId: String, quality: String): Uri =
-        resolveMediaSource(mediaId, quality).uri
+    suspend fun resolveMediaUri(mediaId: String, quality: String, allowDolby: Boolean = true): Uri =
+        resolveMediaSource(mediaId, quality, allowDolby).uri
 
     /** Explicit online selections bypass an existing downloaded copy for this session. */
     internal fun preferOnlineSource(mediaId: String) = synchronized(qualityStateLock) {
@@ -162,11 +162,15 @@ class MediaUriProvider @Inject constructor(
         return readLocalPlaybackInfo(uri)
     }
 
+    internal suspend fun hasLocalSource(mediaId: String): Boolean = playableLocalSong(mediaId)?.let(::localUri) != null
+
+    private suspend fun playableLocalSong(mediaId: String): Song? =
+        localSong(mediaId)?.takeUnless { it.sourceType != SourceType.LOCAL && onlineSourceOverrides.contains(mediaId) }
+
     /** All local opens publish the same source information as streaming and disk cache hits. */
     internal suspend fun resolveLocalSource(mediaId: String): ResolvedMediaSource? {
         val stateVersion = synchronized(qualityStateLock) { qualityStateVersion.get() }
-        val song = localSong(mediaId) ?: return null
-        if (song.sourceType != SourceType.LOCAL && onlineSourceOverrides.contains(mediaId)) return null
+        val song = playableLocalSong(mediaId) ?: return null
         val uri = localUri(song) ?: return null
         val info = readLocalPlaybackInfo(uri)
         val task = if (song.sourceType == SourceType.DOWNLOAD) downloadRepository?.getBySongId(song.id) else null
@@ -184,18 +188,26 @@ class MediaUriProvider @Inject constructor(
         }
     }
 
-    internal suspend fun resolveMediaSource(mediaId: String, quality: String): ResolvedMediaSource {
+    internal suspend fun resolveMediaSource(
+        mediaId: String,
+        quality: String,
+        allowDolby: Boolean = true,
+    ): ResolvedMediaSource {
         resolveLocalSource(mediaId)?.let { return it }
         router.registry.awaitInitialized()
         return sourceUpdatePlaybackGuard.withResolution({ resolutionUpdateSources(trackRef(mediaId)?.providerId) }) {
-            resolveOnlineMediaSource(mediaId, quality)
+            resolveOnlineMediaSource(mediaId, quality, allowDolby)
         }
     }
 
     private fun resolutionUpdateSources(origin: String?): Set<String> =
         router.registry.playable().mapTo(mutableSetOf()) { it.id }.apply { origin?.let(::add) }
 
-    private suspend fun resolveOnlineMediaSource(mediaId: String, quality: String): ResolvedMediaSource {
+    private suspend fun resolveOnlineMediaSource(
+        mediaId: String,
+        quality: String,
+        allowDolby: Boolean,
+    ): ResolvedMediaSource {
         val ref = trackRef(mediaId) ?: throw SourceNotFoundException("Unknown content identity")
         if (ref.providerId == ProviderIds.LOCAL) throw SourceNotFoundException("Local file is unavailable")
         router.registry.awaitInitialized()
@@ -204,12 +216,17 @@ class MediaUriProvider @Inject constructor(
             Track(ref, song.title, song.artist.map { SourceArtist(it) }, SourceAlbum(song.album),
                 song.duration, song.cover)
         } ?: Track(ref, "", emptyList())
+        val fallbackQuality = if (!allowDolby && normalizePlaybackQuality(quality) == MusicQuality.DOLBY.text) {
+            MusicQuality.SKY.text
+        } else {
+            quality
+        }
         val resolution = try { playbackResolver.resolve(
-            track, quality,
+            track, fallbackQuality,
             excludedResources = rejectedSources[mediaId]?.mapNotNull {
                 runCatching { String(java.util.Base64.getUrlDecoder().decode(it), Charsets.UTF_8) }.getOrNull()
             }?.toSet().orEmpty(),
-            originalResolver = { resolveOriginResource(mediaId, ref, quality, stateVersion) },
+            originalResolver = { resolveOriginResource(mediaId, ref, quality, stateVersion, allowDolby = allowDolby) },
         ) } catch (error: com.ljyh.mei.source.core.PlaybackResolutionException) {
             throw SourceNotFoundException("No playable source is available", error)
         }
@@ -233,7 +250,7 @@ class MediaUriProvider @Inject constructor(
         router.registry.awaitInitialized()
         return sourceUpdatePlaybackGuard.withResolution({ resolutionUpdateSources(track.ref.providerId) }) {
             val stateVersion = synchronized(qualityStateLock) { accountStateVersion.get() }
-            val resolution = playbackResolver.resolve(track, quality, originalResolver = {
+            val resolution = playbackResolver.resolve(track, quality, allowAlternateVersion = false, originalResolver = {
                 resolveOriginResource(TrackRefCodec.mediaId(track.ref), track.ref, quality, stateVersion, forDownload = true)
             })
             synchronized(qualityStateLock) { ensureCurrentState(stateVersion, forDownload = true) }
@@ -247,13 +264,16 @@ class MediaUriProvider @Inject constructor(
         quality: String,
         stateVersion: Long,
         forDownload: Boolean = false,
+        allowDolby: Boolean = true,
     ): AudioResource {
         val owner = router.registry.requireProvider(ref.providerId)
         val capability = owner as? PlaybackCapability ?: throw SourceException(SourceErrorCode.UNSUPPORTED)
         if (SourceCapability.PLAYBACK !in owner.capabilities) throw SourceException(SourceErrorCode.UNSUPPORTED)
         val account = (owner as? AccountRevisionCapability)?.accountRevision?.firstOrNull()
         val requestedQuality = normalizePlaybackQuality(quality)
-        for (attemptedQuality in playbackQualityFallbacks(requestedQuality)) {
+        val fallbacks = playbackQualityFallbacks(requestedQuality, allowDolby = forDownload || allowDolby)
+        val cacheRequestedKey = fallbacks.firstOrNull() ?: requestedQuality
+        for (attemptedQuality in fallbacks) {
             val cacheKey = "$mediaId:$attemptedQuality"
             val cached = urlCache[cacheKey]
             if (cached != null) {
@@ -268,6 +288,7 @@ class MediaUriProvider @Inject constructor(
             }
             val resource = try { capability.resolve(ref, attemptedQuality) }
             catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: SourceRuntimeUnavailableException) { throw error }
             catch (error: SourceException) {
                 if (error.code == SourceErrorCode.UNAVAILABLE) continue else throw error
             }
@@ -280,7 +301,7 @@ class MediaUriProvider @Inject constructor(
                     throw SourceException(SourceErrorCode.UNAVAILABLE)
                 }
                 if (resource.cachePolicy == CachePolicy.ALLOW) {
-                    urlCache["$mediaId:$requestedQuality"] = entry
+                    urlCache["$mediaId:$cacheRequestedKey"] = entry
                     urlCache[cacheKey] = entry
                     cacheEffectiveSource(mediaId, entry)
                 }
@@ -334,6 +355,7 @@ class MediaUriProvider @Inject constructor(
                 MusicQuality.entries.firstOrNull { it.text == normalizePlaybackQuality(value) }
             }
         } catch (cancelled: CancellationException) { throw cancelled
+        } catch (error: SourceRuntimeUnavailableException) { throw error
         } catch (_: Exception) { emptyList() }
             .distinct().filter { supportDolby || it != MusicQuality.DOLBY }
         ensureOwner(owner, account)
@@ -428,6 +450,7 @@ class MediaUriProvider @Inject constructor(
                 MusicQuality.entries.firstOrNull { it.text == entry.actualQuality }
             }
         } catch (cancelled: CancellationException) { throw cancelled
+        } catch (error: SourceRuntimeUnavailableException) { throw error
         } catch (_: Exception) { null }
     }
 

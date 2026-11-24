@@ -10,6 +10,11 @@ enum class SourceErrorCode { AUTH_REQUIRED, AUTH_EXPIRED, UNAVAILABLE, NOT_FOUND
 open class SourceException(val code: SourceErrorCode, message: String = code.name,
     val outcomeUnknown: Boolean = false) : IOException(message)
 
+/** A host runtime failure does not establish that a track or quality is unavailable. */
+internal class SourceRuntimeUnavailableException(outcomeUnknown: Boolean = false) : SourceException(
+    SourceErrorCode.UNAVAILABLE, "Source runtime is temporarily unavailable", outcomeUnknown,
+)
+
 internal class SourceResponseSizeException : SourceException(
     SourceErrorCode.INVALID_RESPONSE, "Source response exceeded its size limit",
 )
@@ -78,6 +83,7 @@ data class PlaybackResolution(
     val instanceId: ProviderInstanceId,
     val resource: AudioResource,
     val attempts: List<ResolutionAttempt>,
+    val alternateVersion: Boolean = false,
 )
 
 /** Providers can hydrate queues in one request without losing their requested identities. */

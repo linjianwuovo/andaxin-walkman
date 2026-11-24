@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.time.Clock
@@ -92,9 +93,12 @@ class DampedDragAnimation(
         Animatable(initialScale, 0.001f)
 
     private val mutatorMutex = MutatorMutex()
-    private var nativeRelease: Job? = null
+    private var releaseJob: Job? = null
+    private var releaseGeneration = 0L
     private var nativeLiftStarted: TimeMark? = null
     private var nativeWantsLifted = false
+    var isDragging: Boolean = false
+        private set
 
     private val velocityTracker = VelocityTracker()
 
@@ -118,14 +122,17 @@ class DampedDragAnimation(
                 consumeGestures = consumeGestures,
                 horizontalDragOnly = horizontalDragOnly,
                 onDragStart = { down ->
+                    isDragging = true
                     onDragStarted(down.position)
                     press()
                 },
                 onDragEnd = {
+                    isDragging = false
                     onDragStopped()
                     release()
                 },
                 onDragCancel = {
+                    isDragging = false
                     onDragCancelled()
                     release()
                 }
@@ -143,9 +150,10 @@ class DampedDragAnimation(
         }
 
     fun press() {
+        releaseGeneration++
+        releaseJob?.cancel()
+        releaseJob = null
         if (lensStyle != null) {
-            nativeRelease?.cancel()
-            nativeRelease = null
             if (!nativeWantsLifted) nativeLiftStarted = timeSource.markNow()
             nativeWantsLifted = true
         }
@@ -158,7 +166,9 @@ class DampedDragAnimation(
     }
 
     fun release() {
-        if (lensStyle != null) nativeRelease?.cancel()
+        releaseGeneration++
+        val generation = releaseGeneration
+        releaseJob?.cancel()
         val liftStarted = nativeLiftStarted
         val operation = animationScope.launch {
             if (lensStyle == null) {
@@ -174,13 +184,23 @@ class DampedDragAnimation(
                 while (liftStarted != null && liftStarted.elapsedNow() < 220.milliseconds) {
                     withFrameNanos { }
                 }
+                if (generation != releaseGeneration) return@launch
                 nativeWantsLifted = false
             }
-            launch { pressProgressAnimation.animateTo(0f, releaseProgressAnimationSpec) }
-            launch { scaleXAnimation.animateTo(initialScale, releaseScaleXAnimationSpec) }
-            launch { scaleYAnimation.animateTo(initialScale, releaseScaleYAnimationSpec) }
+            coroutineScope {
+                launch { pressProgressAnimation.animateTo(0f, releaseProgressAnimationSpec) }
+                launch { scaleXAnimation.animateTo(initialScale, releaseScaleXAnimationSpec) }
+                launch { scaleYAnimation.animateTo(initialScale, releaseScaleYAnimationSpec) }
+            }
+            if (generation == releaseGeneration) {
+                velocityAnimation.animateTo(0f, velocityAnimationSpec)
+                pressProgressAnimation.snapTo(0f)
+                scaleXAnimation.snapTo(initialScale)
+                scaleYAnimation.snapTo(initialScale)
+                velocityAnimation.snapTo(0f)
+            }
         }
-        if (lensStyle != null) nativeRelease = operation
+        releaseJob = operation
     }
 
     fun updateValue(value: Float) {
@@ -189,7 +209,7 @@ class DampedDragAnimation(
         val request = ++targetRequest
         animationScope.launch {
             if (request != targetRequest) return@launch
-            valueAnimation.animateTo(targetValue, valueAnimationSpec) { updateVelocity() }
+            valueAnimation.animateTo(targetValue, valueAnimationSpec) { updateVelocity(request) }
         }
     }
 
@@ -203,17 +223,20 @@ class DampedDragAnimation(
                 if (request != targetRequest) return@mutate
                 if (animatePress) press()
                 launch {
-                    if (request == targetRequest) valueAnimation.animateTo(targetValue, valueAnimationSpec)
+                    if (request == targetRequest) {
+                        valueAnimation.animateTo(targetValue, valueAnimationSpec)
+                        if (request == targetRequest) velocityAnimation.animateTo(0f, velocityAnimationSpec)
+                    }
                 }
-                if (velocity != 0f) {
-                    launch { velocityAnimation.animateTo(0f, velocityAnimationSpec) }
+                if (animatePress || (!isDragging && (nativeWantsLifted || pressProgressAnimation.targetValue > 0f))) {
+                    release()
                 }
-                release()
             }
         }
     }
 
-    private fun updateVelocity() {
+    private fun updateVelocity(request: Long) {
+        if (request != targetRequest) return
         velocityTracker.addPosition(
             Clock.System.now().toEpochMilliseconds(),
             Offset(value, 0f)

@@ -27,8 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -49,9 +47,13 @@ import com.ljyh.mei.ui.local.LocalPlayerConnection
 import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
 import com.ljyh.mei.ui.navigation.meiloxHeaderAction
 import com.ljyh.mei.ui.component.globalProfileHeaderAction
+import com.ljyh.mei.ui.component.item.TrackMenuTrigger
+import com.ljyh.mei.ui.component.shimmer.ShimmerHost
+import com.ljyh.mei.ui.screen.playlist.component.TrackItemShimmer
 import com.ljyh.mei.ui.screen.main.library.component.groupedLazyItems
 import com.ljyh.mei.utils.smallImage
 import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderAction
@@ -155,14 +157,16 @@ fun LazyListScope.SourceTrackResults(
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     onSongMore: ((MediaMetadata, Rect) -> Unit)? = null,
+    showProviderName: Boolean = true,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
+    val firstItemTopPadding = 10.dp
     groupedLazyItems(
         state.tracks,
         key = { "source-track-${TrackRefCodec.encode(it.ref)}" },
         contentType = "source-track",
-        firstItemTopPadding = 10.dp,
+        firstItemTopPadding = firstItemTopPadding,
     ) { track, index ->
-        val sourceName = providers.firstOrNull { it.id == track.ref.providerId }?.displayName ?: track.ref.providerId
         GlasmioListRow(
             title = track.title,
             subtitle = track.artists.joinToString(" / ") { it.name }.takeIf(String::isNotBlank),
@@ -173,12 +177,21 @@ fun LazyListScope.SourceTrackResults(
             },
             trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(sourceName, style = MaterialTheme.typography.labelSmall, color = LocalGlassColors.current.secondaryContent)
+                    if (showProviderName) {
+                        val sourceName = providers.firstOrNull { it.id == track.ref.providerId }?.displayName
+                            ?: track.ref.providerId
+                        Text(sourceName, style = MaterialTheme.typography.labelSmall, color = LocalGlassColors.current.secondaryContent)
+                    }
                     if (onSongMore != null) {
-                        var anchor by remember { mutableStateOf(Rect.Zero) }
-                        Box(Modifier.size(40.dp).onGloballyPositioned { anchor = it.boundsInWindow() }
-                            .clickable(interactionSource = null, indication = null) { onSongMore(track.toMediaMetadata(), anchor) },
-                            contentAlignment = Alignment.Center) { SfIcon("ellipsis", "更多操作", size = 18.dp) }
+                        TrackMenuTrigger(menuAnchorState, { onSongMore(track.toMediaMetadata(), it) }) { trigger, openMenu ->
+                            Box(
+                                Modifier.size(40.dp).then(trigger)
+                                    .clickable(interactionSource = null, indication = null, onClick = openMenu),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                SfIcon("ellipsis", "更多操作", size = 18.dp)
+                            }
+                        }
                     }
                 }
             },
@@ -190,7 +203,6 @@ fun LazyListScope.SourceTrackResults(
             GlasmioListRow(title = sourceSearchErrorText(state.error), trailing = { Text("重试") }, onClick = onRetry)
         }
     }
-    if (state.loading) item("source-loading") { LoadingView() }
     if (state.query.isNotEmpty() && !state.loading && state.error == null && state.tracks.isEmpty()) {
         item("source-empty") { GlasmioGroupedList(Modifier.padding(top = 10.dp)) { EmptyView() } }
     }
@@ -198,7 +210,14 @@ fun LazyListScope.SourceTrackResults(
         LaunchedEffect(state.query, state.tracks.firstOrNull()?.ref?.providerId, state.tracks.size, state.nextCursor) {
             onLoadMore()
         }
-        LoadingView()
+    }
+    if (!state.refreshing && (state.loading || state.hasMore) && state.error == null) {
+        items(4, key = { "source-track-loading:$it" }) { index ->
+            val topPadding = if (index == 0 && state.tracks.isEmpty()) firstItemTopPadding else 0.dp
+            ShimmerHost(Modifier.padding(top = topPadding)) {
+                TrackItemShimmer(isTablet = false, flatDetailStyle = true, showArtwork = true)
+            }
+        }
     }
 }
 

@@ -1,19 +1,11 @@
 package com.ljyh.mei.ui.component.player.component.mesh
 
-import android.graphics.Bitmap
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.FloatBuffer
-import java.nio.IntBuffer
 import kotlin.math.cos
 import kotlin.math.sin
 
-data class ControlPoint(
+private class ControlPoint(
     var x: Float,
     var y: Float,
-    var r: Float = 1f,
-    var g: Float = 1f,
-    var b: Float = 1f,
     var ur: Float = 0f,
     var vr: Float = 0f,
     var up: Float = 1f,
@@ -67,14 +59,13 @@ private fun mat4Transpose(out: FloatArray, m: FloatArray) {
     }
 }
 
-class BHPMesh(
-    var controlPointWidth: Int = 5,
-    var controlPointHeight: Int = 5
-) {
-    var subdivisionLevel: Int = 20
-        private set
-
-    private var controlPoints: Array<Array<ControlPoint>> = Array(controlPointHeight) { row ->
+internal class BHPMesh(preset: ControlPointPreset, subdivision: Int) {
+    private val controlPointWidth = preset.width
+    private val controlPointHeight = preset.height
+    private val subdivisionLevel = subdivision.coerceIn(4, 50)
+    private val gridWidth = (controlPointWidth - 1) * subdivisionLevel
+    private val gridHeight = (controlPointHeight - 1) * subdivisionLevel
+    private val controlPoints = Array(controlPointHeight) { row ->
         Array(controlPointWidth) { col ->
             val baseX = if (controlPointWidth == 1) 0f else col.toFloat() / (controlPointWidth - 1) * 2f - 1f
             val baseY = if (controlPointHeight == 1) 0f else row.toFloat() / (controlPointHeight - 1) * 2f - 1f
@@ -82,38 +73,25 @@ class BHPMesh(
         }
     }
 
-    private var vertexData: FloatBuffer? = null
-    private var indexData: IntBuffer? = null
-    private var indexCount: Int = 0
+    val positions: FloatArray
+    val textureCoordinates: FloatArray
+    val indices: ShortArray
 
-    val buffer: FloatBuffer?
-        get() = vertexData
-
-    val indices: Int
-        get() = indexCount
-
-    fun resetSubdivision(n: Int) {
-        subdivisionLevel = n.coerceIn(4, 50)
+    init {
+        val vertexCount = gridWidth * gridHeight
+        require(vertexCount > 0) { "Grid size must be positive" }
+        require(vertexCount <= 65536) { "Mesh exceeds Canvas index range" }
+        positions = FloatArray(vertexCount * 2)
+        textureCoordinates = FloatArray(vertexCount * 2)
+        indices = ShortArray((gridWidth - 1) * (gridHeight - 1) * 6)
+        configureFromPreset(preset)
+        updateMesh()
     }
 
-    fun resizeControlPoints(w: Int, h: Int) {
-        controlPointWidth = w
-        controlPointHeight = h
-        controlPoints = Array(h) { row ->
-            Array(w) { col ->
-                val baseX = if (w == 1) 0f else col.toFloat() / (w - 1) * 2f - 1f
-                val baseY = if (h == 1) 0f else row.toFloat() / (h - 1) * 2f - 1f
-                ControlPoint(baseX, baseY)
-            }
-        }
-    }
+    private fun getControlPoint(i: Int, j: Int): ControlPoint =
+        controlPoints[j.coerceIn(0, controlPointHeight - 1)][i.coerceIn(0, controlPointWidth - 1)]
 
-    fun getControlPoint(i: Int, j: Int): ControlPoint {
-        return controlPoints[j.coerceIn(0, controlPointHeight - 1)][i.coerceIn(0, controlPointWidth - 1)]
-    }
-
-    fun configureFromPreset(preset: ControlPointPreset, albumTexture: Bitmap) {
-        resizeControlPoints(preset.width, preset.height)
+    private fun configureFromPreset(preset: ControlPointPreset) {
         val uPower = 2f / (preset.width - 1)
         val vPower = 2f / (preset.height - 1)
         for (cpConf in preset.conf) {
@@ -125,20 +103,6 @@ class BHPMesh(
             cp.up = uPower * cpConf.up
             cp.vp = vPower * cpConf.vp
         }
-        updateMesh()
-    }
-
-    private fun sampleColorFromBitmap(bitmap: Bitmap, x: Float, y: Float): FloatArray {
-        val u = (x + 1f) / 2f
-        val v = (y + 1f) / 2f
-        val px = (u * (bitmap.width - 1)).toInt().coerceIn(0, bitmap.width - 1)
-        val py = (v * (bitmap.height - 1)).toInt().coerceIn(0, bitmap.height - 1)
-        val pixel = bitmap.getPixel(px, py)
-        return floatArrayOf(
-            ((pixel shr 16) and 0xFF) / 255f,
-            ((pixel shr 8) and 0xFF) / 255f,
-            (pixel and 0xFF) / 255f
-        )
     }
 
     private fun fillMeshCoefficients(
@@ -147,31 +111,19 @@ class BHPMesh(
         axIdx: Int,
         out: FloatArray
     ) {
-        val (l00, l10, l01, l11) = when (axIdx) {
-            0 -> Quad(p00.x, p10.x, p01.x, p11.x)
-            1 -> Quad(p00.y, p10.y, p01.y, p11.y)
-            2 -> Quad(p00.r, p10.r, p01.r, p11.r)
-            3 -> Quad(p00.g, p10.g, p01.g, p11.g)
-            4 -> Quad(p00.b, p10.b, p01.b, p11.b)
-            else -> Quad(p00.x, p10.x, p01.x, p11.x)
-        }
-        out[0] = l00; out[1] = l01; out[4] = l10; out[5] = l11
-        if (axIdx <= 1) {
-            val v00 = p00.vTangent; val v10 = p10.vTangent
-            val v01 = p01.vTangent; val v11 = p11.vTangent
-            val u00 = p00.uTangent; val u10 = p10.uTangent
-            val u01 = p01.uTangent; val u11 = p11.uTangent
-            out[2] = v00[axIdx]; out[3] = v01[axIdx]
-            out[6] = v10[axIdx]; out[7] = v11[axIdx]
-            out[8] = u00[axIdx]; out[9] = u01[axIdx]
-            out[12] = u10[axIdx]; out[13] = u11[axIdx]
-            out[10] = 0f; out[11] = 0f; out[14] = 0f; out[15] = 0f
-        } else {
-            out[2] = 0f; out[3] = 0f
-            out[6] = 0f; out[7] = 0f
-            out[8] = 0f; out[9] = 0f; out[12] = 0f; out[13] = 0f
-            out[10] = 0f; out[11] = 0f; out[14] = 0f; out[15] = 0f
-        }
+        out[0] = if (axIdx == 0) p00.x else p00.y
+        out[1] = if (axIdx == 0) p01.x else p01.y
+        out[4] = if (axIdx == 0) p10.x else p10.y
+        out[5] = if (axIdx == 0) p11.x else p11.y
+        val v00 = p00.vTangent; val v10 = p10.vTangent
+        val v01 = p01.vTangent; val v11 = p11.vTangent
+        val u00 = p00.uTangent; val u10 = p10.uTangent
+        val u01 = p01.uTangent; val u11 = p11.uTangent
+        out[2] = v00[axIdx]; out[3] = v01[axIdx]
+        out[6] = v10[axIdx]; out[7] = v11[axIdx]
+        out[8] = u00[axIdx]; out[9] = u01[axIdx]
+        out[12] = u10[axIdx]; out[13] = u11[axIdx]
+        out[10] = 0f; out[11] = 0f; out[14] = 0f; out[15] = 0f
     }
 
     private fun precomputeMatrix(m: FloatArray, out: FloatArray) {
@@ -182,20 +134,10 @@ class BHPMesh(
         mat4Mul(out, H_T, temp)
     }
 
-    fun updateMesh() {
+    private fun updateMesh() {
         val n = subdivisionLevel
         val cpW = controlPointWidth
         val cpH = controlPointHeight
-        val gridW = (cpW - 1) * n
-        val gridH = (cpH - 1) * n
-
-        require(gridW * gridH > 0) { "Grid size must be positive" }
-
-        val floatCount = gridW * gridH * 7
-        val vBuf = ByteBuffer.allocateDirect(floatCount * 4)
-            .order(ByteOrder.nativeOrder())
-            .asFloatBuffer()
-
         val subDivM1 = (n - 1).coerceAtLeast(1)
         val invTH = 1f / (subDivM1 * (cpW - 1))
         val invTW = 1f / (subDivM1 * (cpH - 1))
@@ -203,9 +145,10 @@ class BHPMesh(
         val tempM = FloatArray(16)
         val accX = FloatArray(16)
         val accY = FloatArray(16)
-        val accR = FloatArray(16)
-        val accG = FloatArray(16)
-        val accB = FloatArray(16)
+        val uPow = FloatArray(4)
+        val vPow = FloatArray(4)
+        val ux = FloatArray(4)
+        val uy = FloatArray(4)
 
         for (patchY in 0 until (cpH - 1)) {
             for (patchX in 0 until (cpW - 1)) {
@@ -218,88 +161,63 @@ class BHPMesh(
                 precomputeMatrix(tempM, accX)
                 fillMeshCoefficients(p00, p01, p10, p11, 1, tempM)
                 precomputeMatrix(tempM, accY)
-                fillMeshCoefficients(p00, p01, p10, p11, 2, tempM)
-                precomputeMatrix(tempM, accR)
-                fillMeshCoefficients(p00, p01, p10, p11, 3, tempM)
-                precomputeMatrix(tempM, accG)
-                fillMeshCoefficients(p00, p01, p10, p11, 4, tempM)
-                precomputeMatrix(tempM, accB)
 
                 val sX = patchX.toFloat() / (cpW - 1)
                 val sY = patchY.toFloat() / (cpH - 1)
 
                 for (u in 0 until n) {
                     val uNorm = if (n > 1) u.toFloat() / subDivM1 else 0f
-                    val uPow = floatArrayOf(uNorm * uNorm * uNorm, uNorm * uNorm, uNorm, 1f)
-
-                    val ux = FloatArray(4)
-                    val uy = FloatArray(4)
-                    val ur = FloatArray(4)
-                    val ug = FloatArray(4)
-                    val ub = FloatArray(4)
+                    cubicPowers(uNorm, uPow)
 
                     transformVec4Mat4(ux, uPow, accX)
                     transformVec4Mat4(uy, uPow, accY)
-                    transformVec4Mat4(ur, uPow, accR)
-                    transformVec4Mat4(ug, uPow, accG)
-                    transformVec4Mat4(ub, uPow, accB)
 
                     for (v in 0 until n) {
                         val vNorm = if (n > 1) v.toFloat() / subDivM1 else 0f
-                        val vPow = floatArrayOf(vNorm * vNorm * vNorm, vNorm * vNorm, vNorm, 1f)
+                        cubicPowers(vNorm, vPow)
 
                         val px = dot4(vPow, ux)
                         val py = dot4(vPow, uy)
-                        val pr = dot4(vPow, ur)
-                        val pg = dot4(vPow, ug)
-                        val pb = dot4(vPow, ub)
 
                         val uvU = sX + v * invTH
                         val uvV = 1f - sY - u * invTW
 
                         val row = patchY * n + u
                         val col = patchX * n + v
-                        val idx = (row * gridW + col) * 7
+                        val idx = (row * gridWidth + col) * 2
 
-                        vBuf.put(idx, px)
-                        vBuf.put(idx + 1, py)
-                        vBuf.put(idx + 2, pr.coerceIn(0f, 1f))
-                        vBuf.put(idx + 3, pg.coerceIn(0f, 1f))
-                        vBuf.put(idx + 4, pb.coerceIn(0f, 1f))
-                        vBuf.put(idx + 5, uvU.coerceIn(0f, 1f))
-                        vBuf.put(idx + 6, uvV.coerceIn(0f, 1f))
+                        positions[idx] = px
+                        positions[idx + 1] = py
+                        textureCoordinates[idx] = uvU.coerceIn(0f, 1f)
+                        textureCoordinates[idx + 1] = uvV.coerceIn(0f, 1f)
                     }
                 }
             }
         }
 
-        vertexData = vBuf
-
-        val numIndices = (gridW - 1) * (gridH - 1) * 6
-        indexCount = numIndices
-        val idxArr = IntArray(numIndices)
         var ii = 0
-        for (j in 0 until (gridH - 1)) {
-            for (i in 0 until (gridW - 1)) {
-                val tl = j * gridW + i
-                val tr = j * gridW + i + 1
-                val bl = (j + 1) * gridW + i
-                val br = (j + 1) * gridW + i + 1
-                idxArr[ii++] = tl; idxArr[ii++] = tr; idxArr[ii++] = bl
-                idxArr[ii++] = tr; idxArr[ii++] = br; idxArr[ii++] = bl
+        for (row in 0 until (gridHeight - 1)) {
+            for (col in 0 until (gridWidth - 1)) {
+                val tl = row * gridWidth + col
+                val tr = tl + 1
+                val bl = (row + 1) * gridWidth + col
+                val br = bl + 1
+                indices[ii++] = tl.toShort()
+                indices[ii++] = tr.toShort()
+                indices[ii++] = bl.toShort()
+                indices[ii++] = tr.toShort()
+                indices[ii++] = br.toShort()
+                indices[ii++] = bl.toShort()
             }
         }
-
-        val iBuf = ByteBuffer.allocateDirect(idxArr.size * 4)
-            .order(ByteOrder.nativeOrder())
-            .asIntBuffer()
-        iBuf.put(idxArr)
-        iBuf.position(0)
-        indexData = iBuf
     }
 
-    fun generateIndexBuffer(): IntBuffer {
-        return indexData ?: ByteBuffer.allocateDirect(0).asIntBuffer()
+    private fun cubicPowers(value: Float, out: FloatArray) {
+        val square = value * value
+        out[0] = square * value
+        out[1] = square
+        out[2] = value
+        out[3] = 1f
     }
 
     private fun transformVec4Mat4(out: FloatArray, a: FloatArray, m: FloatArray) {
@@ -311,6 +229,4 @@ class BHPMesh(
     private fun dot4(a: FloatArray, b: FloatArray): Float {
         return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
     }
-
-    private data class Quad(val a: Float, val b: Float, val c: Float, val d: Float)
 }

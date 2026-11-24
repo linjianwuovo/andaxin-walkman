@@ -68,6 +68,10 @@ class PlayerConnection(
 
     val service = binder.service
     val player = service.player
+    internal val autoMixStatus = service.autoMixStatus
+    internal val upcomingAutoMixTrack = service.upcomingAutoMixTrack
+    internal val autoMixTracks = service.autoMixTracks
+    internal fun incomingMixPositionMs() = service.incomingMixPositionMs()
 
     val playbackState = MutableStateFlow(player.playbackState)
     private val playWhenReady = MutableStateFlow(player.playWhenReady)

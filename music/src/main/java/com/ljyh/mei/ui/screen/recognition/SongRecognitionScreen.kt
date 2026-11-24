@@ -199,7 +199,7 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel = hiltViewModel(),
                                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
                                         PackageManager.PERMISSION_GRANTED
                                     ) add(Manifest.permission.RECORD_AUDIO)
-                                    if (!askedForNotifications &&
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedForNotifications &&
                                         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
                                         PackageManager.PERMISSION_GRANTED
                                     ) {

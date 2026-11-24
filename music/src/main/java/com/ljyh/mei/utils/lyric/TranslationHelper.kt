@@ -14,6 +14,7 @@ internal object TranslationHelper {
     private val lrcLineRegex = "\\[(\\d{2}):(\\d{2})[.:](\\d{2,3})\\](.*)".toRegex()
 
     private fun parseTranslation(translationLrc: String): List<TranslationLine> {
+        val headerOffsetMs = extractLyricHeaderOffsetMs(translationLrc)
         return translationLrc.lines().mapNotNull { line ->
             val match = lrcLineRegex.matchEntire(line.trim()) ?: return@mapNotNull null
             try {
@@ -25,7 +26,10 @@ internal object TranslationHelper {
                     3 -> millisStr.toInt()
                     else -> 0
                 }
-                val totalTime = minutes * 60 * 1000 + seconds * 1000 + milliseconds
+                val totalTime = shiftHeaderTimestamp(
+                    minutes * 60 * 1000 + seconds * 1000 + milliseconds,
+                    headerOffsetMs,
+                )
                 val text = match.groupValues[4].trim()
 
                 if (text.isEmpty() || text.startsWith("//")) return@mapNotNull null

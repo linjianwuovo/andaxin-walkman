@@ -123,6 +123,7 @@ internal fun NarrowLandscapePlayer(
                 showLikeButton = canLike,
                 onLikeClick = { state.playerViewModel.like(track.id.toString()) },
                 onMoreClick = overlay::showMoreAction,
+                navigationMenuAnchor = overlay.navigationMenuAnchor,
                 onTitleClick = {
                     overlay.showAlbumArtist(track.album, track.artists, track.coverUrl,
                         anchorBounds = playerMetadataAnchorBounds(titleTextCoordinates, titleRowCoordinates),

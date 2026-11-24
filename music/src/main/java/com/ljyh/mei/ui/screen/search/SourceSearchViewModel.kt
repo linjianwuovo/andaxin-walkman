@@ -51,6 +51,7 @@ data class SourceSearchState(
     val items: List<SourceItem> = emptyList(),
     val nextCursor: String? = null,
     val podcasts: List<OnlinePodcast> = emptyList(),
+    val refreshing: Boolean = false,
 )
 
 internal fun searchableProviders(providers: List<MusicProvider>): List<MusicProvider> = providers.filter {
@@ -174,32 +175,44 @@ class SourceSearchViewModel @Inject constructor(
         if (mutableState.value.hasMore && !mutableState.value.loading) loadPage(append = true)
     }
 
-    private fun loadPage(append: Boolean) {
-        val query = mutableState.value.query
+    fun refreshOnPull() {
+        val current = mutableState.value
+        if (current.loading || current.query.isBlank() || currentProviderId().isBlank()) return
+        loadPage(append = false, refreshing = true)
+    }
+
+    private fun loadPage(append: Boolean, refreshing: Boolean = false) {
+        val previous = mutableState.value
+        val query = previous.query
         val providerId = currentProviderId()
         val requestGeneration = generation
-        val oldItems = if (append) mutableState.value.items else emptyList()
-        val oldTracks = if (append) mutableState.value.tracks else emptyList()
-        val oldPodcasts = if (append) mutableState.value.podcasts else emptyList()
-        val nextCursor = if (append) mutableState.value.nextCursor else null
+        val oldItems = if (append) previous.items else emptyList()
+        val oldTracks = if (append) previous.tracks else emptyList()
+        val oldPodcasts = if (append) previous.podcasts else emptyList()
+        val pageOffset = if (append) offset else 0
+        val nextCursor = if (append) previous.nextCursor else null
         val requestedType = contentType
         val requestedPodcasts = podcastMode
-        mutableState.value = mutableState.value.copy(loading = true, error = null)
+        mutableState.value = previous.copy(loading = true, refreshing = refreshing, error = null)
         request = viewModelScope.launch {
             try {
                 if (requestedPodcasts) {
-                    val session = podcastSession ?: online?.screen("podcast-search", providerId)?.also { podcastSession = it }
+                    val session = podcastSession.takeIf { append } ?: online?.screen("podcast-search", providerId)
                         ?: throw SourceException(SourceErrorCode.UNSUPPORTED)
-                    val page = session.searchPodcasts(query, offset, 30)
+                    val page = session.searchPodcasts(query, pageOffset, 30)
                     if (requestGeneration != generation || providerId != currentProviderId()) return@launch
-                    offset += page.fetchedCount
+                    podcastSession = session
+                    offset = pageOffset + page.fetchedCount
                     val values = (oldPodcasts + page.podcasts).distinctBy { it.providerId to it.id }
                     mutableState.value = SourceSearchState(query = query, podcasts = values, hasMore = page.hasMore && page.fetchedCount > 0 && (!append || values.size > oldPodcasts.size))
                     return@launch
                 }
-                val page = router.search(providerId, query, requestedType, PageRequest(offset, 30, nextCursor))
+                val page = router.search(
+                    providerId, query, requestedType, PageRequest(pageOffset, 30, nextCursor, refresh = refreshing),
+                )
                 if (requestGeneration != generation || providerId != currentProviderId()) return@launch
-                offset += page.items.size
+                offset = pageOffset + page.items.size
+                if (!append) seenCursors.clear()
                 val items = (oldItems + page.items).distinctBy { it.ref }
                 val hasMore = sourceSearchHasMore(page, oldItems, items, seenCursors)
                 page.nextCursor?.let(seenCursors::add)
@@ -207,11 +220,15 @@ class SourceSearchViewModel @Inject constructor(
                     tracks = items.filterIsInstance<SourceItem.TrackItem>().map { it.track }, items = items,
                     nextCursor = page.nextCursor, hasMore = hasMore)
             } catch (cancelled: CancellationException) {
+                if (refreshing && requestGeneration == generation && providerId == currentProviderId()) {
+                    mutableState.value = previous
+                }
                 throw cancelled
             } catch (error: Exception) {
                 if (requestGeneration != generation || providerId != currentProviderId()) return@launch
-                mutableState.value = SourceSearchState(query, tracks = oldTracks, items = oldItems, nextCursor = nextCursor, podcasts = oldPodcasts,
-                    error = (error as? SourceException)?.code ?: SourceErrorCode.NETWORK)
+                val code = (error as? SourceException)?.code ?: SourceErrorCode.NETWORK
+                mutableState.value = if (refreshing) previous.copy(hasMore = false, error = code)
+                else SourceSearchState(query, tracks = oldTracks, items = oldItems, nextCursor = nextCursor, podcasts = oldPodcasts, error = code)
             }
         }
     }

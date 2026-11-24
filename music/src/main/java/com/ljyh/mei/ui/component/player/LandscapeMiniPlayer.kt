@@ -20,9 +20,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -32,6 +29,7 @@ import androidx.media3.common.util.UnstableApi
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.kyant.shapes.Capsule
 import com.ljyh.mei.R
+import io.github.neoruaa.glasmio.core.glasmioSafeDrawing
 import com.ljyh.mei.constants.LoopPlaybackKey
 import com.ljyh.mei.utils.rememberPreference
 import com.ljyh.mei.constants.LandscapeMiniPlayerHeight
@@ -65,6 +63,7 @@ internal fun LandscapeMiniPlayer(
 ) {
     val connection = LocalPlayerConnection.current ?: return
     val sheet = LocalPlayerSheet.current
+    val sheetPresentation = rememberPlayerSheetPresentation(sheet?.state)
     SideEffect { sheet?.miniArtworkCornerRadius = 6.dp }
     val colors = LocalGlassColors.current
     val metadata by connection.mediaMetadata.collectAsState()
@@ -96,7 +95,7 @@ internal fun LandscapeMiniPlayer(
     val transitioning by remember(sheet) { derivedStateOf { sheet?.isTransitioning == true } }
     Box(
         modifier.widthIn(max = 768.dp).fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .windowInsetsPadding(WindowInsets.glasmioSafeDrawing.only(WindowInsetsSides.Horizontal))
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -214,25 +213,21 @@ internal fun LandscapeMiniPlayer(
                 Column(Modifier.weight(1f).padding(horizontal = 8.dp),
                     verticalArrangement = Arrangement.Center) {
                     val track = metadata
-                    val titleFont = remember {
-                        FontFamily(Font(R.font.sf_pro, weight = FontWeight.Medium,
-                            variationSettings = FontVariation.Settings(FontVariation.weight(500))))
-                    }
                     val titleStyle = IosTypography.body.copy(
-                        fontSize = 15.sp, fontWeight = FontWeight.Medium, fontFamily = titleFont,
+                        fontSize = 15.sp, fontWeight = FontWeight.Medium,
                     )
                     val artistStyle = IosTypography.body.copy(fontSize = 14.sp, fontWeight = FontWeight.Normal)
                     if (track != null) MiniPlayerTrackSwipe(connection, track) { visibleTrack, allowMarquee ->
                         AppleMusicMarqueeText(
                             text = visibleTrack.title, style = titleStyle,
                             color = colors.content, edgeWidth = if (allowMarquee) 8.dp else 0.dp,
-                            enabled = allowMarquee && sheet?.state?.isCollapsed != false,
+                            enabled = allowMarquee && sheetPresentation.isCollapsed,
                         )
                         val artists = visibleTrack.artists.joinToString { it.name }
                         if (artists.isNotBlank()) AppleMusicMarqueeText(
                             text = artists, style = artistStyle,
                             color = colors.content, edgeWidth = if (allowMarquee) 8.dp else 0.dp,
-                            enabled = allowMarquee && sheet?.state?.isCollapsed != false,
+                            enabled = allowMarquee && sheetPresentation.isCollapsed,
                         )
                     } else Text(stringResource(R.string.landscape_player_not_playing), style = titleStyle,
                         color = colors.secondaryContent, maxLines = 1)

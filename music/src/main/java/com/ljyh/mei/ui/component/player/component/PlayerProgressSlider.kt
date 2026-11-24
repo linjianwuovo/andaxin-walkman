@@ -82,22 +82,27 @@ fun PlayerProgressSlider(
     val isLoadingQualities = playerConnection?.isLoadingMusicQualities?.collectAsStateWithLifecycle()?.value ?: false
     val localPlaybackInfo = playerConnection?.localPlaybackInfo?.collectAsStateWithLifecycle()?.value
     val isPlayingLocalSource = playerConnection?.isPlayingLocalSource?.collectAsStateWithLifecycle()?.value ?: false
-    val isDurationValid = remember(duration) { duration > 0 }
-    val valueRange = remember(duration) { 0f..(duration.takeIf { it > 0 } ?: 1).toFloat() }
+    val rail = playerRailClock(position, duration, qualityMediaId)
+    val displayDuration = rail.durationMs
+    val isDurationValid = displayDuration > 0
+    val valueRange = remember(displayDuration) { 0f..displayDuration.coerceAtLeast(1).toFloat() }
 
     // 交互状态
-    val interactionSource = remember { MutableInteractionSource() }
-    val isUserDragging by interactionSource.collectIsDraggedAsState()
+    val interactionSource = remember(rail.seekSession) { MutableInteractionSource() }
+    val isDragged by interactionSource.collectIsDraggedAsState()
+    val isUserDragging = isDragged && rail.seekEnabled
 
     // 内部拖拽位置状态
-    var rawDragPosition by remember { mutableFloatStateOf(0f) }
+    var rawDragPosition by remember(rail.seekSession) { mutableFloatStateOf(rail.positionMs.toFloat()) }
 
     // 计算当前显示的值
     val sliderPosition = if (isUserDragging) {
         rawDragPosition
     } else {
-        position.toFloat()
+        rail.positionMs.toFloat()
     }.coerceIn(valueRange)
+    val displayPosition = if (rail.showingIncoming && !isDurationValid) rail.positionMs
+        else sliderPosition.toLong()
 
     // 计算进度百分比 (0.0 - 1.0)
     val progressFraction = if (isDurationValid) {
@@ -155,7 +160,7 @@ fun PlayerProgressSlider(
                 rawDragPosition = it
             },
             onValueChangeFinished = {
-                if (isDurationValid) {
+                if (rail.canCommitSeek()) {
                     onPositionChange(rawDragPosition.roundToLong())
                 }
             },
@@ -164,7 +169,7 @@ fun PlayerProgressSlider(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(24.dp), // 增加一点高度给波浪
-            enabled = isDurationValid,
+            enabled = rail.seekEnabled,
 
             // 隐藏原本的 Thumb (圆球)，我们自己画在 Track 里，或者不需要 Thumb
             thumb = {
@@ -267,7 +272,7 @@ fun PlayerProgressSlider(
             )
 
             Text(
-                text = makeTimeString(sliderPosition.toLong()),
+                text = makeTimeString(displayPosition),
                 modifier = Modifier.weight(1f),
                 style = timeTextStyle,
                 color = Color.White.copy(alpha = 0.9f), // 使用白色，微透
@@ -293,7 +298,7 @@ fun PlayerProgressSlider(
 
 
             Text(
-                text = if (duration > 0) makeTimeString(duration) else "-:--",
+                text = if (isDurationValid) makeTimeString(displayDuration) else "-:--",
                 modifier = Modifier.weight(1f),
                 textAlign = TextAlign.End,
                 style = timeTextStyle,

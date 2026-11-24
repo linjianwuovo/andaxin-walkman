@@ -13,7 +13,10 @@ import com.ljyh.mei.ui.component.player.PlayerViewModel
 import com.ljyh.mei.ui.component.playlist.TrackActionMenu
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.screen.Screen
+import com.ljyh.mei.ui.screen.social.NeteaseShareSheet
 import com.ljyh.mei.utils.setClipboard
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
+import io.github.neoruaa.glasmio.glass.LocalBlurBackdrop
 import io.github.neoruaa.glasmio.ui.*
 
 internal fun sourceContentSupported(ref: ContentRef, providers: List<MusicProvider>): Boolean {
@@ -34,10 +37,29 @@ internal fun SourceTrackActionMessage(viewModel: SourceContentViewModel) {
         buttons = listOf(GlasmioAlertButtonSpec("好", onClick = viewModel::dismissMessage)))
 }
 
+/** Keep menu and Share transitions out of the underlying browse page's composition. */
+@Composable
+internal fun SourceTrackActions(
+    selection: MutableState<Pair<Track, Rect>?>,
+    viewModel: SourceContentViewModel,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
+    canDetachShareBackdrop: (() -> Boolean)? = null,
+) {
+    SourceTrackActions(
+        selection = selection.value,
+        onDismiss = { selection.value = null },
+        viewModel = viewModel,
+        menuAnchorState = menuAnchorState,
+        canDetachShareBackdrop = canDetachShareBackdrop,
+    )
+}
+
 @Composable
 internal fun SourceTrackActions(
     selection: Pair<Track, Rect>?, onDismiss: () -> Unit, viewModel: SourceContentViewModel,
     playlist: SourcePlaylist? = null,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
+    canDetachShareBackdrop: (() -> Boolean)? = null,
 ) {
     val context = LocalContext.current
     val playerViewModel: PlayerViewModel = hiltViewModel()
@@ -47,11 +69,23 @@ internal fun SourceTrackActions(
         key(selected.first.ref, selected.second) {
             SourceTrackActions(metadata = metadata, onDismiss = onDismiss, viewModel = viewModel,
                 anchorBounds = selected.second, playerViewModel = playerViewModel, playlist = playlist,
+                menuAnchorState = menuAnchorState,
                 onShare = { onDismiss(); share = metadata },
                 onDownloadTrack = { quality -> playerViewModel.downloadSong(metadata, context, quality) })
         }
     }
-    share?.let { metadata -> com.ljyh.mei.ui.screen.social.NeteaseShareSheet(metadata, onDismiss = { share = null }) }
+    share?.let { metadata ->
+        val presenter = LocalLibrarySharePresenter.current
+        val backdrop = LocalBlurBackdrop.current
+        val presenterBackdrop = if (presenter != null && presenter.backdrop === backdrop && canDetachShareBackdrop != null) {
+            rememberLibraryShareBackdrop(backdrop) {
+                presenter.isIdle() && canDetachShareBackdrop()
+            }
+        } else backdrop
+        CompositionLocalProvider(LocalBlurBackdrop provides presenterBackdrop) {
+            NeteaseShareSheet(metadata, onDismiss = { share = null })
+        }
+    }
     SourceTrackActionMessage(viewModel)
 }
 
@@ -66,6 +100,7 @@ internal fun SourceTrackActions(
     onShare: (() -> Unit)? = null,
     onDownloadTrack: ((MusicQuality) -> Unit)? = null,
     playlist: SourcePlaylist? = null,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
     val context = LocalContext.current
     val nav = LocalNavController.current
@@ -85,6 +120,7 @@ internal fun SourceTrackActions(
         TrackActionMenu(
             targetTrack = metadata,
             anchorBounds = anchorBounds,
+            menuAnchorState = menuAnchorState,
             onDismiss = onDismiss,
             onAddToPlaylist = if (canAdd) {
                 {

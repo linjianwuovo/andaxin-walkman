@@ -1,5 +1,7 @@
 package com.ljyh.mei.ui.screen.source
 
+import com.ljyh.mei.ui.component.item.trackPressViewport
+import com.ljyh.mei.ui.component.home.homeArtworkBorder
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -55,6 +57,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.core.Animatable
 import com.kyant.capsule.ContinuousRoundedRectangle
 import androidx.compose.foundation.layout.PaddingValues
@@ -68,9 +72,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -86,8 +87,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -164,18 +168,25 @@ import com.ljyh.mei.ui.component.playlist.FavoriteTrackStar
 import com.ljyh.mei.source.api.TrackRefCodec
 import com.ljyh.mei.ui.component.item.HomeSongListRow
 import com.ljyh.mei.ui.component.item.ThreeRowSongList
+import com.ljyh.mei.ui.component.shimmer.ShimmerHost
 import com.ljyh.mei.ui.component.utils.rememberDeviceInfo
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalContentPadding
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalEdgeToEdge
 import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
 import com.ljyh.mei.ui.navigation.meiloxHeaderAction
 import com.ljyh.mei.ui.screen.Screen
 import com.ljyh.mei.ui.screen.search.browsableProviders
 import com.ljyh.mei.ui.screen.search.libraryProviders
+import com.ljyh.mei.ui.screen.playlist.component.TrackItemShimmer
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.core.swipeBackExcluded
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
+import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
+import io.github.neoruaa.glasmio.scaffold.GlasmioPullToRefreshBox
 import io.github.neoruaa.glasmio.ui.GlasmioAlertButtonSpec
 import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
@@ -183,10 +194,8 @@ import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioCard
 import io.github.neoruaa.glasmio.scaffold.rememberGlasmioHeaderCollapse
 import com.ljyh.mei.ui.screen.main.home.HomeShimmer
-import io.github.neoruaa.glasmio.scaffold.pullToRefreshRebound
 
 @androidx.annotation.OptIn(UnstableApi::class)
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SourceFeedScreen(
     title: String,
@@ -205,7 +214,8 @@ fun SourceFeedScreen(
     val selectedId = providerId ?: preferredId
     val providers by viewModel.providers.collectAsState()
     var categoryId by rememberSaveable(kind, selectedId) { mutableStateOf(initialCategory) }
-    var selection by remember(selectedId) { mutableStateOf<Pair<Track, Rect>?>(null) }
+    val selection = remember(selectedId) { mutableStateOf<Pair<Track, Rect>?>(null) }
+    val trackMenuAnchor = rememberGlasmioMenuAnchorState()
     val listState = rememberSaveable(kind, selectedId, categoryId, saver = LazyListState.Saver) { LazyListState() }
     val nav = LocalNavController.current
     val bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()
@@ -252,19 +262,20 @@ fun SourceFeedScreen(
         }
     }
     SourceBrowseScrollRequests(listState)
-    LaunchedEffect(kind, categoryId, providerId) { viewModel.open(SourceContentRequest.Feed(kind, categoryId, providerId)) }
+    val feedRequest = remember(kind, categoryId, providerId) { SourceContentRequest.Feed(kind, categoryId, providerId) }
+    LaunchedEffect(feedRequest) { viewModel.open(feedRequest) }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val device = rememberDeviceInfo()
         val discoverColumns = if (device.isTablet) ((maxWidth - 20.dp) / 176.dp).toInt().coerceAtLeast(1) else 2
         val refreshing = state.providerId == selectedId && state.refreshing
-        val refreshState = rememberPullToRefreshState()
+        val collapseProgress = if (device.isLandscape) 1f else rememberGlasmioHeaderCollapse(listState)
         registerMeiloXNavigationViewport(listState)
         MeiloXPinnedPage(
             title = title,
             onNavigateBack = if (isNavigationTab) null else ({ nav.navigateUp() }),
             bottomPadding = bottom,
-            collapseProgress = if (device.isLandscape) 1f else rememberGlasmioHeaderCollapse(listState),
+            collapseProgress = collapseProgress,
             topBarBlurProgress = rememberGlasmioHeaderScrollEdge(listState),
             backgroundColor = if (glassColors.isDark) glassColors.groupedBackground else Color.White,
             actions = {
@@ -280,65 +291,73 @@ fun SourceFeedScreen(
                 )
             },
         ) { padding ->
-            PullToRefreshBox(isRefreshing = refreshing, state = refreshState, onRefresh = {
-                if (state.providerId == selectedId && !state.loading && !state.refreshing) viewModel.refresh()
-            }) {
-                Box(Modifier.fillMaxSize().pullToRefreshRebound(refreshState, refreshing)) {
-                    if (kind == FeedKind.HOME && (state.providerId != selectedId || state.loading && state.sections.isEmpty())) {
-                        HomeShimmer(PaddingValues(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding() + HomeSectionSpacing))
-                    } else LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            top = padding.calculateTopPadding() - if (kind == FeedKind.HOME) 4.dp else 0.dp,
-                            bottom = padding.calculateBottomPadding() + if (kind == FeedKind.HOME) HomeSectionSpacing else 0.dp,
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(if (kind == FeedKind.DISCOVER) 16.dp else HomeSectionSpacing),
-                    ) {
-                        if (!device.isLandscape) item("source-feed-title") {
-                            Text(title, style = IosTypography.largeTitle, color = glassColors.content,
-                                modifier = if (kind == FeedKind.HOME) Modifier.padding(horizontal = 16.dp)
-                                    else Modifier.offset(y = (-10).dp).padding(horizontal = 16.dp, vertical = 6.dp))
-                        }
-                        if (kind == FeedKind.DISCOVER && categories.isNotEmpty()) item("source-feed-categories") {
-                            LazyRow(Modifier.fillMaxWidth().swipeBackExcluded(), contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(categories, key = { it.id }) { category ->
-                                    val selected = category.id == (categoryId ?: categories.first().id)
-                                    Text(category.title, style = IosTypography.subheadline,
-                                        color = if (selected) Color.White else glassColors.content,
-                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                        modifier = Modifier.clip(ContinuousRoundedRectangle(50))
-                                            .background(if (selected) MaterialTheme.colorScheme.primary else glassColors.groupedBackground)
-                                            .clickable { categoryId = category.id.takeIf(String::isNotEmpty) }
-                                            .padding(horizontal = 15.dp, vertical = 7.dp))
-                                }
-                            }
-                        }
-                        if (state.providerId == selectedId) {
-                            if (kind == FeedKind.DISCOVER) {
-                                sourceDiscoverItems(state.sections, discoverColumns, !device.isTablet, { navigateSourceContent(nav, it) }, play,
-                                    { track, anchor -> selection = track to anchor }, ::openCard, loadingCard)
-                            } else state.sections.forEachIndexed { index, section ->
-                                item(key = "source-feed:${state.providerId}:${section.id}") {
-                                    SourceFeedSectionContent(if (index == 0 && section.layout == SourceFeedLayout.HERO) section.copy(title = getGreeting()) else section,
-                                        onOpen = { navigateSourceContent(nav, it) }, onPlay = play,
-                                        onMore = { track, anchor -> selection = track to anchor }, onAction = ::openCard, loadingCard = loadingCard)
-                                }
-                            }
-                            sourceBrowseStatus(state, state.sections.sumOf { if (it.cards.isNotEmpty()) it.cards.size else it.items.size },
-                                emptyText = if (kind == FeedKind.HOME) "暂无推荐内容" else "暂无发现内容",
-                                horizontalPadding = HomeRowHorizontalPadding,
-                                onRetry = viewModel::refresh, onLoadMore = viewModel::loadMore,
-                                onConfigure = { openSourceConfiguration(viewModel.pluginId(), nav) },
-                            )
-                        } else item("source-feed-switching") { SourceBrowseLoading() }
+            GlasmioPullToRefreshBox(
+                modifier = Modifier.fillMaxSize().glasmioHorizontalEdgeToEdge(),
+                isRefreshing = refreshing,
+                indicatorPadding = glasmioHorizontalContentPadding(PaddingValues(top = padding.calculateTopPadding())),
+                onRefresh = { viewModel.refreshOnPull(feedRequest, selectedId) },
+            ) {
+                if (kind == FeedKind.HOME && (state.providerId != selectedId || state.loading && state.sections.isEmpty())) {
+                    HomeShimmer(PaddingValues(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding() + HomeSectionSpacing))
+                } else LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = glasmioHorizontalContentPadding(PaddingValues(
+                        top = padding.calculateTopPadding() - if (kind == FeedKind.HOME) 4.dp else 0.dp,
+                        bottom = padding.calculateBottomPadding() + if (kind == FeedKind.HOME) HomeSectionSpacing else 0.dp,
+                    )),
+                    verticalArrangement = Arrangement.spacedBy(if (kind == FeedKind.DISCOVER) 16.dp else HomeSectionSpacing),
+                ) {
+                    if (!device.isLandscape) item("source-feed-title") {
+                        Text(title, style = IosTypography.largeTitle, color = glassColors.content,
+                            modifier = if (kind == FeedKind.HOME) Modifier.graphicsLayer {
+                                alpha = 1f - collapseProgress
+                                scaleX = 1f - .04f * collapseProgress
+                                scaleY = scaleX
+                                transformOrigin = TransformOrigin(0f, .5f)
+                            }.blur(6.dp * collapseProgress).padding(horizontal = 16.dp)
+                                else Modifier.offset(y = (-10).dp).padding(horizontal = 16.dp, vertical = 6.dp))
                     }
+                    if (kind == FeedKind.DISCOVER && categories.isNotEmpty()) item("source-feed-categories") {
+                        LazyRow(Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded(), contentPadding = glasmioHorizontalContentPadding(PaddingValues(horizontal = 16.dp)),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(categories, key = { it.id }) { category ->
+                                val selected = category.id == (categoryId ?: categories.first().id)
+                                Text(category.title, style = IosTypography.subheadline,
+                                    color = if (selected) Color.White else glassColors.content,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    modifier = Modifier.clip(ContinuousRoundedRectangle(50))
+                                        .background(if (selected) MaterialTheme.colorScheme.primary else glassColors.groupedBackground)
+                                        .clickable { categoryId = category.id.takeIf(String::isNotEmpty) }
+                                        .padding(horizontal = 15.dp, vertical = 7.dp))
+                            }
+                        }
+                    }
+                    if (state.providerId == selectedId) {
+                        if (kind == FeedKind.DISCOVER) {
+                            sourceDiscoverItems(state.sections, discoverColumns, !device.isTablet, { navigateSourceContent(nav, it) }, play,
+                                { track, anchor -> selection.value = track to anchor }, ::openCard, loadingCard, trackMenuAnchor)
+                        } else state.sections.forEachIndexed { index, section ->
+                            item(key = "source-feed:${state.providerId}:${section.id}") {
+                                SourceFeedSectionContent(if (index == 0 && section.layout == SourceFeedLayout.HERO) section.copy(title = getGreeting()) else section,
+                                    onOpen = { navigateSourceContent(nav, it) }, onPlay = play,
+                                    onMore = { track, anchor -> selection.value = track to anchor }, onAction = ::openCard,
+                                    loadingCard = loadingCard, homeTrackRows = kind == FeedKind.HOME,
+                                    menuAnchorState = trackMenuAnchor)
+                            }
+                        }
+                        sourceBrowseStatus(state, state.sections.sumOf { if (it.cards.isNotEmpty()) it.cards.size else it.items.size },
+                            emptyText = if (kind == FeedKind.HOME) "暂无推荐内容" else "暂无发现内容",
+                            horizontalPadding = HomeRowHorizontalPadding,
+                            onRetry = viewModel::refresh, onLoadMore = viewModel::loadMore,
+                            onConfigure = { openSourceConfiguration(viewModel.pluginId(), nav) },
+                        )
+                    } else item("source-feed-switching") { SourceBrowseLoading() }
                 }
             }
         }
     }
-    SourceTrackActions(selection, { selection = null }, viewModel)
+    SourceTrackActions(selection, viewModel, menuAnchorState = trackMenuAnchor)
 }
 
 /** Uses the native home-feed card and song-row primitives for every provider. */
@@ -350,6 +369,8 @@ internal fun SourceFeedSectionContent(
     onMore: (Track, Rect) -> Unit,
     onAction: (SourceFeedCard) -> Unit = {},
     loadingCard: String? = null,
+    homeTrackRows: Boolean = false,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
     val landscape = rememberDeviceInfo().isLandscape
     val spacing = homeCardSpacing(landscape)
@@ -390,6 +411,10 @@ internal fun SourceFeedSectionContent(
             }
         } else if (section.layout == SourceFeedLayout.TRACKS && tracks.isNotEmpty()) {
             val favoriteIds = rememberFavoriteTrackIds(remember(tracks) { tracks.map { it.toMediaMetadata() } })
+            val player = if (homeTrackRows) LocalPlayerConnection.current else null
+            val playingTrack = if (player?.isPlaying?.collectAsState()?.value == true) {
+                player.mediaMetadata.collectAsState().value?.trackRef
+            } else null
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val requestedWidth = homePlaylistCardSize(landscape) * 2 + spacing
                 val columnWidth = if (landscape) minOf(requestedWidth,
@@ -413,8 +438,10 @@ internal fun SourceFeedSectionContent(
                             subtitle = track.artists.joinToString(" / ") { it.name },
                             coverSize = songListCoverSize(landscape),
                             onClick = { onPlay(tracks, index) },
+                            isPlaying = playingTrack == track.ref,
                             moreModifier = Modifier.testTag("HomeSongMore:${track.ref.trackId}"),
                             onMore = { onMore(track, it) },
+                            menuAnchorState = menuAnchorState,
                         )
                     }
                 }
@@ -424,8 +451,8 @@ internal fun SourceFeedSectionContent(
             LazyRow(
                 state = rowState,
                 flingBehavior = rememberHomeRowFlingBehavior(rowState),
-                modifier = Modifier.fillMaxWidth().swipeBackExcluded(),
-                contentPadding = PaddingValues(horizontal = HomeRowHorizontalPadding),
+                modifier = Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded(),
+                contentPadding = glasmioHorizontalContentPadding(PaddingValues(horizontal = HomeRowHorizontalPadding)),
                 horizontalArrangement = Arrangement.spacedBy(spacing),
             ) {
                 if (section.cards.isNotEmpty()) items(section.cards, key = { it.id }) { card ->
@@ -464,12 +491,17 @@ private fun LazyListScope.sourceDiscoverItems(
     sections: List<SourceFeedSection>, columns: Int, featured: Boolean,
     onOpen: (ContentRef) -> Unit, onPlay: (List<Track>, Int) -> Unit, onMore: (Track, Rect) -> Unit,
     onAction: (SourceFeedCard) -> Unit, loadingCard: String?,
+    menuAnchorState: GlasmioMenuAnchorState,
 ) {
     sections.forEachIndexed { sectionIndex, section ->
         if (section.cards.isNotEmpty()) {
-            item("source-discover-cards:${section.id}") { SourceFeedSectionContent(section, onOpen, onPlay, onMore, onAction, loadingCard) }
+            item("source-discover-cards:${section.id}") {
+                SourceFeedSectionContent(section, onOpen, onPlay, onMore, onAction, loadingCard, menuAnchorState = menuAnchorState)
+            }
         } else if (section.layout == SourceFeedLayout.TRACKS) {
-            item("source-discover-tracks:${section.id}") { SourceFeedSectionContent(section, onOpen, onPlay, onMore) }
+            item("source-discover-tracks:${section.id}") {
+                SourceFeedSectionContent(section, onOpen, onPlay, onMore, menuAnchorState = menuAnchorState)
+            }
         } else {
             val hero = section.items.firstOrNull()?.takeIf { featured && sectionIndex == 0 && it is SourceItem.PlaylistItem }
             if (sections.size > 1 && section.title.isNotBlank()) item("source-discover-heading:${section.id}") {
@@ -508,7 +540,8 @@ private fun SourceDiscoverCard(item: SourceItem, featured: Boolean, onClick: () 
             }
         }
     } else Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(ContinuousRoundedRectangle(16.dp))) {
+        val shape = ContinuousRoundedRectangle(16.dp)
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(shape).homeArtworkBorder(shape)) {
             AsyncImage(item.artworkUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             (item as? SourceItem.PlaylistItem)?.playlist?.playCount?.let { count ->
                 Row(Modifier.align(Alignment.TopEnd).padding(6.dp)
@@ -613,22 +646,27 @@ fun SourceLibraryScreen(
     val title = if (showArtists) "关注歌手" else stringResource(if (category == null) R.string.app_tab_library else page.titleRes)
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
     var searchActive by rememberSaveable { mutableStateOf(false) }
-    var selection by remember(selectedId, collection) { mutableStateOf<Pair<Track, Rect>?>(null) }
+    val selection = remember(selectedId, collection) { mutableStateOf<Pair<Track, Rect>?>(null) }
+    val trackMenuAnchor = rememberGlasmioMenuAnchorState()
     val focus = LocalFocusManager.current
     val play = rememberSourceQueuePlayer("source-library:$selectedId:${collection.name}", libraryCollectionTitle(collection),
         viewModel = viewModel, queueRequest = SourceContentRequest.Library(collection, selectedId))
-    fun playVisible(tracks: List<Track>, index: Int) {
+    val playAll = rememberSourceQueuePlayer("source-library:$selectedId:${collection.name}", libraryCollectionTitle(collection),
+        viewModel = viewModel, queueRequest = SourceContentRequest.Library(collection, selectedId), randomStart = true)
+    fun playVisible(tracks: List<Track>, index: Int, randomStart: Boolean = false) {
         if (query.text.isNotBlank()) {
             sourceLibrarySearchQueue("source-library-search:$selectedId:${collection.name}", libraryCollectionTitle(collection), tracks, index)
-                ?.let { player?.playQueue(it) }
-        } else play(tracks, index)
+                ?.let { player?.playQueue(it, randomStart = randomStart) }
+        } else if (randomStart) playAll(tracks, index) else play(tracks, index)
     }
     SourceBrowseScrollRequests(listState)
     val categoryOverview = style == LibraryStyle.AppleMusic && category == null && initialCollection == null && !showArtists
     val hasCoreCollection = collection in available && page !in setOf(LibraryPage.Cloud, LibraryPage.History, LibraryPage.Downloads)
+    val libraryRequest = remember(collection) { SourceContentRequest.Library(collection) }
+    val createdLibraryRequest = remember { SourceContentRequest.Library(LibraryCollection.CREATED_PLAYLISTS) }
     LaunchedEffect(collection, page, selectedId, categoryOverview, hasCoreCollection) {
-        if (!categoryOverview && hasCoreCollection) viewModel.open(SourceContentRequest.Library(collection))
-        if (!categoryOverview && needsCreated) createdViewModel.open(SourceContentRequest.Library(LibraryCollection.CREATED_PLAYLISTS))
+        if (!categoryOverview && hasCoreCollection) viewModel.open(libraryRequest)
+        if (!categoryOverview && needsCreated) createdViewModel.open(createdLibraryRequest)
     }
     var appliedDefault by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(preferences, selectedId, provider) {
@@ -669,7 +707,8 @@ fun SourceLibraryScreen(
             loaded.providerId == selectedId && loaded.providerVersion == provider?.version &&
                 (revisionFlow == null || loaded.accountRevision == accountRevision) && !loaded.loading &&
                 (loaded.error == SourceErrorCode.AUTH_REQUIRED || loaded.error == SourceErrorCode.AUTH_EXPIRED ||
-                    loaded.error == null && SourceCapability.ACCOUNT in provider?.capabilities.orEmpty() && loaded.account == null)
+                    loaded.error == null && !loaded.cachedSnapshot &&
+                    SourceCapability.ACCOUNT in provider?.capabilities.orEmpty() && loaded.account == null)
         }
     if (requiresSignIn) {
         MeiloXPinnedListPage(title = title, bottomPadding = bottom,
@@ -750,18 +789,38 @@ fun SourceLibraryScreen(
     } }
     val combined = ownState.copy(items = displayed, loading = ownState.loading || extra?.loading == true,
         hasMore = ownState.hasMore || extra?.hasMore == true, error = ownState.error ?: extra?.error)
-    fun refresh() {
-        when (page) {
-            LibraryPage.Cloud -> cloudViewModel?.refresh()
-            LibraryPage.History -> historyViewModel?.refresh()
+    fun refresh(fromPull: Boolean = false): Boolean {
+        fun refreshCollection(owner: SourceContentViewModel, request: SourceContentRequest.Library): Boolean {
+            if (fromPull) return owner.refreshOnPull(request, selectedId)
+            owner.refresh()
+            return false
+        }
+        return when (page) {
+            LibraryPage.Cloud -> cloudViewModel?.let {
+                it.refresh()
+                it.state.value.isLoading
+            } == true
+            LibraryPage.History -> historyViewModel?.let {
+                it.refresh()
+                it.state.value.isRefreshing
+            } == true
             else -> {
-                if (hasCoreCollection) viewModel.refresh()
-                if (needsCreated) createdViewModel.refresh()
-                if (mergePodcasts) { podcastViewModel?.selectTab(PodcastTab.Subscriptions); podcastViewModel?.refresh() }
+                val coreRefreshing = hasCoreCollection && refreshCollection(viewModel, libraryRequest)
+                val createdRefreshing = needsCreated && refreshCollection(createdViewModel, createdLibraryRequest)
+                val podcastsRefreshing = podcastViewModel?.let {
+                    it.selectTab(PodcastTab.Subscriptions)
+                    it.refresh()
+                    it.state.value.isSubscriptionsLoading
+                } == true
+                coreRefreshing || createdRefreshing || podcastsRefreshing
             }
         }
     }
-    fun more() { if (ownState.hasMore) viewModel.loadMore(); if (extra?.hasMore == true) createdViewModel.loadMore() }
+    fun more() {
+        val pageSize = if (query.text.isBlank()) 30 else 100
+        if (ownState.hasMore) viewModel.loadMore(pageSize)
+        if (extra?.hasMore == true) createdViewModel.loadMore(pageSize)
+    }
     LaunchedEffect(query.text, ownState.nextCursor, extra?.nextCursor, combined.loading) {
         if (query.text.isNotBlank() && !combined.loading && combined.error == null && combined.hasMore) { delay(250); more() }
     }
@@ -770,10 +829,36 @@ fun SourceLibraryScreen(
     val collectionLoading = combined.loading || ownState.refreshing || extra?.refreshing == true || podcastState?.isSubscriptionsLoading == true ||
         podcastState?.isLoadingMoreSubscriptions == true || cloudState?.isLoading == true ||
         cloudState?.isLoadingMore == true || historyState.isRefreshing
-    var pullRefreshing by remember(page, featureOwner) { mutableStateOf(false) }
-    LaunchedEffect(collectionLoading) { if (!collectionLoading) pullRefreshing = false }
+    var pullRefreshing by remember(page, collection, featureOwner) { mutableStateOf(false) }
+    LaunchedEffect(pullRefreshing, collectionLoading) {
+        if (!collectionLoading) pullRefreshing = false
+    }
     val emptyText = if (query.text.isNotBlank()) stringResource(R.string.no_search_results) else libraryCollectionEmpty(collection, playlistFilter)
     val rankAccount = ownState.account ?: extra?.account
+    val shareContent = if (
+        LocalLibrarySharePresenter.current != null && !landscape &&
+        page == LibraryPage.Songs && !showArtists && hasCoreCollection
+    ) remember(listState) { LibraryShareContent() } else null
+    val sharePageStable = rememberUpdatedState(!collectionLoading && combined.error == null)
+    val shareContentStable = remember(shareContent, listState, isNavigationTab) {
+        derivedStateOf {
+            if (shareContent == null || shareContent.mayHaveNativeContent ||
+                (isNavigationTab && shareContent.mountedProfileImages == 0) ||
+                !sharePageStable.value || pullRefreshing || searchActive || query.text.isNotEmpty() ||
+                listState.isScrollInProgress || tabPosition.isRunning
+            ) return@derivedStateOf false
+            if (shareContent.requests.any { !it.stablePixels }) return@derivedStateOf false
+            val activeArtworks = shareContent.requests.mapTo(HashSet()) { it.key }
+            val visibleItems = listState.layoutInfo.visibleItemsInfo
+            visibleItems.any { val key = it.key; key is String && key in activeArtworks } && visibleItems.all {
+                when (val key = it.key) {
+                    "source-library-large-title", "source-library-search", "source-library-pages",
+                    "source-library-play-all", "source-library-top-divider" -> true
+                    else -> key is String && key in activeArtworks
+                }
+            }
+        }
+    }
     registerMeiloXNavigationViewport(listState)
     MeiloXPinnedPage(title = title, bottomPadding = bottom, collapseProgress = collapse,
         topBarBlurProgress = rememberGlasmioHeaderScrollEdge(listState),
@@ -786,112 +871,129 @@ fun SourceLibraryScreen(
                 { cloudViewModel.upload() }, enabled = cloudState?.isUploading != true) { SfIcon("arrow.up.circle.fill", null) } else null,
             if (page == LibraryPage.History && historyState.canClearLocalHistory && historyViewModel != null)
                 meiloxHeaderAction("source-library-clear-history", stringResource(R.string.clear_history), historyViewModel::clearHistory) { SfIcon("trash", null) } else null,
-            if (isNavigationTab) globalProfileHeaderAction() else null) }) { contentPadding ->
-        LibraryCollectionRefresh(enabled = hasCoreCollection || mergePodcasts || cloudViewModel != null || historyViewModel != null,
-            isRefreshing = pullRefreshing && collectionLoading, topPadding = contentPadding.calculateTopPadding(),
-            onRefresh = {
-                if (!collectionLoading) {
-                    pullRefreshing = true
-                    refresh()
-                }
-            }) {
+            if (isNavigationTab) globalProfileHeaderAction(shareContent) else null) }) { contentPadding ->
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val columns = (maxWidth / 180.dp).toInt().coerceAtLeast(2)
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(
-                start = if (landscape) 32.dp else 16.dp, end = if (landscape) 32.dp else 16.dp,
-                top = contentPadding.calculateTopPadding() + if (landscape) LandscapeSearchTopAdjustment else 0.dp,
-                bottom = contentPadding.calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                if (!landscape) item("source-library-large-title") { Text(title, style = IosTypography.largeTitle, color = colors.content,
-                    modifier = Modifier.offset(y = (-10).dp).padding(vertical = 6.dp).padding(bottom = 12.dp)) }
-                item("source-library-search") { GlasmioSearchBar(query = query, onQueryChange = { query = it }, active = searchActive,
-                    onActiveChange = { searchActive = it }, onClose = { query = TextFieldValue(); searchActive = false },
-                    placeholder = stringResource(R.string.search_bar_search), closeContentDescription = stringResource(R.string.cancel),
-                    onSearch = { focus.clearFocus() }, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) }
-                if (category == null && !showArtists) item("source-library-pages") { GlasmioSegmentedControl(
-                    items = pages.map { it to stringResource(it.titleRes) }, selected = page, onSelected = ::openPage,
-                    positionAnimation = tabPosition, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) }
-                if (page == LibraryPage.Playlists && !showArtists) item("source-library-filter") { GlasmioSegmentedControl(
-                    items = listOf("all" to stringResource(R.string.library_filter_all), "created" to stringResource(R.string.library_filter_created), "saved" to stringResource(R.string.library_filter_subscribed)),
-                    selected = playlistFilter, onSelected = { playlistFilter = it }, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) }
-                if (page == LibraryPage.Playlists && !showArtists && query.text.isBlank() && hasListeningRank && rankAccount != null) {
-                    item("source-library-playlist-rank") {
-                        GlasmioGroupedList(Modifier.padding(bottom = 12.dp)) {
-                            GlasmioListRow(title = stringResource(R.string.account_listening_rank), systemName = "chart.bar.xaxis",
-                                showTopSeparator = false, onClick = {
-                                    Screen.AccountListeningRank.navigate(nav) {
-                                        addPath(Uri.encode(rankAccount.ref.accountId.value))
-                                        addQuery("providerId", Uri.encode(selectedId))
-                                    }
-                                })
+            LibraryCollectionRefresh(
+                enabled = hasCoreCollection || mergePodcasts || cloudViewModel != null || historyViewModel != null,
+                isRefreshing = pullRefreshing && collectionLoading,
+                topPadding = contentPadding.calculateTopPadding(),
+                onRefresh = {
+                    if (!collectionLoading) {
+                        pullRefreshing = refresh(fromPull = true)
+                    }
+                },
+            ) {
+                LazyColumn(state = listState,
+                    modifier = Modifier.fillMaxSize().trackPressViewport(),
+                    contentPadding = glasmioHorizontalContentPadding(PaddingValues(
+                    start = if (landscape) 32.dp else 16.dp, end = if (landscape) 32.dp else 16.dp,
+                    top = contentPadding.calculateTopPadding() + if (landscape) LandscapeSearchTopAdjustment else 0.dp,
+                    bottom = contentPadding.calculateBottomPadding())), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    if (!landscape) item("source-library-large-title") { Text(title, style = IosTypography.largeTitle, color = colors.content,
+                        modifier = Modifier.offset(y = (-10).dp).padding(vertical = 6.dp).padding(bottom = 12.dp)) }
+                    item("source-library-search") { GlasmioSearchBar(query = query, onQueryChange = { query = it }, active = searchActive,
+                        onActiveChange = { searchActive = it }, onClose = { query = TextFieldValue(); searchActive = false },
+                        placeholder = stringResource(R.string.search_bar_search), closeContentDescription = stringResource(R.string.cancel),
+                        onSearch = { focus.clearFocus() }, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) }
+                    if (category == null && !showArtists) item("source-library-pages") { GlasmioSegmentedControl(
+                        items = pages.map { it to stringResource(it.titleRes) }, selected = page, onSelected = ::openPage,
+                        positionAnimation = tabPosition, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) }
+                    if (page == LibraryPage.Playlists && !showArtists) item("source-library-filter") { GlasmioSegmentedControl(
+                        items = listOf("all" to stringResource(R.string.library_filter_all), "created" to stringResource(R.string.library_filter_created), "saved" to stringResource(R.string.library_filter_subscribed)),
+                        selected = playlistFilter, onSelected = { playlistFilter = it }, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) }
+                    if (page == LibraryPage.Playlists && !showArtists && query.text.isBlank() && hasListeningRank && rankAccount != null) {
+                        item("source-library-playlist-rank") {
+                            GlasmioGroupedList(Modifier.padding(bottom = 12.dp)) {
+                                GlasmioListRow(title = stringResource(R.string.account_listening_rank), systemName = "chart.bar.xaxis",
+                                    showTopSeparator = false, onClick = {
+                                        Screen.AccountListeningRank.navigate(nav) {
+                                            addPath(Uri.encode(rankAccount.ref.accountId.value))
+                                            addQuery("providerId", Uri.encode(selectedId))
+                                        }
+                                    })
+                            }
                         }
                     }
-                }
-                if (page == LibraryPage.Songs && !showArtists && filtered.isNotEmpty()) item("source-library-play-all") { GlasmioGroupedList(Modifier.padding(bottom = 12.dp)) {
-                    GlasmioListRow(title = stringResource(R.string.library_play_all), systemName = "play.fill", showTopSeparator = false,
-                        onClick = { playVisible(filtered.filterIsInstance<SourceItem.TrackItem>().map { it.track }, 0) })
-                    if (hasRadio) GlasmioListRow(title = stringResource(R.string.library_heart_mode), systemName = "heart.circle.fill",
-                        onClick = { player?.fmStart(filtered.filterIsInstance<SourceItem.TrackItem>().randomOrNull()?.track?.ref?.trackId, selectedId) })
-                } }
-                if (page == LibraryPage.Cloud && !showArtists) {
-                    cloudState?.let { libraryCloudItems(it, player, query.text.trim()) { cloudViewModel?.loadMore() } }
-                } else if (page == LibraryPage.History && !showArtists) {
-                    libraryHistoryItems(historyState, player, query.text.trim())
-                } else {
-                if (page in setOf(LibraryPage.Playlists, LibraryPage.Songs) && !showArtists && filtered.isNotEmpty()) item("source-library-top-divider") {
-                    HorizontalDivider(Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp),
-                        thickness = 0.5.dp, color = songListDividerColor())
-                }
-                if (page == LibraryPage.Albums || showArtists) {
-                    if (mergePodcasts && hasCoreCollection) item("source-library-albums-heading") {
-                        Box(Modifier.padding(bottom = 12.dp)) { LibraryCollectionHeading(stringResource(R.string.library_page_albums)) }
-                    }
-                    items(filtered.chunked(columns), key = { row -> "source-library-grid:${row.first().ref}" }) { row ->
-                        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            row.forEach { item -> LibraryGridItem(title = item.title, subtitle = when (item) {
-                                is SourceItem.AlbumItem -> item.album.artists.joinToString(" / ") { it.name }
-                                else -> ""
-                            }, cover = item.artworkUrl, onClick = { navigateSourceContent(nav, item.ref) }, modifier = Modifier.weight(1f),
-                                captionSpacing = 8.dp, titleStyle = IosTypography.body.copy(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium)) }
-                            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                    if (page == LibraryPage.Songs && !showArtists && filtered.isNotEmpty()) item("source-library-play-all") {
+                        LibraryShareIndication(shareContent) {
+                            GlasmioGroupedList(Modifier.padding(bottom = 12.dp)) {
+                                GlasmioListRow(title = stringResource(R.string.library_play_all), systemName = "play.fill", showTopSeparator = false,
+                                    onClick = { playVisible(filtered.filterIsInstance<SourceItem.TrackItem>().map { it.track }, 0, randomStart = true) })
+                                if (hasRadio) GlasmioListRow(title = stringResource(R.string.library_heart_mode), systemName = "heart.circle.fill",
+                                    onClick = { player?.fmStart(filtered.filterIsInstance<SourceItem.TrackItem>().randomOrNull()?.track?.ref?.trackId, selectedId) })
+                            }
                         }
                     }
-                } else items(filtered, key = { "source-library-row:${it.ref}" }) { item ->
-                    when (item) {
-                        is SourceItem.TrackItem -> LandscapeMediaRow(modifier = Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp), landscape = landscape,
-                            image = item.artworkUrl, title = item.title, artist = item.track.artists.joinToString(" / ") { it.name },
-                            detail = if (landscape) formatDuration(item.track.durationMs) else "", album = item.track.album.title,
-                            isCurrentTrack = item.ref == playingLikedTrack,
-                            favorite = true, showDivider = item.ref != filtered.lastOrNull()?.ref,
-                            onClick = { val tracks = filtered.filterIsInstance<SourceItem.TrackItem>().map { it.track }; playVisible(tracks, tracks.indexOf(item.track)) },
-                            onMore = { selection = item.track to it })
-                        is SourceItem.PlaylistItem -> LandscapeMediaRow(modifier = Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp), image = item.artworkUrl,
-                            title = item.title, artist = item.playlist.creatorName, detail = stringResource(R.string.playlist_song_count, item.playlist.trackCount),
-                            onClick = { navigateSourceContent(nav, item.ref) }, navigationArrow = true, showDivider = item.ref != filtered.lastOrNull()?.ref)
-                        else -> Unit
+                    if (page == LibraryPage.Cloud && !showArtists) {
+                        cloudState?.let { libraryCloudItems(it, player, query.text.trim()) { cloudViewModel?.loadMore() } }
+                    } else if (page == LibraryPage.History && !showArtists) {
+                        libraryHistoryItems(historyState, player, query.text.trim())
+                    } else {
+                    if (page in setOf(LibraryPage.Playlists, LibraryPage.Songs) && !showArtists && filtered.isNotEmpty()) item("source-library-top-divider") {
+                        HorizontalDivider(Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp),
+                            thickness = 0.5.dp, color = songListDividerColor())
                     }
-                }
-                    if (hasCoreCollection) sourceBrowseStatus(combined, filtered.size, emptyText,
-                        emptySymbol = if (showArtists) SfSymbol.PersonFilled else page.symbol,
-                        onRetry = ::refresh, onLoadMore = ::more, onConfigure = { openSourceConfiguration(viewModel.pluginId(), nav) })
-                    if (mergePodcasts && podcastViewModel != null && podcastState != null) {
-                        item("source-library-podcasts-heading") { Box(Modifier.padding(bottom = 12.dp)) { LibraryCollectionHeading(stringResource(R.string.library_page_podcasts)) } }
-                        libraryPodcastItems(nav, podcastState, podcastViewModel, query.text.trim(), columns, rowSpacing = 12.dp)
+                    if (page == LibraryPage.Albums || showArtists) {
+                        if (mergePodcasts && hasCoreCollection) item("source-library-albums-heading") {
+                            Box(Modifier.padding(bottom = 12.dp)) { LibraryCollectionHeading(stringResource(R.string.library_page_albums)) }
+                        }
+                        items(filtered.chunked(columns), key = { row -> "source-library-grid:${row.first().ref}" }) { row ->
+                            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                row.forEach { item -> LibraryGridItem(title = item.title, subtitle = when (item) {
+                                    is SourceItem.AlbumItem -> item.album.artists.joinToString(" / ") { it.name }
+                                    else -> ""
+                                }, cover = item.artworkUrl, onClick = { navigateSourceContent(nav, item.ref) }, modifier = Modifier.weight(1f),
+                                    captionSpacing = 8.dp, titleStyle = IosTypography.body.copy(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium)) }
+                                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    } else items(filtered, key = { "source-library-row:${it.ref}" }) { item ->
+                        when (item) {
+                            is SourceItem.TrackItem -> CompositionLocalProvider(
+                                LocalLibraryShareArtwork provides shareContent?.let { LibraryShareArtwork(it, "source-library-row:${item.ref}") },
+                            ) {
+                                LandscapeMediaRow(modifier = Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp), landscape = landscape,
+                                    image = item.artworkUrl, title = item.title, artist = item.track.artists.joinToString(" / ") { it.name },
+                                    detail = if (landscape) formatDuration(item.track.durationMs) else "", album = item.track.album.title,
+                                    isCurrentTrack = item.ref == playingLikedTrack, fullWidthTrackPress = true,
+                                    favorite = true, showDivider = item.ref != filtered.lastOrNull()?.ref,
+                                    onClick = { val tracks = filtered.filterIsInstance<SourceItem.TrackItem>().map { it.track }; playVisible(tracks, tracks.indexOf(item.track)) },
+                                    onMore = { selection.value = item.track to it }, menuAnchorState = trackMenuAnchor)
+                            }
+                            is SourceItem.PlaylistItem -> LandscapeMediaRow(modifier = Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp), image = item.artworkUrl,
+                                title = item.title, artist = item.playlist.creatorName, detail = stringResource(R.string.playlist_song_count, item.playlist.trackCount),
+                                onClick = { navigateSourceContent(nav, item.ref) }, navigationArrow = true,
+                                showPressIndication = true, showDivider = item.ref != filtered.lastOrNull()?.ref)
+                            else -> Unit
+                        }
                     }
-                }
+                        if (hasCoreCollection) sourceBrowseStatus(combined, filtered.size, emptyText,
+                            emptySymbol = if (showArtists) SfSymbol.PersonFilled else page.symbol,
+                            trackSkeleton = page == LibraryPage.Songs && !showArtists,
+                            onRetry = { refresh() }, onLoadMore = ::more, onConfigure = { openSourceConfiguration(viewModel.pluginId(), nav) })
+                        if (mergePodcasts && podcastViewModel != null && podcastState != null) {
+                            item("source-library-podcasts-heading") { Box(Modifier.padding(bottom = 12.dp)) { LibraryCollectionHeading(stringResource(R.string.library_page_podcasts)) } }
+                            libraryPodcastItems(nav, podcastState, podcastViewModel, query.text.trim(), columns, rowSpacing = 12.dp)
+                        }
+                    }
 
+                }
             }
             if (playingLikedTrack != null && !searchActive && query.text.isBlank() && filtered.isNotEmpty()) {
                 SourceTrackLocateButton(
-                    viewModel, SourceContentRequest.Library(collection), ownState, playingLikedTrack, listState,
+                    viewModel, libraryRequest, ownState, playingLikedTrack, listState,
                     // Search, play actions, divider, and the optional title and page tabs.
                     leadingItems = 3 + (if (landscape) 0 else 1) + (if (category == null) 1 else 0),
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
             }
         }
-        }
     }
-    SourceTrackActions(selection, { selection = null }, viewModel)
+    SourceTrackActions(
+        selection, viewModel, menuAnchorState = trackMenuAnchor,
+        canDetachShareBackdrop = shareContent?.let { { shareContentStable.value } },
+    )
 }
 
 
@@ -999,11 +1101,14 @@ private fun LazyListScope.sourceBrowseStatus(
     emptyText: String,
     horizontalPadding: Dp = 0.dp,
     emptySymbol: SfSymbol? = null,
+    trackSkeleton: Boolean = false,
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
     onConfigure: () -> Unit,
 ) {
-    if (state.loading) item("source-content-loading") { SourceBrowseLoading() }
+    if (state.loading) item("source-content-loading") {
+        if (trackSkeleton) SourceTrackBrowseLoading() else SourceBrowseLoading()
+    }
     state.error?.let { error ->
         item("source-content-error") {
             GlasmioGroupedList(Modifier.padding(horizontal = horizontalPadding, vertical = 10.dp)) {
@@ -1025,7 +1130,7 @@ private fun LazyListScope.sourceBrowseStatus(
         LaunchedEffect(state.providerId, state.providerVersion, state.accountRevision, state.nextOffset, state.nextCursor) {
             onLoadMore()
         }
-        SourceBrowseLoading()
+        if (trackSkeleton) SourceTrackBrowseLoading() else SourceBrowseLoading()
     }
 }
 
@@ -1033,6 +1138,15 @@ private fun LazyListScope.sourceBrowseStatus(
 private fun SourceBrowseLoading() {
     Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
         CircularProgressIndicator(modifier = Modifier.size(24.dp), color = LocalGlassColors.current.accent, strokeWidth = 2.dp)
+    }
+}
+
+@Composable
+private fun SourceTrackBrowseLoading() {
+    ShimmerHost {
+        repeat(3) {
+            TrackItemShimmer(isTablet = false, flatDetailStyle = true, showArtwork = true)
+        }
     }
 }
 

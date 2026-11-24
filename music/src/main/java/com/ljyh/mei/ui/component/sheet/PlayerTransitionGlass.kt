@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.component.sheet
 
+import io.github.neoruaa.glasmio.glass.render.isRuntimeShaderSupported
 import android.graphics.RenderEffect
 import android.graphics.Paint
 import android.graphics.RuntimeShader
@@ -79,12 +80,12 @@ internal class PlayerTransitionGlassRenderer(
     private var pathShape: Shape? = null
     private var pathDensity = 0f
     private var pathLayoutDirection: LayoutDirection? = null
-    private val light = RuntimeShader(PlayerPressFieldShader + """
+    private val light = if (isRuntimeShaderSupported()) RuntimeShader(PlayerPressFieldShader + """
 half4 main(float2 p) { return half4(playerPressMask(p), 0.0, 1.0); }
-""")
+""") else null
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { shader = light }
     private val blender = if (Build.VERSION.SDK_INT >= 36) PlayerPressBlender() else null
-    private val sampledLight = if (Build.VERSION.SDK_INT < 36) RuntimeShader(
+    private val sampledLight = if (isRuntimeShaderSupported() && Build.VERSION.SDK_INT < 36) RuntimeShader(
         GlassColorSpaceShaderFunctions + PlayerPressFieldShader + PlayerPressTransferShader + """
 uniform shader content;
 uniform float glowGain;
@@ -97,10 +98,12 @@ half4 main(float2 p) {
 
     init {
         val c = PlayerPressGlowCoefficients
-        for (program in listOfNotNull(light, sampledLight)) {
-            program.setFloatUniform("pressPolynomialLow", c[0], c[1], c[2], c[3])
-            program.setFloatUniform("pressPolynomialHigh", c[4], c[5], c[6], c[7])
-            program.setFloatUniform("pressPolynomialLast", c[8])
+        if (isRuntimeShaderSupported()) {
+            for (program in listOfNotNull(light, sampledLight)) {
+                program.setFloatUniform("pressPolynomialLow", c[0], c[1], c[2], c[3])
+                program.setFloatUniform("pressPolynomialHigh", c[4], c[5], c[6], c[7])
+                program.setFloatUniform("pressPolynomialLast", c[8])
+            }
         }
     }
 
@@ -150,7 +153,8 @@ half4 main(float2 p) {
         outlinePath: Path? = null,
         drawMaterial: DrawScope.() -> Unit,
     ) = with(scope) {
-        if (highlight.glowProgress <= 0f || source.isEmpty || sourceLayoutSize.isEmpty()) {
+        if (!isRuntimeShaderSupported() || light == null || highlight.glowProgress <= 0f ||
+            source.isEmpty || sourceLayoutSize.isEmpty()) {
             drawMaterial()
             return@with
         }

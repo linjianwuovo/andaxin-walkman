@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_apple_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:background="@drawable/widget_apple_open_surface"
+        android:padding="11dp"
+        android:src="@drawable/widget_apple_ic_open"
+        android:tint="@color/widget_apple_open_icon"
+        android:contentDescription="@string/app_tab_search" />
+</FrameLayout>

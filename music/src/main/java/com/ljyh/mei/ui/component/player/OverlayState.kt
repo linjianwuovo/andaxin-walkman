@@ -3,13 +3,15 @@ package com.ljyh.mei.ui.component.player
 import androidx.compose.ui.geometry.Rect
 
 import com.ljyh.mei.data.model.MediaMetadata
+import com.ljyh.mei.source.api.TrackRef
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 
 sealed interface OverlayState {
     data object None : OverlayState
     data object Playlist : OverlayState
     data object SleepTimer : OverlayState
     data object CreatePlaylist: OverlayState
-    data class AddToPlaylist(val mediaId: Long) : OverlayState
+    data class AddToPlaylist(val track: TrackRef) : OverlayState
     data class MusicQualitySelection(val current: Int) : OverlayState
     data class QQMusicSelection(
         val mediaMetadata: MediaMetadata
@@ -30,5 +32,9 @@ sealed interface OverlayState {
     data class Share(val metadata: MediaMetadata): OverlayState
     data object BottomAction: OverlayState
 
-    data class TrackActionMenu(val track: MediaMetadata, val anchorBounds: Rect? = null): OverlayState
+    data class TrackActionMenu(
+        val track: MediaMetadata,
+        val anchorBounds: Rect? = null,
+        val menuAnchorState: GlasmioMenuAnchorState? = null,
+    ) : OverlayState
 }

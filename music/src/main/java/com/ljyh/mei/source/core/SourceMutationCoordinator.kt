@@ -73,24 +73,32 @@ class SourceMutationCoordinator internal constructor(
 
     internal suspend fun <T> mutate(owner: SourceMutationOwner, resource: String, signature: Any? = null,
         block: suspend () -> T): T {
-        val caller = currentCoroutineContext().minusKey(Job).minusKey(SourceMutationContext)
+        val context = currentCoroutineContext()
+        val authorization = context[SourceMutationAuthorization]
+        val caller = context.minusKey(Job).minusKey(SourceMutationContext)
         ensureCurrent(owner)
+        authorization?.check?.invoke()
         val key = Key(owner.provider, resource)
         val task = synchronized(lock) {
             val entry = entries.getOrPut(key, ::Entry)
             val previous = entry.pending
-            if (signature != null && previous != null && !previous.isCompleted && entry.signature == signature && entry.owner == owner) previous else {
+            val canReuse = authorization == null && signature != null && entry.signature == signature && entry.owner == owner
+            if (canReuse && previous != null && !previous.isCompleted) previous else {
                 lateinit var accepted: Deferred<Any?>
-                accepted = scope.async(context = caller, start = CoroutineStart.LAZY) {
+                // Remote writes remain children of the authenticated request. Ordinary accepted
+                // writes retain their existing, screen-independent lifetime.
+                val mutationContext = if (authorization == null) caller else caller + checkNotNull(context[Job])
+                accepted = scope.async(context = mutationContext, start = CoroutineStart.LAZY) {
                     pinned(owner, resource) {
                         previous?.join()
                         ensureCurrent(owner)
+                        authorization?.check?.invoke()
                         block().also { ensureCurrent(owner) }
                     }
                 }
                 entry.epoch++
                 entry.pending = accepted
-                entry.signature = signature
+                entry.signature = signature.takeIf { authorization == null }
                 entry.owner = owner
                 accepted.invokeOnCompletion {
                     synchronized(lock) {
@@ -183,4 +191,9 @@ internal data class SourceMutationOwner(val provider: MusicProvider, val version
 /** The script checks this pin again after it acquires its operation mutex. */
 internal class SourceMutationContext(val owner: SourceMutationOwner, val resource: String) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<SourceMutationContext>
+}
+
+/** Request-owned write gate for clients whose permission may change while a write is queued. */
+internal class SourceMutationAuthorization(val check: () -> Unit) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<SourceMutationAuthorization>
 }

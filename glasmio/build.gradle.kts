@@ -14,7 +14,7 @@ subprojects {
     plugins.withId("com.android.library") {
         configure<LibraryExtension> {
             compileSdk = 37
-            defaultConfig { minSdk = 33 }
+            defaultConfig { minSdk = 31 }
             compileOptions {
                 sourceCompatibility = JavaVersion.VERSION_21
                 targetCompatibility = JavaVersion.VERSION_21

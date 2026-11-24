@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.component.player.component.sheet
 
+import android.os.Build
 import com.ljyh.mei.ui.component.sheet.MeiloXBottomSheet
 import android.Manifest
 import android.content.Intent
@@ -178,7 +179,8 @@ fun SleepTimerSheet(
                         systemName = "bell.slash",
                         showTopSeparator = false,
                         onClick = {
-                            val permissionGranted = ContextCompat.checkSelfPermission(
+                            val permissionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                                ContextCompat.checkSelfPermission(
                                 context,
                                 Manifest.permission.POST_NOTIFICATIONS,
                             ) == PackageManager.PERMISSION_GRANTED
@@ -201,7 +203,8 @@ fun SleepTimerSheet(
             GlasmioButton(
                 onClick = {
                     timer.start(selectedOption)
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
                         PackageManager.PERMISSION_GRANTED
                     ) {
                         permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)

@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonObject
 import com.ljyh.mei.AppContext
+import com.ljyh.mei.R
 import com.ljyh.mei.constants.DownloadPathKey
 import com.ljyh.mei.constants.DownloadQualityKey
 import com.ljyh.mei.constants.MusicQuality
@@ -97,7 +98,7 @@ class PlayerViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            sourceRouter.contentRevision.drop(1).collect {
+            sourceRouter.trackLikeRevision.drop(1).collect {
                 if (sourceLikeWriteJob?.isActive != true) {
                     invalidateFavoriteCache()
                     selectedLikeRef?.let(::getSourceLike)
@@ -333,6 +334,84 @@ class PlayerViewModel @Inject constructor(
         qqSongRepository.getQQSong(metadata.lyricStorageKey()).firstOrNull()?.qid
 
 
+
+    private val mutableQueueCollectionInProgress = MutableStateFlow(false)
+    val queueCollectionInProgress = mutableQueueCollectionInProgress.asStateFlow()
+
+    fun likeQueueTracks(tracks: List<TrackRef>) = collectQueue(tracks.size, R.string.queue_liked_count) {
+        setQueueTracksLiked(tracks)
+    }
+
+    fun saveQueuePlaylist(tracks: List<TrackRef>, name: String, privacy: Boolean) =
+        collectQueue(tracks.size, R.string.queue_playlist_count) { createQueuePlaylist(tracks, name, privacy) }
+
+    private fun collectQueue(total: Int, message: Int, collect: suspend () -> Int) {
+        if (total <= 0 || !mutableQueueCollectionInProgress.compareAndSet(false, true)) return
+        viewModelScope.launch {
+            val app = AppContext.instance
+            try {
+                Toast.makeText(app, app.getString(message, collect(), total), Toast.LENGTH_SHORT).show()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.w(error, "Could not collect queue tracks")
+                Toast.makeText(app, R.string.queue_collection_failed, Toast.LENGTH_SHORT).show()
+            } finally {
+                mutableQueueCollectionInProgress.value = false
+            }
+        }
+    }
+
+    private suspend fun setQueueTracksLiked(tracks: List<TrackRef>): Int {
+        var liked = 0
+        for ((providerId, refs) in tracks.groupBy(TrackRef::providerId)) {
+            val owner = sourceRouter.registry.provider(providerId) ?: continue
+            val revision = (owner as? AccountRevisionCapability)?.accountRevision?.first()
+            for (batch in refs.chunked(100)) {
+                val status = try {
+                    sourceRouter.liked(batch)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    break
+                }
+                for (ref in batch) {
+                    try {
+                        ensurePlaylistAccount(owner, revision)
+                        if (status[ref] != true) sourceRouter.setLiked(ref, true, revision, owner)
+                        liked++
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        // A rejected track does not prevent saving the rest of the queue.
+                    }
+                }
+            }
+        }
+        return liked
+    }
+
+    private suspend fun createQueuePlaylist(tracks: List<TrackRef>, name: String, privacy: Boolean): Int {
+        val providerId = tracks.first().providerId
+        val owner = sourceRouter.registry.requireProvider(providerId)
+        val revision = (owner as? AccountRevisionCapability)?.accountRevision?.first()
+        val playlist = sourceRouter.createPlaylist(providerId, name, privacy = privacy,
+            expectedAccountRevision = revision, expectedProvider = owner)
+        var added = 0
+        for (batch in tracks.chunked(100)) {
+            try {
+                ensurePlaylistAccount(owner, revision)
+                sourceRouter.addTracks(playlist.ref, batch, revision, owner)
+                added += batch.size
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Keep the created playlist and report the number of confirmed tracks.
+                break
+            }
+        }
+        return added
+    }
 
     fun refreshPlaylistChoices() {
         playlistChoicesJob?.cancel()

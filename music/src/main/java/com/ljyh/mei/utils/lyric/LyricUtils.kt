@@ -100,14 +100,17 @@ fun mergeLyrics(sources: List<LyricSourceData>, isPureMusic: Boolean = false): L
                 val trimmed = line.trim()
                 trimmed.startsWith("[") && trimmed.contains("]") && trimmed.contains("(")
             }
-            if (hasYrcLines && translation != null) {
-                Timber.tag("LyricUtils").d("yrc and tlyric")
-                return LyricData(
-                    isVerbatim = true,
-                    isPureMusic = isPureMusic,
-                    source = LyricSource.NetEaseCloudMusic,
-                    lyricLine = attachPhonetics(YRCParser.parse(yrc, translation), n.romalrc?.lyric)
-                )
+            if (hasYrcLines) {
+                val parsed = attachPhonetics(YRCParser.parse(yrc, translation), n.romalrc?.lyric)
+                if (parsed.lines.isNotEmpty()) {
+                    Timber.tag("LyricUtils").d("yrc")
+                    return LyricData(
+                        isVerbatim = true,
+                        isPureMusic = isPureMusic,
+                        source = LyricSource.NetEaseCloudMusic,
+                        lyricLine = parsed
+                    )
+                }
             }
         }
     }

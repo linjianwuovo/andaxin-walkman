@@ -79,8 +79,19 @@ internal class SourceOnlineParser(val providerId: String, private val instanceId
         val user = p.get("user")?.featureObject() ?: invalidFeature()
         val author = OnlineCommentUser(user.optional("id") ?: user.text("userId"), user.text("nickname"), user.optional("avatarUrl"))
         val replies = p.get("showFloorComment")?.takeUnless { it.isJsonNull }?.featureObject()?.int("replyCount") ?: p.int("replyCount")
+        val voice = p.get("voiceInfo")?.takeIf(JsonElement::isJsonObject)?.asJsonObject
+        val duration = sequenceOf(p.get("voiceDurationMillSecond"), voice?.get("durationMs"),
+            voice?.get("voiceDurationMillSecond"))
+            .mapNotNull { it?.takeIf(JsonElement::isJsonPrimitive)?.asString?.toLongOrNull() }
+            .firstOrNull { it > 0 }
+        val hasVoice = duration != null || voice?.size()?.let { it > 0 } == true ||
+            listOf("voiceNosKey", "voiceWhaleId").any { key ->
+                p.get(key)?.takeIf(JsonElement::isJsonPrimitive)?.asString
+                    ?.let { it.isNotBlank() && it != "0" } == true
+            }
         OnlineComment(p.text("commentId"), author, p.featureText("content", optional = true, maximum = 20_000).orEmpty(),
-            p.featureLong("time"), p.optional("timeStr").orEmpty(), p.featureBoolean("liked"), p.int("likedCount"), replies)
+            p.featureLong("time"), p.optional("timeStr").orEmpty(), p.featureBoolean("liked"), p.int("likedCount"), replies,
+            voiceDurationMs = if (hasVoice) duration ?: 0 else null, providerId = providerId)
     }
     fun session(value: JsonElement): OnlineSessionState = value.featureObject().let {
         val authenticated = it.featureBoolean("authenticated")

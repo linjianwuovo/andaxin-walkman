@@ -28,13 +28,13 @@ import com.ljyh.mei.ui.component.player.component.sheet.QQMusicSelectSheet
 import com.ljyh.mei.ui.component.player.component.sheet.SleepTimerSheet
 import com.ljyh.mei.ui.component.player.component.sheet.SongInfoSheet
 import com.ljyh.mei.ui.component.player.state.PlayerStateContainer
-import com.ljyh.mei.ui.component.playlist.AddToPlaylistSheet
 import com.ljyh.mei.ui.component.playlist.CreatePlaylistSheet
 import io.github.neoruaa.glasmio.scaffold.GlasmioBottomSheetState
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.model.MoreAction
 import com.ljyh.mei.source.api.ProviderIds
 import com.ljyh.mei.ui.screen.source.SourceContentViewModel
+import com.ljyh.mei.ui.screen.source.SourcePlaylistPickerSheet
 import com.ljyh.mei.ui.screen.source.SourceTrackActions
 import com.ljyh.mei.ui.screen.source.SourceTrackActionMessage
 import com.ljyh.mei.ui.screen.source.navigateSourceContent
@@ -114,6 +114,7 @@ fun CommonOverlayHandler(
                     artists = overlay.artists,
                     playlistTitle = overlay.playlistTitle,
                     anchorBounds = anchor,
+                    menuAnchorState = overlayHandler.navigationMenuAnchor,
                     viewportBounds = overlay.viewportBounds,
                     onAlbumClick = onAlbumClick,
                     onArtistClick = onArtistClick,
@@ -176,18 +177,10 @@ fun CommonOverlayHandler(
             )
         }
 
-        is OverlayState.AddToPlaylist -> {
-            AddToPlaylistSheet(
-                playlists = stateContainer.myPlaylist.value,
-                onDismiss = { overlayHandler.dismiss() },
-                onSelectPlaylist = { selectedPlaylist ->
-                    overlayHandler.addSongToPlaylist(selectedPlaylist, overlay.mediaId)
-                },
-                onCreateNewPlaylist = {
-                    overlayHandler.showCreatePlaylist()
-                }
-            )
-        }
+        is OverlayState.AddToPlaylist -> SourcePlaylistPickerSheet(
+            track = overlay.track,
+            onDismiss = overlayHandler::dismiss,
+        )
 
         OverlayState.CreatePlaylist -> {
             CreatePlaylistSheet(
@@ -264,6 +257,7 @@ fun CommonOverlayHandler(
             SourceTrackActions(
                 metadata = overlay.track,
                 anchorBounds = overlay.anchorBounds,
+                menuAnchorState = overlay.menuAnchorState,
                 onDismiss = overlayHandler::dismiss,
                 viewModel = sourceViewModel,
                 playerViewModel = playerViewModel,

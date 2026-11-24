@@ -1,6 +1,7 @@
 package com.ljyh.mei.ui.component.item
 
 import com.ljyh.mei.ui.component.playlist.songListDividerColor
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,30 +15,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.height
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import com.ljyh.mei.constants.songListCoverSize
 import com.ljyh.mei.constants.songListCoverCornerRadius
 import com.ljyh.mei.ui.screen.playlist.component.DetailTrackDivider
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.ljyh.mei.R
@@ -46,7 +40,6 @@ import com.ljyh.mei.ui.component.playlist.PlayingImageView
 import com.ljyh.mei.ui.component.utils.rememberDeviceInfo
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
-import io.github.neoruaa.glasmio.glass.glasmioMenuAnchor
 import io.github.neoruaa.glasmio.icons.SfIcon
 
 /** Shared landscape catalog columns; the album column follows the available viewport. */
@@ -68,8 +61,11 @@ internal fun LandscapeMediaRow(
     footer: (@Composable () -> Unit)? = null,
     landscape: Boolean = rememberDeviceInfo().isLandscape,
     isCurrentTrack: Boolean = false,
+    showPressIndication: Boolean = false,
+    fullWidthTrackPress: Boolean = false,
     menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
+    val colors = LocalGlassColors.current
     if (!landscape) {
         PortraitMediaRow(
             image = image,
@@ -84,28 +80,33 @@ internal fun LandscapeMediaRow(
             favorite = favorite,
             showDivider = showDivider,
             onMore = onMore,
-            menuAnchorState = menuAnchorState,
             navigationArrow = navigationArrow,
             footer = footer,
             isCurrentTrack = isCurrentTrack,
+            showPressIndication = showPressIndication,
+            fullWidthTrackPress = fullWidthTrackPress,
+            menuAnchorState = menuAnchorState,
         )
         return
     }
-    val colors = LocalGlassColors.current
-    var anchor by remember(title, image) { mutableStateOf(Rect.Zero) }
-    val menuAnchorModifier = menuAnchorState?.let { Modifier.glasmioMenuAnchor(it) } ?: Modifier
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val showAlbum = album != null && maxWidth >= 1000.dp
         Column {
-            Box {
+            Box(Modifier.then(if (onClick != null) Modifier.clickable(
+                interactionSource = null,
+                indication = when {
+                    fullWidthTrackPress -> trackRowPressIndication()
+                    showPressIndication -> LocalIndication.current
+                    else -> null
+                },
+                onClick = onClick,
+            ) else Modifier)) {
                 if (favorite) FavoriteTrackStar(
                     Modifier.align(Alignment.CenterStart).offset(x = (-18).dp),
                     tint = colors.secondaryContent,
                 )
                 Row(
-                    Modifier.fillMaxWidth()
-                        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                        .padding(vertical = 4.dp),
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -126,15 +127,8 @@ internal fun LandscapeMediaRow(
                     if (!suffix.isNullOrBlank()) Text(suffix, Modifier.widthIn(max = 100.dp),
                         fontSize = 16.sp, color = suffixColor ?: colors.secondaryContent,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (onMore != null) Box(
-                        Modifier.size(44.dp).offset(x = (-8).dp)
-                            .then(menuAnchorModifier)
-                            .onGloballyPositioned { anchor = it.boundsInWindow() }
-                            .clip(ContinuousRoundedRectangle(22.dp))
-                            .clickable(interactionSource = null, indication = null, onClick = { onMore(anchor) }),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        SfIcon("ellipsis", stringResource(R.string.more_actions_title), size = 18.dp, tint = colors.secondaryContent)
+                    if (onMore != null) {
+                        MediaRowMenuButton(Modifier.offset(x = (-8).dp), 18.dp, menuAnchorState, onMore)
                     } else if (navigationArrow) Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
                         SfIcon("chevron.forward", null, size = 12.dp, tint = colors.separator)
                     }
@@ -163,22 +157,28 @@ internal fun PortraitMediaRow(
     navigationArrow: Boolean,
     footer: (@Composable () -> Unit)?,
     isCurrentTrack: Boolean = false,
+    showPressIndication: Boolean = false,
+    fullWidthTrackPress: Boolean = false,
     menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
     val colors = LocalGlassColors.current
-    val menuAnchorModifier = menuAnchorState?.let { Modifier.glasmioMenuAnchor(it) } ?: Modifier
-    var anchor by remember(title, image) { mutableStateOf(Rect.Zero) }
     Box(modifier.fillMaxWidth()) {
         Column {
-            Box {
+            Box(Modifier.then(if (onClick != null) Modifier.clickable(
+                interactionSource = null,
+                indication = when {
+                    fullWidthTrackPress -> trackRowPressIndication()
+                    showPressIndication -> LocalIndication.current
+                    else -> null
+                },
+                onClick = onClick,
+            ) else Modifier)) {
                 if (favorite) FavoriteTrackStar(
                     Modifier.align(Alignment.CenterStart).offset(x = (-16).dp),
                     tint = colors.secondaryContent,
                 )
                 Row(
-                    Modifier.fillMaxWidth()
-                        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                        .padding(vertical = 4.dp),
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -205,15 +205,8 @@ internal fun PortraitMediaRow(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    if (onMore != null) Box(
-                        Modifier.size(44.dp).offset(x = 8.dp)
-                            .then(menuAnchorModifier)
-                            .onGloballyPositioned { anchor = it.boundsInWindow() }
-                            .clip(ContinuousRoundedRectangle(22.dp))
-                            .clickable(interactionSource = null, indication = null, onClick = { onMore(anchor) }),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        SfIcon("ellipsis", stringResource(R.string.more_actions_title), size = 16.dp, tint = colors.secondaryContent)
+                    if (onMore != null) {
+                        MediaRowMenuButton(Modifier.offset(x = 8.dp), 16.dp, menuAnchorState, onMore)
                     } else if (navigationArrow) Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
                         SfIcon("chevron.forward", null, size = 12.dp, tint = colors.separator)
                     }
@@ -223,6 +216,27 @@ internal fun PortraitMediaRow(
         }
         footer?.let { progress ->
             Box(Modifier.align(Alignment.BottomStart).fillMaxWidth()) { progress() }
+        }
+    }
+}
+
+@Composable
+private fun MediaRowMenuButton(
+    offset: Modifier,
+    iconSize: Dp,
+    menuAnchorState: GlasmioMenuAnchorState?,
+    onMore: (Rect) -> Unit,
+) {
+    TrackMenuTrigger(menuAnchorState, onMore) { trigger, openMenu ->
+        Box(
+            Modifier.size(44.dp).then(offset)
+                .clip(ContinuousRoundedRectangle(22.dp))
+                .then(trigger)
+                .clickable(interactionSource = null, indication = null, onClick = openMenu),
+            contentAlignment = Alignment.Center,
+        ) {
+            SfIcon("ellipsis", stringResource(R.string.more_actions_title), size = iconSize,
+                tint = LocalGlassColors.current.secondaryContent)
         }
     }
 }

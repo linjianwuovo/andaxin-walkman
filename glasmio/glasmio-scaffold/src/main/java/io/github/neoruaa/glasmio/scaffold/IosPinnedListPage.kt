@@ -15,18 +15,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -38,6 +33,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -136,7 +132,16 @@ fun rememberGlasmioHeaderCollapse(
     enterBreakpoint: Dp = GlasmioHeaderCollapseDefaults.EnterBreakpoint,
     exitBreakpoint: Dp = GlasmioHeaderCollapseDefaults.ExitBreakpoint,
     animationSpec: AnimationSpec<Float> = GlasmioHeaderCollapseDefaults.Spring,
-): Float = rememberBreakpointCollapse(
+): Float = rememberGlasmioHeaderCollapseState(state, enterBreakpoint, exitBreakpoint, animationSpec).value
+
+/** Read the animated progress in the title or its graphics layer to keep the list independent. */
+@Composable
+fun rememberGlasmioHeaderCollapseState(
+    state: LazyListState,
+    enterBreakpoint: Dp = GlasmioHeaderCollapseDefaults.EnterBreakpoint,
+    exitBreakpoint: Dp = GlasmioHeaderCollapseDefaults.ExitBreakpoint,
+    animationSpec: AnimationSpec<Float> = GlasmioHeaderCollapseDefaults.Spring,
+): State<Float> = rememberBreakpointCollapse(
     stateKey = state,
     firstVisibleItemIndex = { state.firstVisibleItemIndex },
     firstVisibleItemScrollOffset = { state.firstVisibleItemScrollOffset },
@@ -159,7 +164,7 @@ fun rememberGlasmioHeaderCollapse(
     enterBreakpoint = enterBreakpoint,
     exitBreakpoint = exitBreakpoint,
     animationSpec = animationSpec,
-)
+).value
 
 @Composable
 private fun rememberBreakpointCollapse(
@@ -169,7 +174,7 @@ private fun rememberBreakpointCollapse(
     enterBreakpoint: Dp,
     exitBreakpoint: Dp,
     animationSpec: AnimationSpec<Float>,
-): Float {
+): State<Float> {
     val density = LocalDensity.current
     val enterPx = with(density) { enterBreakpoint.toPx().coerceAtLeast(1f) }
     // A wider exit threshold would make the state flip back and forth around one offset.
@@ -178,18 +183,18 @@ private fun rememberBreakpointCollapse(
         mutableStateOf(nextCollapsed(false, firstVisibleItemIndex(), firstVisibleItemScrollOffset(), enterPx, exitPx))
     }
     LaunchedEffect(stateKey, enterPx, exitPx) {
-        snapshotFlow { firstVisibleItemIndex() to firstVisibleItemScrollOffset() }
-            .collect { (index, offset) ->
-                val next = nextCollapsed(collapsed, index, offset, enterPx, exitPx)
-                if (next != collapsed) collapsed = next
-            }
+        snapshotFlow {
+            // Every item past the first is collapsed, regardless of its scroll offset.
+            if (firstVisibleItemIndex() > 0) null else firstVisibleItemScrollOffset()
+        }.collect { firstItemOffset ->
+            collapsed = firstItemOffset == null || nextCollapsed(collapsed, 0, firstItemOffset, enterPx, exitPx)
+        }
     }
-    val progress by animateFloatAsState(
+    return animateFloatAsState(
         targetValue = if (collapsed) 1f else 0f,
         animationSpec = animationSpec,
         label = "GlasmioHeaderCollapse",
     )
-    return progress
 }
 
 /**
@@ -347,8 +352,8 @@ fun GlasmioPinnedPage(
     val pageBackdrop = rememberLayerBackdrop()
     val colors = LocalGlassColors.current
     val pageBackground = backgroundColor ?: colors.groupedBackground
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val toolbarHeight = statusBarHeight + 62.dp
+    val headerInsets = WindowInsets.glasmioPageHeaderInsets
+    val toolbarHeight = headerInsets.asPaddingValues().calculateTopPadding() + 62.dp
     val contentPadding = PaddingValues(
         start = IosPageHorizontalPadding,
         top = toolbarHeight + 10.dp,
@@ -373,8 +378,7 @@ fun GlasmioPinnedPage(
                     title = title,
                     subtitle = subtitle,
                     modifier = Modifier.fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                        .statusBarsPadding().align(Alignment.TopCenter),
+                        .windowInsetsPadding(headerInsets).align(Alignment.TopCenter),
                     collapseProgress = collapseProgress,
                     navigation = onNavigateBack?.let { navigateBack ->
                         {

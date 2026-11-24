@@ -41,6 +41,7 @@ import com.ljyh.mei.ui.screen.setting.DownloadManageScreen
 import com.ljyh.mei.ui.screen.setting.DownloadSetting
 import com.ljyh.mei.ui.screen.setting.StorageManagementScreen
 import com.ljyh.mei.ui.screen.setting.GeneralSettings
+import com.ljyh.mei.ui.screen.setting.LocalMcpSettings
 import com.ljyh.mei.ui.screen.setting.PlaySetting
 import com.ljyh.mei.ui.screen.setting.EqualizerSettings
 import com.ljyh.mei.ui.screen.setting.LyricsSettings
@@ -227,6 +228,10 @@ fun NavGraphBuilder.navigationBuilder(
 
     composable(Screen.GeneralSettings.route) {
         GeneralSettings()
+    }
+
+    composable(Screen.LocalMcpSettings.route) {
+        LocalMcpSettings()
     }
 
     composable(Screen.LyricsSettings.route) {
@@ -508,6 +513,7 @@ fun navigationEntry(
         path == Screen.Setting.route -> SettingScreen(scrollBehavior)
         path == Screen.AppearanceSettings.route -> AppearanceSettings(scrollBehavior)
         path == Screen.GeneralSettings.route -> GeneralSettings()
+        path == Screen.LocalMcpSettings.route -> LocalMcpSettings()
         path == Screen.LyricsSettings.route -> LyricsSettings()
         path == Screen.ContentSettings.route -> ContentsSetting(scrollBehavior)
         path == Screen.PlaySettings.route -> PlaySetting(scrollBehavior)

@@ -1,6 +1,7 @@
 package com.ljyh.mei.ui.screen.search
 
 
+import com.ljyh.mei.ui.component.home.homeArtworkBorder
 import com.ljyh.mei.ui.component.item.FixedCardCaption
 import io.github.neoruaa.glasmio.core.swipeBackExcluded
 import android.net.Uri
@@ -71,6 +72,8 @@ import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalContentPadding
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalEdgeToEdge
 import com.ljyh.mei.ui.screen.Screen
 import com.ljyh.mei.ui.component.utils.rememberDeviceInfo
 import com.ljyh.mei.utils.rememberPreference
@@ -208,8 +211,8 @@ fun SharedSearchLandingScreen(
             state.discovery?.let { discovery ->
                 item(key = "recommendations") {
                     LazyRow(
-                        modifier = Modifier.swipeBackExcluded(),
-                        contentPadding = PaddingValues(horizontal = HomeRowHorizontalPadding),
+                        modifier = Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded(),
+                        contentPadding = glasmioHorizontalContentPadding(PaddingValues(horizontal = HomeRowHorizontalPadding)),
                         horizontalArrangement = Arrangement.spacedBy(homeCardSpacing(isLandscape)),
                     ) {
                         items(discovery.recommendations, key = SearchRecommendation::id) { playlist ->
@@ -315,6 +318,7 @@ private fun SearchRecommendationCard(
     cardSize: Dp,
     onClick: () -> Unit,
 ) {
+    val coverShape = ContinuousRoundedRectangle(8.dp)
     Column(
         modifier = Modifier.width(cardSize).clickable(onClick = onClick),
     ) {
@@ -324,7 +328,7 @@ private fun SearchRecommendationCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(ContinuousRoundedRectangle(8.dp)),
+                .clip(coverShape).homeArtworkBorder(coverShape),
             contentScale = ContentScale.Crop,
         )
         val subtitle = playlist.copywriter?.takeIf(String::isNotBlank)

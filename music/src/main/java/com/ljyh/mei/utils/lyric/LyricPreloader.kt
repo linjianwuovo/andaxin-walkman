@@ -131,6 +131,7 @@ class LyricPreloader @Inject constructor(
         val songId = metadata.lyricStorageKey()
 
         val localSong = qqSongRepository.getQQSong(songId).firstOrNull()
+            ?.takeIf { QQLyricMatcher.isStoredSongCompatible(metadata, it) }
         if (localSong != null) {
             return try {
                 repository.getLyricNew(
@@ -180,48 +181,13 @@ class LyricPreloader @Inject constructor(
     private suspend fun searchSilent(
         metadata: MediaMetadata
     ): SearchResult.Request.Data.Body.ItemSong? {
-        val currentDurationSec = metadata.duration / 1000
-        val artistName = metadata.artists.firstOrNull()?.name ?: ""
-        val title = metadata.title
-        val cleanedTitle = cleanTitle(title)
-
-        if (cleanedTitle != title) {
-            Timber.tag(TAG).d("silent QQ search: $cleanedTitle")
-            trySearchSilent(cleanedTitle, currentDurationSec)?.let { return it }
+        for (keyword in QQLyricMatcher.searchKeywords(metadata)) {
+            Timber.tag(TAG).d("silent QQ search: %s", keyword)
+            val result = repository.searchNew(keyword)
+            if (result !is Resource.Success) continue
+            val candidates = result.data.request.data.body.itemSong
+            QQLyricMatcher.selectBestMatch(metadata, candidates)?.let { return it }
         }
-
-        Timber.tag(TAG).d("silent QQ search retry: $title")
-        trySearchSilent(title, currentDurationSec)?.let { return it }
-
-        if (artistName.isNotBlank() && cleanedTitle != title) {
-            val combined = "$cleanedTitle $artistName"
-            trySearchSilent(combined, currentDurationSec)?.let { return it }
-        }
-
-        if (artistName.isNotBlank()) {
-            val combined = "$title $artistName"
-            trySearchSilent(combined, currentDurationSec)?.let { return it }
-        }
-
         return null
-    }
-
-    private suspend fun trySearchSilent(
-        keyword: String,
-        targetDurationSec: Long
-    ): SearchResult.Request.Data.Body.ItemSong? {
-        val result = repository.searchNew(keyword)
-        if (result !is Resource.Success) return null
-        val songs = result.data.request.data.body.itemSong
-        return songs.take(5).firstOrNull { song ->
-            abs(targetDurationSec - song.interval) <= 5
-        }
-    }
-
-    private fun cleanTitle(title: String): String {
-        return title
-            .replace(Regex("""[\(（][^)）]*[\)）]"""), "")
-            .replace(Regex("""\s+"""), " ")
-            .trim()
     }
 }

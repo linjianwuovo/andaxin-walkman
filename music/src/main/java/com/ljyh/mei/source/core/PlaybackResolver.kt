@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
+import timber.log.Timber
 
 fun audioResourceIdentity(instanceId: ProviderInstanceId, ref: TrackRef, resource: AudioResource): String {
     val fields = listOf(instanceId.value, ref.providerId, ref.trackId, resource.quality, resource.contentId ?: resource.uri, resource.contentLength?.toString().orEmpty())
@@ -27,7 +28,13 @@ fun audioResourceIdentity(instanceId: ProviderInstanceId, ref: TrackRef, resourc
 fun audioResourceIdentity(resolution: PlaybackResolution): String = audioResourceIdentity(resolution.instanceId, resolution.resolvedTrackRef, resolution.resource)
 
 data class PendingSourceMatch(val origin: TrackRef, val instanceId: ProviderInstanceId, val candidates: List<MatchCandidate>, val originTitle: String = "")
-class PlaybackResolutionException(val attempts: List<ResolutionAttempt>) : SourceException(attempts.lastOrNull()?.error ?: SourceErrorCode.UNAVAILABLE)
+class PlaybackResolutionException(
+    val attempts: List<ResolutionAttempt>,
+    cause: SourceException? = null,
+) : SourceException(attempts.lastOrNull()?.error ?: SourceErrorCode.UNAVAILABLE,
+    outcomeUnknown = cause?.outcomeUnknown ?: false) {
+    init { if (cause != null) initCause(cause) }
+}
 
 @Singleton
 class PlaybackResolver(
@@ -67,11 +74,12 @@ class PlaybackResolver(
         track: Track,
         quality: String,
         excludedResources: Set<String> = emptySet(),
+        allowAlternateVersion: Boolean = true,
         originalResolver: (suspend () -> AudioResource)? = null,
     ): PlaybackResolution {
         registry.awaitInitialized()
         val version = stateVersion.get()
-        val settings = settingsProvider()
+        val settings = settingsProvider().let { if (allowAlternateVersion) it else it.copy(allowAlternateVersions = false) }
         val generation = registry.providers.value.joinToString { "${it.instanceId.value}:${it.version}:${it.status}" }
         val requestKey = listOf(version.toString(), TrackRefCodec.encode(track.ref), quality, settings.toString(), generation, excludedResources.sorted().joinToString()).joinToString("|")
         val key = MessageDigest.getInstance("SHA-256").digest(requestKey.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
@@ -98,43 +106,90 @@ class PlaybackResolver(
 
     private suspend fun perform(track: Track, quality: String, settings: SourceSettings, excluded: Set<String>, originalResolver: (suspend () -> AudioResource)?, version: Long): PlaybackResolution {
         val attempts = mutableListOf<ResolutionAttempt>()
+        var lastFailure: SourceException? = null
         val original = registry.provider(track.ref.providerId)
         val mayFallback = settings.autoFallbackEnabled && TrackRefCodec.encode(track.ref) !in settings.disabledTrackFallbacks
         val fallbacks = if (mayFallback) settings.fallbackOrder.distinct().mapNotNull { registry.instance(ProviderInstanceId(it)) }
             .filter { it.status == SourceStatus.READY && it is PlaybackCapability && SourceCapability.PLAYBACK in it.capabilities && it.instanceId != original?.instanceId } else emptyList()
         val providers = if (settings.preferOriginalProvider) listOfNotNull(original) + fallbacks else fallbacks + listOfNotNull(original)
+        val originalProviders = providers.distinctBy { it.instanceId }
+        val alternateProviders = originalProviders.filter {
+            settings.allowAlternateVersions && TrackRefCodec.encode(track.ref) !in settings.disabledTrackFallbacks &&
+                it is CatalogCapability && it is PlaybackCapability && it.status == SourceStatus.READY &&
+                SourceCapability.SEARCH in it.capabilities
+        }
+        var originalUnavailable = false
         if (original == null) attempts += ResolutionAttempt(ProviderInstanceId(track.ref.providerId), track.ref, SourceErrorCode.MISSING_PROVIDER)
-        for (provider in providers.distinctBy { it.instanceId }) {
+        for ((provider, alternate) in originalProviders.map { it to false } + alternateProviders.map { it to true }) {
+            if (alternate && !originalUnavailable) continue
             ensureCurrent(version)
             var candidate: Track? = null
             try {
                 return withTimeout(attemptTimeoutMs) {
                     val manualKey = TrackRefCodec.encode(track.ref) + "|" + provider.id
-                    val matchOrigin = if (provider !== original && manualKey !in settings.manualMatches && (track.title.isBlank() || track.durationMs <= 0 || track.artists.isEmpty())) {
-                        (original as? CatalogCapability)?.getTrack(track.ref) ?: track
+                    val needsMetadata = track.title.isBlank() || track.durationMs <= 0 || track.artists.isEmpty()
+                    val matchOrigin = if (needsMetadata && (alternate || provider !== original && manualKey !in settings.manualMatches)) {
+                        (original as? CatalogCapability)?.getTrack(track.ref)?.takeIf { it.ref == track.ref } ?: track
                     } else track
-                    candidate = if (provider === original) track else match(matchOrigin, provider, settings, version)
+                    candidate = when {
+                        alternate -> matchAlternate(matchOrigin, provider as CatalogCapability, provider.id)
+                        provider === original -> track
+                        else -> match(matchOrigin, provider, settings, version)
+                    }
                     val target = candidate ?: throw SourceException(SourceErrorCode.NOT_FOUND)
                     if (target.ref.providerId != provider.id) throw SourceException(SourceErrorCode.INVALID_RESPONSE)
-                    val resource = if (provider === original && originalResolver != null) originalResolver()
+                    val resource = if (!alternate && provider === original && originalResolver != null) originalResolver()
                     else (provider as? PlaybackCapability ?: throw SourceException(SourceErrorCode.UNSUPPORTED)).resolve(target.ref, quality)
                     validateResource(provider, resource)
                     if (audioResourceIdentity(provider.instanceId, target.ref, resource) in excluded) throw SourceException(SourceErrorCode.UNAVAILABLE)
                     attempts += ResolutionAttempt(provider.instanceId, target.ref)
-                    PlaybackResolution(track.ref, target.ref, provider.id, provider.instanceId, resource, attempts.toList())
+                    // An opted-in alternate recording must not become an offline hit for the
+                    // original recording after the setting is turned off.
+                    val resolvedResource = if (alternate) resource.copy(cachePolicy = CachePolicy.NO_STORE) else resource
+                    PlaybackResolution(track.ref, target.ref, provider.id, provider.instanceId, resolvedResource,
+                        attempts.toList(), alternateVersion = alternate)
                 }
             } catch (_: TimeoutCancellationException) {
                 currentCoroutineContext().ensureActive()
                 ensureCurrent(version)
+                val failure = SourceException(SourceErrorCode.TIMEOUT)
+                lastFailure = failure
                 attempts += ResolutionAttempt(provider.instanceId, candidate?.ref, SourceErrorCode.TIMEOUT)
+                logResolutionFailure(provider, candidate?.ref ?: track.ref, quality, failure)
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
                 currentCoroutineContext().ensureActive()
                 ensureCurrent(version)
-                attempts += ResolutionAttempt(provider.instanceId, candidate?.ref, (error as? SourceException)?.code ?: SourceErrorCode.NETWORK)
+                val failure = error as? SourceException ?: SourceException(SourceErrorCode.NETWORK)
+                if (!alternate && provider === original &&
+                    (failure.code == SourceErrorCode.UNAVAILABLE || failure.code == SourceErrorCode.NOT_FOUND)) {
+                    originalUnavailable = true
+                }
+                lastFailure = failure
+                attempts += ResolutionAttempt(provider.instanceId, candidate?.ref, failure.code)
+                logResolutionFailure(provider, candidate?.ref ?: track.ref, quality, failure)
+                if (failure is SourceRuntimeUnavailableException) {
+                    throw PlaybackResolutionException(attempts.toList(), failure)
+                }
             }
         }
-        throw PlaybackResolutionException(attempts)
+        throw PlaybackResolutionException(attempts, lastFailure)
+    }
+
+    private suspend fun matchAlternate(origin: Track, catalog: CatalogCapability, providerId: String): Track? {
+        val title = matcher.alternateTitle(origin.title)
+        val artists = origin.artists.joinToString(" ") { it.name }.trim()
+        if (title.isBlank() || artists.isEmpty()) return null
+        val candidates = catalog.search("$title $artists", PageRequest(limit = 20)).items
+        return matcher.alternate(origin, candidates.filter { it.ref.providerId == providerId })
+    }
+
+    private fun logResolutionFailure(provider: MusicProvider, ref: TrackRef, quality: String, error: SourceException) {
+        Timber.tag("PlaybackResolver").w(
+            "Playback resolution failed provider=%s instance=%s track=%s quality=%s code=%s exceptionType=%s",
+            provider.id, provider.instanceId.value, TrackRefCodec.encode(ref).take(512), quality, error.code,
+            error.javaClass.simpleName,
+        )
     }
 
     private suspend fun match(origin: Track, provider: MusicProvider, settings: SourceSettings, version: Long): Track? {

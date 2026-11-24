@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_apple_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_apple_surface" android:clipToOutline="true">
+    <ImageView android:id="@+id/widget_apple_ambience"
+        android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY"
+        android:importantForAccessibility="no" android:visibility="gone" />
+    <LinearLayout android:id="@+id/widget_apple_hero"
+        android:layout_width="match_parent" android:layout_height="match_parent" android:padding="12dp"
+        android:gravity="center_vertical" android:orientation="horizontal">
+        <FrameLayout
+            android:layout_width="122dp" android:layout_height="match_parent">
+            <ImageView android:id="@+id/widget_apple_hero_art"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_gravity="center" android:adjustViewBounds="true"
+                android:clipToOutline="true" android:importantForAccessibility="no" />
+        </FrameLayout>
+        <LinearLayout android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="16dp"
+            android:orientation="vertical" android:gravity="start">
+            <TextView android:id="@+id/widget_apple_hero_title"
+                android:layout_width="match_parent" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end" android:textSize="16sp"
+                android:textColor="@color/widget_apple_title" android:layout_marginEnd="9dp" />
+            <TextView android:id="@+id/widget_apple_hero_subtitle"
+                android:layout_width="match_parent" android:layout_height="wrap_content" android:fontFamily="sans-serif"
+                android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end" android:textSize="12sp"
+                android:textColor="@color/widget_apple_detail" />
+            <LinearLayout android:id="@+id/widget_apple_hero_play"
+                android:layout_width="wrap_content" android:layout_height="32dp" android:gravity="center_vertical"
+                android:orientation="horizontal" android:paddingEnd="8dp" android:visibility="gone">
+                <ImageView android:id="@+id/widget_apple_hero_play_icon"
+                    android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/widget_ic_play"
+                    android:tint="#FFFFFF" android:importantForAccessibility="no" />
+                <TextView android:id="@+id/widget_apple_hero_play_label"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp"
+                    android:singleLine="true" android:includeFontPadding="false" android:fontFamily="sans-serif" android:textStyle="bold"
+                    android:textSize="14sp" android:textColor="#99FFFFFF" android:text="@string/widget_play" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+    <FrameLayout android:layout_width="match_parent" android:layout_height="match_parent" android:padding="12dp">
+        <ImageView android:layout_width="15dp"
+            android:layout_height="15dp" android:layout_gravity="top|end" android:src="@drawable/widget_meilox_mark"
+            android:tint="#FFFFFF" android:importantForAccessibility="no" />
+    </FrameLayout>
+</FrameLayout>

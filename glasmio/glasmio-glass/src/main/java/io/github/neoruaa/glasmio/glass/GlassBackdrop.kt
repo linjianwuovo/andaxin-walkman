@@ -3,6 +3,8 @@ package io.github.neoruaa.glasmio.glass
 import io.github.neoruaa.glasmio.core.*
 import io.github.neoruaa.glasmio.icons.*
 
+import android.os.Build
+import android.view.View
 import android.view.ViewTreeObserver
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -13,13 +15,19 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.GraphicsContext
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -27,19 +35,27 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.layer.CompositingStrategy
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.node.DelegatableNode
+import androidx.compose.ui.node.requireView
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.platform.LocalGraphicsContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.neoruaa.glasmio.glass.render.Backdrop
+import kotlinx.coroutines.CoroutineScope
 import io.github.neoruaa.glasmio.glass.render.backdrops.LayerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.hasBuiltInLayerBlockIndependentSource
+import io.github.neoruaa.glasmio.glass.render.backdrops.isLocalColorFill
+import io.github.neoruaa.glasmio.glass.render.backdrops.isUnitTranslation
+import io.github.neoruaa.glasmio.glass.render.backdrops.rememberBoundedLayerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
 import java.lang.ref.WeakReference
@@ -76,7 +92,16 @@ fun GlasmioBackdropHost(
     modifier: Modifier = Modifier,
     sampledContent: @Composable BoxScope.(LayerBackdrop) -> Unit,
     overlayContent: @Composable BoxScope.(LayerBackdrop) -> Unit,
-) = BackdropHost(modifier, uniformFill = false, sampledContent, overlayContent)
+) = BackdropHost(modifier, uniformFill = false, bounded = false, sampledContent, overlayContent)
+
+/** When requested, each material samples within the source bounds, including after later layer changes. */
+@Composable
+fun GlasmioBackdropHost(
+    sampledContentClipped: Boolean,
+    modifier: Modifier = Modifier,
+    sampledContent: @Composable BoxScope.(LayerBackdrop) -> Unit,
+    overlayContent: @Composable BoxScope.(LayerBackdrop) -> Unit,
+) = BackdropHost(modifier, uniformFill = false, bounded = sampledContentClipped, sampledContent, overlayContent)
 
 /**
  * A [GlasmioBackdropHost] whose sampled content is [sampledColor] filling the host.
@@ -90,16 +115,17 @@ fun GlasmioBackdropHost(
     sampledColor: Color,
     modifier: Modifier = Modifier,
     overlayContent: @Composable BoxScope.(LayerBackdrop) -> Unit,
-) = BackdropHost(modifier, uniformFill = true, { Box(Modifier.fillMaxSize().background(sampledColor)) }, overlayContent)
+) = BackdropHost(modifier, uniformFill = true, bounded = false, { Box(Modifier.fillMaxSize().background(sampledColor)) }, overlayContent)
 
 @Composable
 private fun BackdropHost(
     modifier: Modifier,
     uniformFill: Boolean,
+    bounded: Boolean,
     sampledContent: @Composable BoxScope.(LayerBackdrop) -> Unit,
     overlayContent: @Composable BoxScope.(LayerBackdrop) -> Unit,
 ) {
-    val backdrop = rememberLayerBackdrop()
+    val backdrop = if (bounded) rememberBoundedLayerBackdrop() else rememberLayerBackdrop()
     // The fill draws nothing else and covers the layer bounds exactly.
     backdrop.fillsBoundsUniformly = uniformFill
     CompositionLocalProvider(
@@ -155,6 +181,7 @@ class CrossWindowBackdrop(
     private val screenToGlass = Matrix()
     private var recordedSourceSize = IntSize.Zero
     private var recordedSourceFrame: Int? = null
+    internal var detachedSlot: DetachedSharedBackdrop.Slot? = null
 
     override val isCoordinatesDependent: Boolean get() = true
 
@@ -169,7 +196,8 @@ class CrossWindowBackdrop(
         if (!glassCoordinates.isAttached) return
         val sourceCoordinates = backdropSourcePositions[source]?.get()?.takeIf { it.isAttached } ?: return
         // A window draw includes foreground changes isolated in child graphics layers.
-        val frame = if (glassCoordinates.findRootCoordinates() !== sourceCoordinates.findRootCoordinates()) {
+        val crossWindow = glassCoordinates.findRootCoordinates() !== sourceCoordinates.findRootCoordinates()
+        val frame = if (crossWindow) {
             (sourceFrame ?: backdropSourceFrames[source])?.value
         } else null
         val sourceSize = source.graphicsLayer.size
@@ -182,22 +210,35 @@ class CrossWindowBackdrop(
                 ceil((sourceSize.height - captureTop) * renderScale).toInt(),
             )
             if (bufferSize.width <= 0 || bufferSize.height <= 0) return
+            val slot = detachedSlot?.takeIf { crossWindow && drawContext.canvas.nativeCanvas.isHardwareAccelerated }
+            val image = slot?.image(
+                DetachedSharedBackdrop.Viewport(
+                    bufferSize, sourceSize, captureTop, frame, Density(density.density, density.fontScale), layoutDirection,
+                ),
+                cached,
+            )
             if (cached.size != bufferSize || recordedSourceSize != sourceSize ||
-                (frame != null && recordedSourceFrame != frame)
+                (frame != null && recordedSourceFrame != frame) || detachedSlot?.recordedImage !== image
             ) {
                 cached.clip = true
                 cached.compositingStrategy = CompositingStrategy.Offscreen
                 cached.record(bufferSize) {
-                    withTransform({
-                        scale(renderScale, renderScale, Offset.Zero)
-                        translate(0f, -captureTop.toFloat())
-                    }) {
-                        drawLayer(source.graphicsLayer)
+                    if (image != null) {
+                        drawImage(image)
+                    } else {
+                        withTransform({
+                            scale(renderScale, renderScale, Offset.Zero)
+                            translate(0f, -captureTop.toFloat())
+                        }) {
+                            drawLayer(source.graphicsLayer)
+                        }
                     }
                 }
+                detachedSlot?.recordedImage = image
                 recordedSourceSize = sourceSize
                 recordedSourceFrame = frame
             }
+            if (image == null) slot?.requestWhenLive()
         } ?: source.graphicsLayer
         // Include ancestor scale/translation so the sampled page stays screen-anchored
         // while the sheet shrinks during predictive back. This also includes layerBlock.
@@ -283,12 +324,13 @@ private class StationaryBackdrop(
 
 /** Share a live, flattened player source between modal glass and its small glass controls. */
 @Composable
-fun rememberRasterizedBackdrop(source: LayerBackdrop): Backdrop {
+fun rememberRasterizedBackdrop(source: LayerBackdrop, enabled: Boolean = true): Backdrop {
     val rasterized = rememberGraphicsLayer()
     val view = LocalView.current
     val sourceFrame = remember(view) { mutableIntStateOf(0) }
-    DisposableEffect(view, sourceFrame) {
-        var frame = 0
+    DisposableEffect(view, sourceFrame, enabled) {
+        if (!enabled) return@DisposableEffect onDispose { }
+        var frame = sourceFrame.intValue
         val listener = ViewTreeObserver.OnPreDrawListener {
             // Only cross-window drawing observes this state; the source stays independent.
             sourceFrame.intValue = ++frame
@@ -320,6 +362,42 @@ fun rememberSharedGlassBackdrop(base: Backdrop, source: LayerBackdrop): Backdrop
     }
 }
 
+/**
+ * Gives one modal window its own sampled textures in place of repeatedly traversing an idle host.
+ *
+ * Call in the source window. Enable only for sources that rasterize identically outside that
+ * window, without native RenderNode lighting such as elevation shadows. [enabled] must become
+ * false before source pixels can change without a source draw, for example during
+ * RenderThread-only animations or independently animated drawables. Source draws invalidate the
+ * sampled textures. The original live layer is used when textures are unavailable, in the source
+ * window, and outside supported SDR windows.
+ */
+@Composable
+fun rememberDetachedSharedGlassBackdrop(backdrop: Backdrop, enabled: () -> Boolean): Backdrop {
+    val shared = backdrop as? SharedGlassBackdrop ?: return backdrop
+    if (Build.VERSION.SDK_INT < 34) return backdrop
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    val currentEnabled = rememberUpdatedState(enabled)
+    val graphics = LocalGraphicsContext.current
+    val activation = remember(shared, scope, view, graphics) {
+        DeferredDetachedCapture(shared, view, graphics, scope) { currentEnabled.value() }
+    }
+    DisposableEffect(activation) { onDispose(activation::dispose) }
+    return remember(shared, activation) { shared.withDeferredCapture(activation) }
+}
+
+internal fun Backdrop.observeDetachedSharedBackdrop(
+    node: DelegatableNode,
+    coordinates: LayoutCoordinates?,
+    canvas: Canvas,
+) {
+    (this as? SharedGlassBackdrop)?.observeDetachedCapture(node, coordinates, canvas)
+}
+
+internal fun Backdrop.hasDeferredSharedCapture(): Boolean =
+    this is SharedGlassBackdrop && hasDeferredCapture
+
 /** A morph records in root coordinates, but only needs pixels inside its capture viewport. */
 interface ViewportBackdrop : Backdrop {
     fun DrawScope.drawViewport(density: Density, coordinates: LayoutCoordinates, viewport: Rect)
@@ -329,6 +407,7 @@ interface ViewportBackdrop : Backdrop {
 internal fun Backdrop.hasBuiltInGlassLayerBlockIndependentSource(): Boolean = when (this) {
     is CrossWindowBackdrop -> true
     is SharedGlassBackdrop -> hasLayerBlockIndependentBase()
+    is SettledBackdrop -> hasLayerBlockIndependentSource()
     else -> false
 }
 
@@ -337,12 +416,39 @@ private val BottomCaptureHeight = 240.dp
 private class SharedGlassBackdrop(
     private val base: Backdrop,
     private val source: LayerBackdrop,
-    fullLayer: GraphicsLayer,
-    bottomLayer: GraphicsLayer,
+    fullRaster: GraphicsLayer?,
+    bottomRaster: GraphicsLayer?,
+    private val detachedCapture: DetachedSharedBackdrop? = null,
+    private val deferredCapture: DeferredDetachedCapture? = null,
+    private val liveFallback: SharedGlassBackdrop? = null,
 ) : ViewportBackdrop {
-    private val full = CrossWindowBackdrop(source, fullLayer, renderScale = 0.5f)
-    private val bottom = CrossWindowBackdrop(source, bottomLayer, renderScale = 0.5f,
-        captureHeight = BottomCaptureHeight)
+    private val full: CrossWindowBackdrop = liveFallback?.full ?: CrossWindowBackdrop(source, fullRaster, renderScale = 0.5f).apply {
+        detachedSlot = detachedCapture?.full
+    }
+    private val bottom: CrossWindowBackdrop = liveFallback?.bottom ?: CrossWindowBackdrop(
+        source, bottomRaster, renderScale = 0.5f, captureHeight = BottomCaptureHeight,
+    ).apply {
+        detachedSlot = detachedCapture?.bottom
+    }
+
+    fun withDetachedCapture(
+        fullLayer: GraphicsLayer,
+        bottomLayer: GraphicsLayer,
+        capture: DetachedSharedBackdrop,
+    ): SharedGlassBackdrop = SharedGlassBackdrop(base, source, fullLayer, bottomLayer, capture)
+
+    fun withDeferredCapture(activation: DeferredDetachedCapture): Backdrop =
+        SharedGlassBackdrop(base, source, null, null, deferredCapture = activation, liveFallback = this)
+
+    val hasDeferredCapture: Boolean get() = deferredCapture != null
+
+    fun observeDetachedCapture(
+        node: DelegatableNode, coordinates: LayoutCoordinates?, canvas: Canvas,
+    ) {
+        // Read the activation at the outer draw node. A new private raster must invalidate
+        // the recorded parent even if it got cached inside a material's display list.
+        deferredCapture?.observeConsumer(node.requireView(), coordinates, canvas.nativeCanvas.isHardwareAccelerated)
+    }
 
     internal fun hasLayerBlockIndependentBase(): Boolean = base.hasBuiltInLayerBlockIndependentSource()
 
@@ -354,6 +460,28 @@ private class SharedGlassBackdrop(
         val sourceObservation = source.observeSourceChanges(observer)
         return { baseObservation(); sourceObservation() }
     }
+
+    internal fun boundedSamples(coordinates: LayoutCoordinates, logicalSize: Size): Rect? {
+        val lower = base.boundedSampleRegion(coordinates, logicalSize) ?: return null
+        val recorded = backdropSourcePositions[source]?.get()?.takeIf { it.isAttached } ?: return null
+        if (!coordinates.isAttached || recorded.findRootCoordinates() !== coordinates.findRootCoordinates() ||
+            recorded.size != source.graphicsLayer.size) return null
+        // Both private rasterized sources are clipped to their physical buffer. The bottom band
+        // never extends above the full source. Ceil and linear filtering can reach its outer texel.
+        sampleToConsumer.reset()
+        recorded.transformToScreen(sampleToConsumer)
+        screenToConsumerBounds.reset()
+        coordinates.transformToScreen(screenToConsumerBounds)
+        screenToConsumerBounds.invert()
+        sampleToConsumer *= screenToConsumerBounds
+        if (!sampleToConsumer.isUnitTranslation()) return null
+        val upper = sampleToConsumer.map(Rect(-4f, -4f, recorded.size.width + 4f, recorded.size.height + 4f))
+        return Rect(minOf(lower.left, upper.left), minOf(lower.top, upper.top),
+            maxOf(lower.right, upper.right), maxOf(lower.bottom, upper.bottom))
+    }
+
+    private val sampleToConsumer = Matrix()
+    private val screenToConsumerBounds = Matrix()
 
     private fun sample(density: Density, coordinates: LayoutCoordinates?, top: Float): Backdrop {
         val recorded = backdropSourcePositions[source]?.get()
@@ -370,8 +498,13 @@ private class SharedGlassBackdrop(
         coordinates: LayoutCoordinates?,
         layerBlock: (GraphicsLayerScope.() -> Unit)?,
     ) {
-        with(base) { drawBackdrop(density, coordinates, layerBlock) }
-        with(sample(density, coordinates, 0f)) { drawBackdrop(density, coordinates, layerBlock) }
+        val ready = deferredCapture?.readyFor(coordinates, drawContext.canvas.nativeCanvas.isHardwareAccelerated)
+        if (ready != null) {
+            with(ready) { drawBackdrop(density, coordinates, layerBlock) }
+        } else {
+            with(base) { drawBackdrop(density, coordinates, layerBlock) }
+            with(sample(density, coordinates, 0f)) { drawBackdrop(density, coordinates, layerBlock) }
+        }
     }
 
     override fun DrawScope.drawViewport(
@@ -379,7 +512,128 @@ private class SharedGlassBackdrop(
         coordinates: LayoutCoordinates,
         viewport: Rect,
     ) {
-        with(base) { drawBackdrop(density, coordinates, null) }
-        with(sample(density, coordinates, viewport.top)) { drawBackdrop(density, coordinates, null) }
+        val ready = deferredCapture?.readyFor(coordinates, drawContext.canvas.nativeCanvas.isHardwareAccelerated)
+        if (ready != null) {
+            with(ready) { drawViewport(density, coordinates, viewport) }
+        } else {
+            with(base) { drawBackdrop(density, coordinates, null) }
+            with(sample(density, coordinates, viewport.top)) { drawBackdrop(density, coordinates, null) }
+        }
     }
+}
+
+/**
+ * Keep the original live sampling graph for the first buffer. Allocate private sampling
+ * targets only after HWUI reports a submitted consumer frame.
+ */
+private class DeferredDetachedCapture(
+    private val live: SharedGlassBackdrop,
+    private val sourceView: View,
+    private val graphics: GraphicsContext,
+    private val scope: CoroutineScope,
+    private val enabled: () -> Boolean,
+) {
+    private var active = true
+    private var pending: Pending? = null
+    private var targets: Targets? = null
+    private val publication = mutableStateOf<SharedGlassBackdrop?>(null)
+
+    private class Pending(val view: View, val tree: ViewTreeObserver) {
+        lateinit var callback: Runnable
+        lateinit var attachment: View.OnAttachStateChangeListener
+    }
+
+    private data class Targets(
+        val capture: DetachedSharedBackdrop,
+        val full: GraphicsLayer,
+        val bottom: GraphicsLayer,
+        val stop: () -> Unit,
+    )
+
+    private var consumerRoot: LayoutCoordinates? = null
+
+    fun readyFor(coordinates: LayoutCoordinates?, hardwareCanvas: Boolean): SharedGlassBackdrop? {
+        return publication.value?.takeIf {
+            active && hardwareCanvas && coordinates?.isAttached == true &&
+                coordinates.findRootCoordinates() === consumerRoot
+        }
+    }
+
+    fun observeConsumer(view: View, coordinates: LayoutCoordinates?, hardwareCanvas: Boolean) {
+        // Before activation the existing source graph stays live regardless of the gate.
+        val current = publication.value
+        if (!active || !hardwareCanvas || view.rootView === sourceView.rootView || coordinates?.isAttached != true) return
+        if (current != null) {
+            consumerRoot = coordinates.findRootCoordinates()
+            targets?.capture?.observeConsumer(view)
+            return
+        }
+        if (pending != null || !supports(view)) return
+        val tree = view.viewTreeObserver
+        if (!tree.isAlive) return
+        val request = Pending(view, tree)
+        consumerRoot = coordinates.findRootCoordinates()
+        val handler = view.handler ?: return
+        request.callback = Runnable { handler.post { activate(request) } }
+        request.attachment = object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) = Unit
+            override fun onViewDetachedFromWindow(view: View) {
+                if (pending === request) cancelPending()
+            }
+        }
+        pending = request
+        view.addOnAttachStateChangeListener(request.attachment)
+        tree.registerFrameCommitCallback(request.callback)
+        // Registration from a draw can miss this traversal's callback collection.
+        // Ensure that even a consumer with no running motion gets one next frame.
+        view.postInvalidateOnAnimation()
+    }
+
+    private fun cancelPending() {
+        val request = pending ?: return
+        pending = null
+        request.view.removeOnAttachStateChangeListener(request.attachment)
+        if (request.tree.isAlive) request.tree.unregisterFrameCommitCallback(request.callback)
+    }
+
+    private fun activate(request: Pending) {
+        if (pending !== request) return
+        cancelPending()
+        if (!active || consumerRoot?.isAttached != true || !supports(request.view)) return
+
+        val capture = DetachedSharedBackdrop(scope, sourceView, enabled)
+        val full = graphics.createGraphicsLayer()
+        val bottom = graphics.createGraphicsLayer()
+        val stop = capture.attach(live)
+        targets = Targets(capture, full, bottom, stop)
+        Snapshot.withoutReadObservation { publication.value = live.withDetachedCapture(full, bottom, capture) }
+    }
+
+    private fun supports(view: View): Boolean {
+        val display = sourceView.display ?: return false
+        return sourceView.isDefaultHardwareWindow() && view.isDefaultHardwareWindow() &&
+            display.displayId == view.display?.displayId && view.rootView !== sourceView.rootView
+    }
+
+    fun dispose() {
+        active = false
+        consumerRoot = null
+        cancelPending()
+        val current = targets ?: return
+        targets = null
+        current.stop()
+        // A cancelled capture may still be releasing its offscreen renderer on R/T. Keep
+        // the input layers alive until that job has joined through completion.
+        current.capture.afterCapture {
+            graphics.releaseGraphicsLayer(current.full)
+            graphics.releaseGraphicsLayer(current.bottom)
+        }
+    }
+}
+
+internal fun Backdrop.boundedSampleRegion(coordinates: LayoutCoordinates, logicalSize: Size): Rect? = when {
+    this is LayerBackdrop -> boundedSamples(coordinates)
+    this is SharedGlassBackdrop -> boundedSamples(coordinates, logicalSize)
+    isLocalColorFill() -> Rect(Offset.Zero, logicalSize)
+    else -> null
 }

@@ -19,14 +19,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.res.ResourcesCompat
 import com.kyant.capsule.ContinuousRoundedRectangle
-import com.ljyh.mei.R
 import com.ljyh.mei.constants.DefaultInterfaceLetterSpacing
 import com.ljyh.mei.constants.InterfaceLetterSpacingKey
 import com.ljyh.mei.constants.MaxInterfaceLetterSpacing
 import com.ljyh.mei.utils.color.ColorExtractionUtils
 import com.ljyh.mei.utils.rememberPreference
+import com.ljyh.mei.ui.component.shimmer.LocalShimmerProgress
+import com.ljyh.mei.ui.component.shimmer.rememberShimmerProgress
 import io.github.neoruaa.glasmio.core.GlasmioShapes
 import io.github.neoruaa.glasmio.core.GlasmioTheme
 import io.github.neoruaa.glasmio.core.LocalGlassAppearance
@@ -112,8 +112,9 @@ fun MusicTheme(
     }
     val context = LocalContext.current
     val symbolTypeface = remember(context) {
-        ResourcesCompat.getFont(context.applicationContext, R.font.sf_pro)
+        sfProSymbolTypeface(context)
     }
+    val shimmerProgress = LocalShimmerProgress.current ?: rememberShimmerProgress()
     GlasmioTheme(
         isDark = isDark,
         colorScheme = colorScheme,
@@ -135,6 +136,7 @@ fun MusicTheme(
                 LocalOverscrollFactory provides (LocalPageOverscrollFactory.current ?: MiuixOverscrollFactory),
                 LocalDynamicAccent provides dynamicAccent,
                 LocalInterfaceLetterSpacing provides letterSpacing,
+                LocalShimmerProgress provides shimmerProgress,
                 LocalContentColor provides colorScheme.onBackground,
                 LocalTextStyle provides typography.bodyLarge,
                 content = content,

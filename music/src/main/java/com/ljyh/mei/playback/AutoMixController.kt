@@ -22,6 +22,8 @@ import com.ljyh.mei.constants.AutoMixTempoMatchingKey
 import com.ljyh.mei.constants.AutoMixTransitionBarsKey
 import com.ljyh.mei.constants.AudioOutputMode
 import com.ljyh.mei.constants.AudioOutputModeKey
+import com.ljyh.mei.data.model.MediaMetadata
+import com.ljyh.mei.data.model.metadata
 import com.ljyh.mei.utils.dataStore
 import com.ljyh.mei.utils.toEnum
 import kotlinx.coroutines.CancellationException
@@ -31,6 +33,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -54,6 +58,19 @@ data class AutoMixRuntimeConfiguration(
     val maximumTempoAdjustmentPercent: Float = 8f,
     val transitionBars: Int = 8,
     val tailCutBars: Int = 0,
+)
+
+internal data class AutoMixStatus(
+    val active: Boolean = false,
+    val incomingTitle: String? = null,
+    val progress: Float = 0f,
+)
+
+internal data class AutoMixTracks(
+    val outgoing: MediaMetadata?,
+    val incoming: MediaMetadata,
+    val durationMs: Long,
+    val completed: Boolean = false,
 )
 
 /**
@@ -88,6 +105,16 @@ class AutoMixController internal constructor(
 
     val isTransitioning: Boolean
         get() = activeTransition != null || recoveryJob != null
+
+    private val _status = MutableStateFlow(AutoMixStatus())
+    internal val status = _status.asStateFlow()
+    private val _upcoming = MutableStateFlow<MediaMetadata?>(null)
+    internal val upcoming = _upcoming.asStateFlow()
+    private val _mixTracks = MutableStateFlow<AutoMixTracks?>(null)
+    internal val mixTracks = _mixTracks.asStateFlow()
+
+    internal fun incomingVisualPositionMs(): Long =
+        activeTransition?.incomingDeck?.currentPosition ?: player.activeDeck.currentPosition
 
     private var configuration = AutoMixRuntimeConfiguration()
     private var preparedMediaId: String? = null
@@ -173,6 +200,10 @@ class AutoMixController internal constructor(
         if (isPromotingDeck) return
         val transition = activeTransition
         if (transition == null) {
+            val committedMix = _mixTracks.value?.takeIf { it.completed }
+            if (committedMix != null && mediaItem?.metadata?.trackRef != committedMix.incoming.trackRef) {
+                _mixTracks.value = null
+            }
             if (recoveryJob != null) cancelTransition(prepareAfterCancel = false)
             prepareNext()
             return
@@ -275,6 +306,9 @@ class AutoMixController internal constructor(
         deckListeners.forEach { (deck, listener) -> deck.removeListener(listener) }
         activeTransition?.outgoingDeck?.setPauseAtEndOfMediaItems(false)
         activeTransition = null
+        _status.value = AutoMixStatus()
+        _mixTracks.value = null
+        _upcoming.value = null
         analyzer.close()
     }
 
@@ -331,6 +365,7 @@ class AutoMixController internal constructor(
             preparedMediaId = nextItem.mediaId
             preparedTargetIndex = nextIndex
         }
+        _upcoming.value = nextItem.metadata
         // Keep the logical target on paused restoration without starting another audio loader.
         if (!player.isPlaying) return
 
@@ -521,6 +556,12 @@ class AutoMixController internal constructor(
             incoming.playbackParameters = PlaybackParameters(transition.incomingStartRate)
         }
         incoming.playWhenReady = wantsPlayback
+        val incomingMetadata = incoming.currentMediaItem?.metadata
+        _mixTracks.value = incomingMetadata?.let { AutoMixTracks(outgoing.currentMediaItem?.metadata, it, durationMs) }
+        _status.value = AutoMixStatus(
+            active = true,
+            incomingTitle = incomingMetadata?.title ?: incoming.currentMediaItem?.mediaMetadata?.title?.toString(),
+        )
         transitionJob = scope.launch {
             while (isActive && activeTransition === transition) {
                 val progress = autoMixTransitionProgress(
@@ -543,6 +584,8 @@ class AutoMixController internal constructor(
                     finishTransition(transition.wantsPlayback)
                     return@launch
                 }
+                val status = _status.value
+                if (progress != status.progress) _status.value = status.copy(progress = progress)
                 delay(ENVELOPE_INTERVAL_MS)
             }
         }
@@ -580,6 +623,8 @@ class AutoMixController internal constructor(
         } finally {
             isPromotingDeck = false
         }
+        _status.value = _status.value.copy(active = false, progress = 1f)
+        _mixTracks.value = _mixTracks.value?.copy(completed = true)
         oldActive.stop()
         oldActive.clearMediaItems()
         oldActive.volume = 0f
@@ -597,6 +642,9 @@ class AutoMixController internal constructor(
         transitionJob = null
         activeTransition = null
         if (transition != null) {
+            // Retain the last progress while the indicator fades out.
+            _status.value = _status.value.copy(active = false)
+            _mixTracks.value = null
             if (smoothRecovery && transition.wantsPlayback &&
                 player.activeDeck === transition.outgoingDeck &&
                 player.currentMediaItem?.mediaId == transition.outgoingMediaId &&
@@ -676,6 +724,7 @@ class AutoMixController internal constructor(
     private fun clearPreparedState(resetRetry: Boolean) {
         analysisTask.cancelPending()
         preparedMediaId = null
+        _upcoming.value = null
         preparedTargetIndex = C.INDEX_UNSET
         preparedIncomingStartMs = 0L
         if (resetRetry) resetRetryState()

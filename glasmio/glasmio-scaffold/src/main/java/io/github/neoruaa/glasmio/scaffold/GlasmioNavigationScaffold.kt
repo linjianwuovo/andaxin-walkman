@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import io.github.neoruaa.glasmio.glass.render.backdrops.LayerBackdrop
+import io.github.neoruaa.glasmio.glass.render.backdrops.conditionalLayerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
 import io.github.neoruaa.glasmio.core.*
@@ -249,8 +250,8 @@ fun GlasmioPageTitle(entryKey: Any, modifier: Modifier = Modifier) {
     val colors = spec.colors ?: LocalGlassColors.current
     CompositionLocalProvider(LocalGlassColors provides colors, LocalContentColor provides colors.content) {
         BoxWithConstraints(modifier.fillMaxWidth().glasmioAdaptiveContent()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-            .statusBarsPadding().height(GlasmioToolbarDefaults.Height).padding(horizontal = IosPageHorizontalPadding)) {
+            .windowInsetsPadding(WindowInsets.glasmioPageHeaderInsets)
+            .height(GlasmioToolbarDefaults.Height).padding(horizontal = IosPageHorizontalPadding)) {
             val availableWidthPx = with(density) { maxWidth.toPx() }
             val safeStartPx = with(density) { (leading.toDp() + if (leading > 0) 8.dp else 0.dp).toPx() }
             val safeEndPx = with(density) { (trailing.toDp() + if (trailing > 0) 8.dp else 0.dp).toPx() }
@@ -340,8 +341,8 @@ fun GlasmioNavigationScaffold(
     }
     titles.hasTopTabs = topBar != null && !(adaptive?.usesTabMorph == true && adaptive.motion.expanded)
     SideEffect { titles.update(frame, source, target) }
-    val status = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val padding = PaddingValues(start = IosPageHorizontalPadding, top = status + 72.dp, end = IosPageHorizontalPadding)
+    val headerTop = WindowInsets.glasmioPageHeaderInsets.asPaddingValues().calculateTopPadding()
+    val padding = PaddingValues(start = IosPageHorizontalPadding, top = headerTop + 72.dp, end = IosPageHorizontalPadding)
     CompositionLocalProvider(LocalPageTitles provides titles) {
     Box(modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().layerBackdrop(backdrop, reuseContent = true).trackBackdropPosition(backdrop)
@@ -356,11 +357,11 @@ fun GlasmioNavigationScaffold(
                 titles,
                 topBar != null,
                 forceTopBarOverflow,
-                Modifier.fillMaxWidth().glasmioAdaptiveContent().padding(top = status),
+                Modifier.fillMaxWidth().glasmioAdaptiveContent().padding(top = headerTop),
             )
             if (topBar != null) {
                 GlasmioTopNavigationSlot(
-                    frame, source, target, titles, status, topBar, topBarPreferredWidth,
+                    frame, source, target, titles, headerTop, topBar, topBarPreferredWidth,
                     forceTopBarOverflow,
                     onOverflowNeeded = { if (!forceTopBarOverflow) forceTopBarOverflow = true },
                     onLayoutWidthChanged = { forceTopBarOverflow = false },
@@ -379,7 +380,7 @@ private fun GlasmioTopNavigationSlot(
     source: GlasmioHeaderSpec,
     target: GlasmioHeaderSpec,
     titles: PageTitleRegistry,
-    status: Dp,
+    headerTop: Dp,
     content: @Composable (Dp) -> Unit,
     preferredWidth: Dp?,
     forceOverflow: Boolean,
@@ -414,8 +415,7 @@ private fun GlasmioTopNavigationSlot(
             lastTrailingSide = trailingSide
         }
     }
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = status).height(GlasmioToolbarDefaults.Height)
-        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = headerTop).height(GlasmioToolbarDefaults.Height)
         .graphicsLayer { alpha = if (ready || lastLeadingSide > 0.dp || lastTrailingSide > 0.dp) 1f else 0f },
         contentAlignment = Alignment.TopStart,
     ) {
@@ -476,7 +476,7 @@ private fun GlasmioTopNavigationSlot(
 }
 
 /**
- * Page-owned body and scroll-edge blur. Horizontal system insets apply only to the foreground.
+ * Page-owned body and scroll-edge blur. Horizontal page safe-area insets apply only to the foreground.
  * The untouched background and faded foreground feed [backdrop]; the complete blur profile is
  * overlaid afterward so it follows this page's transitions without restoring unfaded content.
  * Descendant glass controls keep their existing backdrop provider.
@@ -488,32 +488,39 @@ fun GlasmioPageBody(
     backgroundColor: androidx.compose.ui.graphics.Color = LocalGlassColors.current.groupedBackground,
     backgroundBrush: androidx.compose.ui.graphics.Brush? = null,
     topBarBlurProgress: Float = 0f,
-    backdrop: LayerBackdrop = rememberLayerBackdrop(),
+    backdrop: LayerBackdrop? = null,
     background: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable BoxScope.(PaddingValues) -> Unit,
 ) {
     val appearance = LocalGlassAppearance.current
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val headerHeight = statusBarHeight + 62.dp
+    val headerTop = WindowInsets.glasmioPageHeaderInsets.asPaddingValues().calculateTopPadding()
+    val headerHeight = headerTop + 62.dp
     val progress = topBarBlurProgress.coerceIn(0f, 1f)
+    val pageBackdrop = backdrop ?: rememberLayerBackdrop()
+    // Only the page-owned capture is private to the scroll-edge blur.
+    val captureEnabled = backdrop != null || (appearance.usesBackdrop && progress != 0f)
     Box(modifier.fillMaxSize()) {
         Box(
-            Modifier.fillMaxSize().glassBackdropSource(backdrop).trackBackdropPosition(backdrop),
+            Modifier.fillMaxSize().conditionalLayerBackdrop(pageBackdrop, captureEnabled).trackBackdropPosition(pageBackdrop),
         ) {
             Box(
                 Modifier.matchParentSize()
                     .then(if (backgroundBrush != null) Modifier.background(backgroundBrush) else Modifier.background(backgroundColor)),
             ) { background?.invoke(this) }
-            Box(Modifier.fillMaxSize().glasmioAdaptiveContent()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                .scrollEdgeContentFade(progress, headerHeight, headerTop = statusBarHeight)) {
-                GlasmioOverscrollHost { content(contentPadding) }
+            Box(Modifier.fillMaxSize()
+                .scrollEdgeContentFade(progress, headerHeight, headerTop = headerTop)) {
+                GlasmioOverscrollHost {
+                    Box(Modifier.fillMaxSize()
+                        .windowInsetsPadding(glasmioPageHorizontalInsets().add(LocalGlasmioSidebarInsets.current))) {
+                        content(contentPadding)
+                    }
+                }
             }
         }
         Box(
             Modifier.fillMaxWidth().glasmioAdaptiveContent().height(headerHeight + if (appearance.usesBackdrop) 34.dp else 0.dp)
                 .then(if (appearance.usesBackdrop) {
-                    Modifier.progressiveBlurBackdrop(backdrop, progress)
+                    Modifier.progressiveBlurBackdrop(pageBackdrop, progress)
                 } else {
                     Modifier.graphicsLayer { alpha = progress }.background(backgroundColor.copy(alpha = 1f))
                 }),
@@ -596,7 +603,6 @@ private fun GlasmioNavigationHeader(
     // Retained groups are disposed only after their own tracks settle, not when the body ends.
     CompositionLocalProvider(LocalContentColor provides LocalGlassColors.current.content) {
         Box(modifier.height(if (searchVisible) GlasmioAdaptiveNavigationDefaults.SearchTopPadding + 48.dp else GlasmioToolbarDefaults.Height)
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
             .padding(horizontal = IosPageHorizontalPadding)
             .onGloballyPositioned { searchOrigin = it.positionInWindow() }) {
             Box(Modifier.fillMaxWidth().height(GlasmioToolbarDefaults.Height)) {
@@ -934,7 +940,13 @@ private fun HeaderGroup(
             val hit = subcompose("hit" to action.key) {
                 GlassSurface(
                     modifier = Modifier.fillMaxSize()
-                        .then(if (ownsInteraction) action.menuAnchor?.let { Modifier.glasmioMenuAnchor(it) } ?: Modifier else Modifier)
+                        .then(
+                            if (ownsInteraction) {
+                                action.menuAnchor?.let { anchor ->
+                                    Modifier.glasmioMenuAnchor(anchor, action.onClick.takeIf { action.enabled })
+                                } ?: Modifier
+                            } else Modifier,
+                        )
                         .then(if (ownsInteraction) Modifier else Modifier.clearAndSetSemantics {}),
                     style = GlassSurfaceStyle.Navigation,
                     enabled = ownsInteraction && action.enabled,
