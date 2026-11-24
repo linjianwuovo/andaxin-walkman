@@ -337,6 +337,74 @@ fun parseLyrics(json: String): List<LyricLine> = runCatching {
 
 data class MusicSongPage(val songs: List<MusicSong>, val more: Boolean, val total: Int)
 
+data class MusicHistoryEntry(val song: MusicSong, val playedAt: Long?)
+
+data class MusicHistoryPage(val entries: List<MusicHistoryEntry>, val remoteEnabled: Boolean)
+
+/** Device-local history transition. A resumed/restarted current item must not be recorded again. */
+fun recordLocalPlayback(
+    existing: List<MusicHistoryEntry>,
+    song: MusicSong,
+    playedAt: Long,
+    isNewTrack: Boolean,
+    maximum: Int = 100,
+): List<MusicHistoryEntry> {
+    if (!isNewTrack || song.id <= 0L || maximum <= 0) return existing
+    return (listOf(MusicHistoryEntry(song, playedAt)) + existing.filterNot { it.song.id == song.id })
+        .take(maximum)
+}
+
+fun neteaseRecentSongsCall(musicU: String, limit: Int = 100): HttpCall {
+    require(musicU.isNotBlank()) { "请先登录网易云" }
+    return HttpCall(
+        method = "POST",
+        url = "https://music.163.com/api/play-record/song/list",
+        headers = baseHeaders(musicU),
+        body = HttpBody.Form(listOf("limit" to limit.coerceIn(1, 100).toString())),
+    )
+}
+
+fun parseRecentSongs(json: String): MusicHistoryPage {
+    val root = checkedMusicRoot(json)
+    val data = root["data"]?.jsonObject ?: return MusicHistoryPage(emptyList(), remoteEnabled = false)
+    val entries = data["list"]?.jsonArray.orEmpty().mapNotNull { item ->
+        val entry = item.jsonObject
+        val songObject = entry["song"] ?: entry["simpleSong"] ?: return@mapNotNull null
+        val song = parseSongElement(songObject)
+        if (song.id <= 0L) return@mapNotNull null
+        val time = longOrNull(item, "playTime") ?: longOrNull(item, "playedAt")
+        MusicHistoryEntry(song, time)
+    }
+    return MusicHistoryPage(entries, remoteEnabled = true)
+}
+
+fun mergeRecentSongs(
+    local: List<MusicHistoryEntry>,
+    remote: List<MusicHistoryEntry>?,
+    maximum: Int = 100,
+): List<MusicHistoryEntry> {
+    data class Candidate(val entry: MusicHistoryEntry, val order: Int)
+    val chosen = linkedMapOf<Long, Candidate>()
+    (local + remote.orEmpty()).forEachIndexed { index, entry ->
+        val prior = chosen[entry.song.id]
+        val newer = prior == null || when {
+            entry.playedAt == null -> false
+            prior.entry.playedAt == null -> true
+            else -> entry.playedAt > prior.entry.playedAt
+        }
+        if (newer) chosen[entry.song.id] = Candidate(entry, prior?.order ?: index)
+    }
+    return chosen.values.sortedWith { left, right ->
+        when {
+            left.entry.playedAt == null && right.entry.playedAt == null -> left.order.compareTo(right.order)
+            left.entry.playedAt == null -> 1
+            right.entry.playedAt == null -> -1
+            left.entry.playedAt != right.entry.playedAt -> right.entry.playedAt.compareTo(left.entry.playedAt)
+            else -> left.order.compareTo(right.order)
+        }
+    }.take(maximum.coerceAtLeast(0)).map { it.entry }
+}
+
 fun neteasePodcastRadiosCall(categoryId: Long = 0L, musicU: String? = null): HttpCall = HttpCall(
     method = "GET",
     url = if (categoryId > 0L) "https://music.163.com/api/djradio/recommend?cateId=$categoryId"

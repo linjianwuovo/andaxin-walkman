@@ -20,6 +20,7 @@ internal object MusicStore {
     private const val KEY_POSITION = "music.position"
     private const val KEY_PLAYING = "music.playing"
     private const val KEY_RECENT = "music.recent"
+    private const val KEY_RECENT_TIMES = "music.recent.playedAt"
     private const val KEY_LIKED = "music.liked"
     private const val KEY_PLAY_MODE = "music.playMode"
     private const val KEY_SEARCH_HISTORY = "music.searchHistory"
@@ -71,9 +72,20 @@ internal object MusicStore {
 
     fun loadRecent(): List<MusicSong> = decodeQueue(defaults.stringForKey(KEY_RECENT).orEmpty())
 
-    fun saveRecent(songs: List<MusicSong>) {
-        defaults.setObject(encodeQueue(songs.take(30)), forKey = KEY_RECENT)
+    fun saveRecent(songs: List<MusicSong>, playedAt: Map<Long, Long> = emptyMap()) {
+        val recent = songs.take(100)
+        defaults.setObject(encodeQueue(recent), forKey = KEY_RECENT)
+        val times = recent.mapNotNull { song -> playedAt[song.id]?.let { song.id.toString() to it } }.toMap()
+        defaults.setObject(times, forKey = KEY_RECENT_TIMES)
     }
+
+    fun loadRecentTimes(): Map<Long, Long> =
+        (defaults.dictionaryForKey(KEY_RECENT_TIMES) as? Map<*, *>)
+            ?.mapNotNull { (id, time) ->
+                val key = (id as? String)?.toLongOrNull()
+                val value = (time as? Number)?.toLong()
+                if (key != null && value != null) key to value else null
+            }?.toMap().orEmpty()
 
     fun loadLikedIds(): Set<Long> = (defaults.arrayForKey(KEY_LIKED) as? List<*>)
         ?.mapNotNull { (it as? Number)?.toLong() }

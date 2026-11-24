@@ -285,13 +285,13 @@ jobs:
       - name: Capture iOS parity pages and large text
         id: parity_capture
         timeout-minutes: 8
-        run: python3 .github/scripts/ios_parity_smoke.py --udid "$SIM_UDID" --artifacts ios-parity-visual
+        run: python3 .github/scripts/ios_parity_smoke.py --udid "$SIM_UDID" --artifacts "$RUNNER_TEMP/ios-parity-visual"
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && (steps.parity_capture.outcome == 'success' || steps.parity_capture.outcome == 'failure') }}
         with:
           name: ios-parity-visual
-          path: ios-parity-visual/
+          path: ${{ runner.temp }}/ios-parity-visual/
           if-no-files-found: error
 
       - name: Capture deterministic native iOS lyrics

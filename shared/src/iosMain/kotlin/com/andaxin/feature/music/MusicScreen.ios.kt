@@ -442,8 +442,17 @@ private fun ShellPage(title: String, message: String) {
 private fun HistoryTab(controller: MusicController, onDetail: (MusicDetail) -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item { SectionTitle("最近播放") }
+        // 安卓会把云端 recentSongs 并进来；那条接口走 weapi 签名，iOS 侧没有等价实现，
+        // 所以这里只有本机记录，并在界面上写明，不装作已经对齐。
+        item {
+            Text(
+                "仅显示本机播放记录；云端的“最近播放”尚未接入这个版本。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         items(controller.history, key = { it.id }) { SongRow(it, controller, showLike = true, onDetail = onDetail) }
-        if (controller.history.isEmpty()) item { EmptyHint("还没有播放历史。") }
+        if (controller.history.isEmpty()) item { EmptyHint("这台设备还没有播放记录。") }
     }
 }
 @Composable

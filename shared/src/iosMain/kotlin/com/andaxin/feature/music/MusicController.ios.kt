@@ -3,6 +3,7 @@ package com.andaxin.feature.music
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.andaxin.core.concurrency.nowMillis
 import com.andaxin.core.net.HttpCall
 import com.andaxin.core.net.HttpEngine
 import com.andaxin.core.net.HttpEngineConfig
@@ -78,6 +79,8 @@ class MusicController(
         private set
     var history by mutableStateOf<List<MusicSong>>(emptyList())
         private set
+    var historyPlayedAt by mutableStateOf<Map<Long, Long>>(emptyMap())
+        private set
     var position by mutableStateOf(0.0)
     var duration by mutableStateOf(0.0)
     var lyrics by mutableStateOf<List<LyricLine>>(emptyList())
@@ -123,6 +126,7 @@ class MusicController(
         // 这里只在"上次确实在放"时才真的出声，位置由 startAt 接上。
         val wasPlaying = restore()
         history = MusicStore.loadRecent()
+        historyPlayedAt = MusicStore.loadRecentTimes()
         likedIds = MusicStore.loadLikedIds()
         scope.launch { ticker() }
         if (wasPlaying && index >= 0) {
@@ -139,6 +143,8 @@ class MusicController(
             playbackRequest++
             lyricRequest++
             searching = false
+            // 换号后旧歌单/搜索/云盘相关的界面缓存都作废；最近播放是本机记录，保留。
+            customPlaylists = MusicStore.loadCustomPlaylists()
         }
         musicU = value
         MusicStore.saveMusicU(value)
@@ -380,10 +386,8 @@ class MusicController(
         queue = if (active != null && list.none { it.id == active.id }) listOf(active) + list else list
         index = active?.let { item -> queue.indexOfFirst { it.id == item.id } } ?: -1
         MusicStore.saveQueue(queue, index.coerceAtLeast(0))
-        if (!playAt(queue.indexOfFirst { it.id == song.id })) return
-        val recent = listOf(song) + history.filterNot { it.id == song.id }
-        history = recent.take(30)
-        MusicStore.saveRecent(history)
+        // 播放历史的落点只有 playAt：它同时覆盖点选、下一首、队列与自动续播。
+        playAt(queue.indexOfFirst { it.id == song.id })
     }
 
     /** 首页/发现点推荐卡片：搜到什么就把结果装进队列，供播放器“下一首”走。 */
@@ -517,6 +521,8 @@ class MusicController(
         if (request != playbackRequest || !scope.isActive) return false
         val liveIndex = queue.indexOfFirst { it.id == song.id }
         if (liveIndex < 0) return false
+        // 续播（startAt > 0）不是新的收听，别把恢复当成又听了一次。
+        val newListen = current?.id != song.id && startAt <= 0.5
         player.play(url, startAt = startAt)
         lyrics = emptyList()
         lyricIndex = -1
@@ -544,7 +550,21 @@ class MusicController(
         MusicStore.savePlaying(true)
         refreshNowPlaying()
         loadCover(song)
+        if (newListen) recordHistory(song)
         return true
+    }
+
+    /**
+     * 本机最近播放：与安卓 HistoryViewModel 同一套语义（同 id 去重、新的在前、上限 100），
+     * 只是数据源只有本机 —— 云端历史要走 weapi 签名，这里没有等价实现，界面会照实说明。
+     */
+    private fun recordHistory(song: MusicSong) {
+        val entries = history.map { MusicHistoryEntry(it, historyPlayedAt[it.id]) }
+        val updated = recordLocalPlayback(entries, song, nowMillis(), isNewTrack = true)
+        if (updated.isEmpty()) return
+        history = updated.map { it.song }
+        historyPlayedAt = updated.mapNotNull { row -> row.playedAt?.let { row.song.id to it } }.toMap()
+        MusicStore.saveRecent(history, historyPlayedAt)
     }
 
     private suspend fun loadLyrics(song: MusicSong) {
