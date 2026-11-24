@@ -23,6 +23,8 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- 本地 MCP：局域网暴露要这条（上游 manifest:6） -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <uses-feature
         android:name="android.hardware.camera.any"
@@ -75,13 +77,225 @@
              否则装完会多出第二个图标。 -->
         <activity
             android:name=".MainActivity"
-            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|uiMode"
             android:exported="false"
             android:supportsPictureInPicture="true"
             android:theme="@style/Theme.Music"
             tools:ignore="MissingClass" />
 
-        <!-- 播放服务必须 exported：锁屏歌词、车机、系统媒体面板都靠它连 -->
+
+<!-- 桌面小组件：上游 app/src/main/AndroidManifest.xml 的 32 枚 receiver 与配置 Activity 整块。
+     组件类都在 music/src/main/java/com/ljyh/mei/widget/，预览布局在 res/xml/widget_*。
+     点击回跳的 MainActivity 是宿主壳，widget 深链由 MusicScreen 的派发 LaunchedEffect 消费。 -->
+        <receiver android:name=".widget.PlayerWidget" android:label="@string/widget_player_mini" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_player" />
+        </receiver>
+
+        <receiver android:name=".widget.PlayerMiniWideWidget" android:label="@string/widget_player_mini" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_player_mini_wide" />
+        </receiver>
+
+        <receiver android:name=".widget.PlayerBarWidget" android:label="@string/widget_player" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_player_bar" />
+        </receiver>
+
+        <receiver android:name=".widget.PlayerWideWidget" android:label="@string/widget_player" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_player_wide" />
+        </receiver>
+
+        <receiver android:name=".widget.PlayerLargeWidget" android:label="@string/widget_player" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_player_large" />
+        </receiver>
+
+        <receiver android:name=".widget.NowPlayingWidget" android:label="@string/widget_recent" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_now_playing" />
+        </receiver>
+
+        <receiver android:name=".widget.RecentMusicWidget" android:label="@string/widget_recent" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_recent" />
+        </receiver>
+
+        <receiver android:name=".widget.RecentMusicLargeWidget" android:label="@string/widget_recent" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_recent_large" />
+        </receiver>
+
+        <receiver android:name=".widget.NcmRecentMusicWidget" android:label="@string/widget_recent" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_ncm_recent" />
+        </receiver>
+
+        <receiver android:name=".widget.LyricsWidget" android:label="@string/widget_lyrics" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_lyrics" />
+        </receiver>
+
+        <receiver android:name=".widget.LyricsLargeWidget" android:label="@string/widget_lyrics" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_lyrics_large" />
+        </receiver>
+
+        <receiver android:name=".widget.CommentWidget" android:label="@string/widget_comment" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_comment" />
+        </receiver>
+
+        <receiver android:name=".widget.CommentLargeWidget" android:label="@string/widget_comment" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_comment_large" />
+        </receiver>
+
+        <receiver android:name=".widget.PrivateRadioWidget" android:label="@string/widget_ncm_radio" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_radio" />
+        </receiver>
+
+        <receiver android:name=".widget.CloseFriendsWidget" android:label="@string/widget_close_friends" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_close_friends" />
+        </receiver>
+
+        <receiver android:name=".widget.CloseFriendsLargeWidget" android:label="@string/widget_close_friends" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_close_friends_large" />
+        </receiver>
+
+        <receiver android:name=".widget.VinylMusicWidget" android:label="@string/widget_vinyl" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_vinyl" />
+        </receiver>
+
+        <receiver android:name=".widget.AppleRadioWidget" android:label="@string/widget_apple_radio" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_apple_radio" />
+        </receiver>
+
+        <receiver android:name=".widget.MusicShortcutsWidget" android:label="@string/widget_shortcuts" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_shortcuts" />
+        </receiver>
+
+        <receiver android:name=".widget.MusicShortcutsWideWidget" android:label="@string/widget_shortcuts" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_shortcuts_wide" />
+        </receiver>
+
+        <receiver android:name=".widget.MusicShortcutsLargeWidget" android:label="@string/widget_shortcuts" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_shortcuts_large" />
+        </receiver>
+
+        <receiver android:name=".widget.ListeningWidget" android:label="@string/widget_listening" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_listening" />
+        </receiver>
+
+        <receiver android:name=".widget.UniversalMusicWidget" android:label="@string/widget_universal" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_universal" />
+        </receiver>
+
+        <receiver android:name=".widget.UniversalMusicWideWidget" android:label="@string/widget_universal" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_universal_wide" />
+        </receiver>
+
+        <receiver android:name=".widget.OpenMusicWidget" android:label="@string/widget_open_music" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_open_music" />
+        </receiver>
+
+        <receiver android:name=".widget.PinnedMusicWidget" android:label="@string/widget_pins" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_pins" />
+        </receiver>
+
+        <receiver android:name=".widget.PinnedMusicLargeWidget" android:label="@string/widget_pins" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_pins_large" />
+        </receiver>
+
+        <receiver android:name=".widget.RecommendationsWidget" android:label="@string/widget_discover" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_recommendations" />
+        </receiver>
+
+        <receiver android:name=".widget.RecommendationsLargeWidget" android:label="@string/widget_discover" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_recommendations_large" />
+        </receiver>
+
+        <receiver android:name=".widget.ChartsWidget" android:label="@string/widget_charts" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_charts" />
+        </receiver>
+
+        <receiver android:name=".widget.ChartsMediumWidget" android:label="@string/widget_charts" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_charts_medium" />
+        </receiver>
+
+        <receiver android:name=".widget.ChartsLargeWidget" android:label="@string/widget_charts" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_charts_large" />
+        </receiver>
+
+        <activity
+        android:name=".widget.WidgetCollectionConfigureActivity"
+        android:exported="true"
+        android:theme="@style/Theme.Music">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
+
+        <activity
+        android:name=".widget.UniversalWidgetConfigureActivity"
+        android:exported="true"
+        android:theme="@style/Theme.Music">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
+
+        <activity
+        android:name=".widget.WidgetPlaybackActivity"
+        android:excludeFromRecents="true"
+        android:exported="false"
+        android:noHistory="true"
+        android:taskAffinity=""
+        android:theme="@style/Theme.Music.WidgetPlayback" />
+
+
+
+        <activity
+        android:name=".widget.WidgetCollectionConfigureActivity"
+        android:exported="true"
+        android:theme="@style/Theme.Music">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
+
+        <activity
+        android:name=".widget.UniversalWidgetConfigureActivity"
+        android:exported="true"
+        android:theme="@style/Theme.Music">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
+
+        <activity
+        android:name=".widget.WidgetPlaybackActivity"
+        android:excludeFromRecents="true"
+        android:exported="false"
+        android:noHistory="true"
+        android:taskAffinity=""
+        android:theme="@style/Theme.Music.WidgetPlayback" />
+
+
+
+<!-- 播放服务必须 exported：锁屏歌词、车机、系统媒体面板都靠它连 -->
         <service
             android:name=".playback.MusicService"
             android:exported="true"

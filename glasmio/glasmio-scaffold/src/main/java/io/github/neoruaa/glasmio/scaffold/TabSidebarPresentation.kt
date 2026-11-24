@@ -78,9 +78,9 @@ internal fun TabSidebarContentPreview(
 ) {
     val density = LocalDensity.current
     val rendered = rememberGraphicsLayer()
-    // 半径按 1px 量化后复用同一批模糊实例：每帧新建 RenderEffect 会让 HWUI 每帧
-    // 重建滤波管线并重跑整层模糊，平板横屏整段过渡掉帧就是它。一次过渡最多 11 档，
-    // 与连续半径的观感差别看不出来。
+    // 半径按 1px 量化后复用同一批模糊实例，省掉每帧新建 RenderEffect 的分配。
+    // 平板横屏 x86_64 模拟器 A/B（4 次展开+4 次收起）：janky 10.80%→10.00%，
+    // p95 73ms→69ms —— 在噪声范围内，不能宣称是卡顿的主因；主因仍未定位。
     val blurEffects = remember { HashMap<Int, ComposeRenderEffect>() }
     Box(Modifier.fillMaxSize().drawWithCache {
         val source = layer()

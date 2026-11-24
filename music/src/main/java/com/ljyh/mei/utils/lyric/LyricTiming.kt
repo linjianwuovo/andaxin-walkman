@@ -112,3 +112,83 @@ private fun Int.shiftTiming(offsetMs: Int): Int {
     }
     return shifted.toInt()
 }
+
+private val LYRIC_OFFSET_TAG_REGEX = Regex(
+    """^\s*\[\s*offset\s*:\s*([+-]?\d+)\s*]\s*$""",
+    RegexOption.IGNORE_CASE,
+)
+private const val MAX_HEADER_OFFSET_MS = 300_000
+
+/**
+ * Parses `[offset:+/-ms]` from LRC/QRC/YRC headers.
+ * Per the LRC/QRC specification, a positive `[offset:500]` advances lyrics earlier (`time - 500`).
+ */
+internal fun extractLyricHeaderOffsetMs(raw: String): Int {
+    for (line in raw.lineSequence()) {
+        val match = LYRIC_OFFSET_TAG_REGEX.matchEntire(line) ?: continue
+        val parsed = match.groupValues[1].toLongOrNull() ?: continue
+        if (parsed in -MAX_HEADER_OFFSET_MS.toLong()..MAX_HEADER_OFFSET_MS.toLong()) {
+            return parsed.toInt()
+        }
+    }
+    return 0
+}
+
+internal fun extractLyricHeaderOffsetMs(lines: Iterable<String>): Int {
+    for (line in lines) {
+        val match = LYRIC_OFFSET_TAG_REGEX.matchEntire(line) ?: continue
+        val parsed = match.groupValues[1].toLongOrNull() ?: continue
+        if (parsed in -MAX_HEADER_OFFSET_MS.toLong()..MAX_HEADER_OFFSET_MS.toLong()) {
+            return parsed.toInt()
+        }
+    }
+    return 0
+}
+
+internal fun shiftHeaderTimestamp(timestampMs: Int, headerOffsetMs: Int): Int {
+    if (headerOffsetMs == 0) return timestampMs
+    return (timestampMs.toLong() - headerOffsetMs).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+}
+
+internal fun List<KaraokeLine>.applyHeaderOffset(headerOffsetMs: Int): List<KaraokeLine> {
+    if (headerOffsetMs == 0) return this
+    return map { line -> line.shiftByHeaderOffset(headerOffsetMs) }
+}
+
+private fun KaraokeLine.shiftByHeaderOffset(headerOffsetMs: Int): KaraokeLine = when (this) {
+    is KaraokeLine.MainKaraokeLine -> {
+        val shiftedSyllables = syllables.map { it.shiftByHeaderOffset(headerOffsetMs) }
+        val shiftedAccompaniments = accompanimentLines?.map { it.shiftAccompanimentByHeaderOffset(headerOffsetMs) }
+        val newStart = shiftedSyllables.minOfOrNull { it.start } ?: shiftHeaderTimestamp(start, headerOffsetMs)
+        val newEnd = maxOf(
+            newStart + (end - start).coerceIn(0, 1),
+            shiftedSyllables.maxOfOrNull { it.end } ?: shiftHeaderTimestamp(end, headerOffsetMs),
+        )
+        copy(
+            syllables = shiftedSyllables,
+            accompanimentLines = shiftedAccompaniments,
+            start = newStart,
+            end = newEnd,
+        )
+    }
+    is KaraokeLine.AccompanimentKaraokeLine -> shiftAccompanimentByHeaderOffset(headerOffsetMs)
+}
+
+private fun KaraokeLine.AccompanimentKaraokeLine.shiftAccompanimentByHeaderOffset(
+    headerOffsetMs: Int,
+): KaraokeLine.AccompanimentKaraokeLine {
+    val shiftedSyllables = syllables.map { it.shiftByHeaderOffset(headerOffsetMs) }
+    val newStart = shiftedSyllables.minOfOrNull { it.start } ?: shiftHeaderTimestamp(start, headerOffsetMs)
+    val newEnd = maxOf(
+        newStart + (end - start).coerceIn(0, 1),
+        shiftedSyllables.maxOfOrNull { it.end } ?: shiftHeaderTimestamp(end, headerOffsetMs),
+    )
+    return copy(syllables = shiftedSyllables, start = newStart, end = newEnd)
+}
+
+private fun KaraokeSyllable.shiftByHeaderOffset(headerOffsetMs: Int): KaraokeSyllable {
+    val newStart = shiftHeaderTimestamp(start, headerOffsetMs)
+    val minDuration = (end - start).coerceIn(0, 1)
+    val newEnd = maxOf(newStart + minDuration, shiftHeaderTimestamp(end, headerOffsetMs))
+    return copy(start = newStart, end = newEnd)
+}

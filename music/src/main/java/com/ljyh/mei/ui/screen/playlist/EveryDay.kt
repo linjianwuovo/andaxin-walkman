@@ -37,6 +37,7 @@ import com.ljyh.mei.ui.screen.source.SourceTrackActions
 import com.ljyh.mei.ui.screen.source.sourceCode
 import com.ljyh.mei.ui.screen.source.sourceErrorMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -101,6 +102,7 @@ fun EveryDay(viewModel: DailyRecommendationsViewModel = hiltViewModel()) {
     var query by rememberSaveable { mutableStateOf("") }
     var searching by rememberSaveable { mutableStateOf(false) }
     var selection by remember(data) { mutableStateOf<Pair<Track, Rect>?>(null) }
+    val trackMenuAnchor = rememberGlasmioMenuAnchorState()
     val tracks = data?.tracks.orEmpty()
     val metadata = remember(tracks) { tracks.map { it.toMediaMetadata() } }
     val indices = remember(metadata, query) { metadata.indices.filter { metadata[it].matchesPlaylistSearch(query) } }
@@ -152,7 +154,10 @@ fun EveryDay(viewModel: DailyRecommendationsViewModel = hiltViewModel()) {
         onPlaylistSearchActiveChange = { active -> searching = active; if (!active) query = "" },
         favoriteTrackIds = favorites,
         onTrackMore = { item, bounds -> tracks.firstOrNull { it.ref == item.trackRef }?.let { selection = it to bounds } },
-        overlayContent = { SourceTrackActions(selection, { selection = null }, actions) },
+        trackMenuAnchorState = trackMenuAnchor,
+        overlayContent = {
+            SourceTrackActions(selection, { selection = null }, actions, menuAnchorState = trackMenuAnchor)
+        },
         onBack = { nav.popBackStack() },
     )
 }

@@ -59,7 +59,7 @@ enum class SourceUpdateReviewReason {
 }
 
 internal object SourceMarketIndex {
-    const val URL = "https://raw.githubusercontent.com/NEORUAA/MeiloX-Source-Registry/main/index.json"
+    const val URL = "https://raw.githubusercontent.com/MeiloX/MeiloX-Source-Registry/main/index.json"
     const val MAX_BYTES = 256 * 1024
     private val fields = setOf("packageId", "providerId", "name", "repository", "packagePath", "apiVersion")
     private val id = Regex("[a-z][a-z0-9._-]{2,79}")

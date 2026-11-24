@@ -204,6 +204,16 @@ fun SourceManagementScreen(
                 GlasmioListRow(title = "优先原始音源", showDisclosure = false, trailing = {
                     MeiloXSwitch(settings.preferOriginalProvider, { checked -> viewModel.update { it.copy(preferOriginalProvider = checked) } })
                 })
+                GlasmioListRow(
+                    title = stringResource(R.string.source_allow_alternate_versions),
+                    subtitle = stringResource(R.string.source_allow_alternate_versions_detail),
+                    showDisclosure = false,
+                    trailing = {
+                        MeiloXSwitch(settings.allowAlternateVersions, { checked ->
+                            viewModel.update { it.copy(allowAlternateVersions = checked) }
+                        })
+                    },
+                )
             } }
             displayedOrder?.takeIf { it.isNotEmpty() }?.let { order ->
                 item { Text("切换顺序", Modifier.padding(start = 16.dp, top = 12.dp)) }

@@ -1,6 +1,7 @@
 package com.ljyh.mei.ui.component.item
 
 import com.ljyh.mei.ui.component.playlist.songListDividerColor
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,9 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,11 +30,13 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import com.ljyh.mei.R
 import io.github.neoruaa.glasmio.icons.SfIcon
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -53,7 +54,12 @@ import com.ljyh.mei.constants.HomeSongCoverSize
 import com.ljyh.mei.constants.HomeSongRowSpacing
 import com.ljyh.mei.ui.component.home.homeArtworkBorder
 import com.ljyh.mei.ui.component.playlist.PlayingImageView
+import com.ljyh.mei.ui.component.playlist.TrackPlaybackWave
 import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
+import io.github.neoruaa.glasmio.glass.glasmioMenuGesture
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalContentPadding
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalEdgeToEdge
 
 internal val ThreeRowSongListHeight: Dp
     get() = HomeSongCoverSize * 3 + HomeSongRowSpacing * 2
@@ -97,9 +103,9 @@ internal fun ThreeRowSongList(
     val pagerState = rememberPagerState(pageCount = { (itemCount + 2) / 3 })
     HorizontalPager(
         state = pagerState,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.glasmioHorizontalEdgeToEdge().fillMaxWidth(),
         pageSize = PageSize.Fixed(columnWidth),
-        contentPadding = contentPadding,
+        contentPadding = glasmioHorizontalContentPadding(contentPadding),
         pageSpacing = columnSpacing,
         verticalAlignment = Alignment.Top,
     ) { column ->
@@ -118,8 +124,12 @@ internal fun HomeSongListRow(
     onMore: (Rect) -> Unit,
     moreModifier: Modifier = Modifier,
     coverSize: Dp = songListCoverSize(rememberDeviceInfo().isLandscape),
+    isPlaying: Boolean = false,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
-    var anchor by remember(coverUrl, title) { mutableStateOf(Rect.Zero) }
+    val landscape = rememberDeviceInfo().isLandscape
+    val shape = ContinuousRoundedRectangle(songListCoverCornerRadius(landscape))
+    val moreLabel = stringResource(R.string.more_actions_title)
     val configuration = LocalViewConfiguration.current
     val actionConfiguration =
         remember(configuration) {
@@ -129,25 +139,28 @@ internal fun HomeSongListRow(
         }
     Row(
         Modifier.fillMaxWidth()
-            .clip(ContinuousRoundedRectangle(songListCoverCornerRadius(rememberDeviceInfo().isLandscape)))
-            .clickable(onClick = onClick),
+            .clip(shape)
+            .clickable(interactionSource = null, indication = null, onClick = onClick),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlayingImageView(
-            imageUrl = coverUrl,
-            isPlaying = false,
-            modifier =
-                Modifier.size(coverSize)
-                    .clip(ContinuousRoundedRectangle(songListCoverCornerRadius(rememberDeviceInfo().isLandscape)))
-                    .homeArtworkBorder(ContinuousRoundedRectangle(songListCoverCornerRadius(rememberDeviceInfo().isLandscape))),
-        )
+        Box(Modifier.size(coverSize).clip(shape).homeArtworkBorder(shape)) {
+            PlayingImageView(imageUrl = coverUrl, isPlaying = false, modifier = Modifier.matchParentSize())
+            if (isPlaying) {
+                Box(
+                    Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TrackPlaybackWave(Color.White)
+                }
+            }
+        }
         Column(Modifier.weight(1f)) {
             Text(
                 title,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = if (rememberDeviceInfo().isLandscape) 16.sp else 14.sp,
-                lineHeight = if (rememberDeviceInfo().isLandscape) androidx.compose.ui.unit.TextUnit.Unspecified else 19.sp,
+                fontSize = if (landscape) 16.sp else 14.sp,
+                lineHeight = if (landscape) androidx.compose.ui.unit.TextUnit.Unspecified else 19.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.Normal,
@@ -155,24 +168,49 @@ internal fun HomeSongListRow(
             Text(
                 subtitle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = if (rememberDeviceInfo().isLandscape) 13.sp else 12.sp,
-                lineHeight = if (rememberDeviceInfo().isLandscape) androidx.compose.ui.unit.TextUnit.Unspecified else 17.sp,
+                fontSize = if (landscape) 13.sp else 12.sp,
+                lineHeight = if (landscape) androidx.compose.ui.unit.TextUnit.Unspecified else 17.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        CompositionLocalProvider(
-            LocalMinimumInteractiveComponentSize provides HomeSongActionSize,
-            LocalViewConfiguration provides actionConfiguration,
-        ) {
-            IconButton(
-                onClick = { onMore(anchor) },
-                modifier = moreModifier.size(HomeSongActionSize).offset(x = (-6).dp)
-                    .onGloballyPositioned { anchor = it.boundsInWindow() },
-            ) {
-                SfIcon("ellipsis", stringResource(R.string.more_actions_title), size = 18.dp,
-                    tint = LocalGlassColors.current.secondaryContent)
+        CompositionLocalProvider(LocalViewConfiguration provides actionConfiguration) {
+            TrackMenuTrigger(menuAnchorState, onMore) { trigger, openMenu ->
+                Box(
+                    modifier = moreModifier.size(HomeSongActionSize).offset(x = (-6).dp)
+                        .clip(ContinuousRoundedRectangle(HomeSongActionSize / 2))
+                        .then(trigger)
+                        .clickable(
+                            interactionSource = null, indication = null, role = Role.Button,
+                            onClick = openMenu,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SfIcon("ellipsis", moreLabel, size = 18.dp, tint = LocalGlassColors.current.secondaryContent)
+                }
             }
         }
     }
+}
+
+/** The trigger and its external menu share the original pointer stream. */
+@Composable
+internal fun TrackMenuTrigger(
+    menuAnchorState: GlasmioMenuAnchorState?,
+    onMore: (Rect) -> Unit,
+    content: @Composable (Modifier, () -> Unit) -> Unit,
+) {
+    var bounds by remember { mutableStateOf(Rect.Zero) }
+    val openMenu: () -> Unit = {
+        val anchor = bounds
+        if (!anchor.isEmpty) {
+            menuAnchorState?.bind(null, anchor)
+            onMore(anchor)
+        }
+    }
+    val position = Modifier.onGloballyPositioned { bounds = it.boundsInWindow() }
+    val trigger = if (menuAnchorState == null) position else {
+        position.glasmioMenuGesture(menuAnchorState, openMenu)
+    }
+    content(trigger, openMenu)
 }

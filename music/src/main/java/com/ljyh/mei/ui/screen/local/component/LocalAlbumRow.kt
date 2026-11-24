@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.screen.local.component
 
+import com.ljyh.mei.ui.component.home.homeArtworkBorder
 import io.github.neoruaa.glasmio.core.swipeBackExcluded
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,12 +31,14 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.ljyh.mei.data.model.room.Song
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalContentPadding
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalEdgeToEdge
 
 @Composable
 internal fun AlbumRow(albums: List<String>, songs: List<Song>, onAlbumClick: (String) -> Unit = {}) {
     LazyRow(
-        modifier = Modifier.swipeBackExcluded(),
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        modifier = Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded(),
+        contentPadding = glasmioHorizontalContentPadding(PaddingValues(horizontal = 16.dp)),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(albums) { album ->
@@ -48,7 +52,8 @@ internal fun AlbumRow(albums: List<String>, songs: List<Song>, onAlbumClick: (St
 @Composable
 internal fun AlbumCard(title: String, count: String, coverUrl: String?, onClick: () -> Unit = {}) {
     Column(modifier = Modifier.clickable(onClick = onClick)) {
-        Card(Modifier.size(120.dp), shape = ContinuousRoundedRectangle(10.dp),
+        val coverShape = ContinuousRoundedRectangle(10.dp)
+        Card(Modifier.size(120.dp).homeArtworkBorder(coverShape), shape = coverShape,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             if (coverUrl != null) {

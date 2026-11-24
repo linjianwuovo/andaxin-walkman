@@ -68,6 +68,36 @@ interface HistoryDao {
     """)
     fun getHistory(): Flow<List<HistoryItem>>
 
+    @Query("""
+        SELECT song.*, history.historyId, history.playedAt
+        FROM playback_history AS history
+        INNER JOIN song ON history.songId = song.id
+        ORDER BY history.playedAt DESC, history.historyId DESC
+        LIMIT :limit OFFSET :offset
+    """)
+    suspend fun getRecentHistory(limit: Int, offset: Int): List<HistoryItem>
+
+    @Query("""
+        SELECT song.*
+        FROM (
+            SELECT songId, MAX(playedAt) AS latest
+            FROM playback_history
+            GROUP BY songId
+            ORDER BY latest DESC, songId
+            LIMIT :limit
+        ) AS recent
+        INNER JOIN song ON recent.songId = song.id
+        ORDER BY recent.latest DESC, recent.songId
+    """)
+    fun observeRecentSongs(limit: Int): Flow<List<Song>>
+
+    @Query("""
+        SELECT DISTINCT CAST(strftime('%d', playedAt / 1000, 'unixepoch', 'localtime') AS INTEGER)
+        FROM playback_history
+        WHERE playedAt >= :startTime AND playedAt < :endTime
+    """)
+    fun observeListeningDays(startTime: Long, endTime: Long): Flow<List<Int>>
+
     @Query("DELETE FROM playback_history")
     suspend fun clearHistory()
 

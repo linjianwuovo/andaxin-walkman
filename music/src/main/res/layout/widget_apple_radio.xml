@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_apple_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_apple_surface" android:clipToOutline="true">
+    <ImageView android:id="@+id/widget_apple_ambience"
+        android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY"
+        android:importantForAccessibility="no" android:visibility="gone" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="12dp">
+        <FrameLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="6dp">
+            <TextView android:id="@+id/widget_apple_section"
+                android:layout_width="match_parent" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end" android:textSize="16sp"
+                android:textColor="@color/widget_apple_header" android:text="@string/widget_apple_live_radio"
+                android:layout_marginEnd="21dp" />
+            <ImageView android:layout_width="15dp"
+                android:layout_height="15dp" android:layout_gravity="top|end" android:src="@drawable/widget_meilox_mark"
+                android:tint="@color/widget_apple_header" android:importantForAccessibility="no" />
+        </FrameLayout>
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+            <LinearLayout android:id="@+id/widget_apple_station_grid"
+                android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"
+                android:layout_gravity="top|center_horizontal" android:layout_marginTop="16dp">
+                <LinearLayout android:id="@+id/widget_apple_station_1"
+                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                    android:orientation="vertical" android:gravity="center_horizontal">
+                    <FrameLayout android:id="@+id/widget_apple_station_art_1"
+                        android:layout_width="72dp" android:layout_height="72dp"
+                        android:background="@drawable/widget_apple_station_placeholder" android:clipToOutline="true">
+                        <ImageView android:id="@+id/widget_apple_station_icon_1"
+                            android:layout_width="36dp" android:layout_height="36dp" android:layout_gravity="center"
+                            android:padding="6dp" android:background="@drawable/widget_apple_capsule"
+                            android:src="@drawable/widget_ic_play" android:tint="#FFFFFF" android:importantForAccessibility="no" />
+                    </FrameLayout>
+                    <TextView android:id="@+id/widget_apple_station_label_1"
+                        android:layout_width="74dp" android:layout_height="28dp" android:layout_marginTop="4dp"
+                        android:gravity="top|center_horizontal" android:includeFontPadding="false" android:ellipsize="end"
+                        android:maxLines="2" android:fontFamily="sans-serif-medium" android:textSize="12sp"
+                        android:textColor="#FFFFFF" android:text="@string/private_fm_default_mode" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/widget_apple_station_2"
+                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                    android:orientation="vertical" android:gravity="center_horizontal" android:layout_marginStart="12dp">
+                    <FrameLayout android:id="@+id/widget_apple_station_art_2"
+                        android:layout_width="72dp" android:layout_height="72dp"
+                        android:background="@drawable/widget_apple_station_placeholder" android:clipToOutline="true">
+                        <ImageView android:id="@+id/widget_apple_station_icon_2"
+                            android:layout_width="36dp" android:layout_height="36dp" android:layout_gravity="center"
+                            android:padding="6dp" android:background="@drawable/widget_apple_capsule"
+                            android:src="@drawable/widget_ic_play" android:tint="#FFFFFF" android:importantForAccessibility="no" />
+                    </FrameLayout>
+                    <TextView android:id="@+id/widget_apple_station_label_2"
+                        android:layout_width="74dp" android:layout_height="28dp" android:layout_marginTop="4dp"
+                        android:gravity="top|center_horizontal" android:includeFontPadding="false" android:ellipsize="end"
+                        android:maxLines="2" android:fontFamily="sans-serif-medium" android:textSize="12sp"
+                        android:textColor="#FFFFFF" android:text="@string/private_fm_explore_mode" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/widget_apple_station_3"
+                    android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                    android:orientation="vertical" android:gravity="center_horizontal" android:layout_marginStart="12dp">
+                    <FrameLayout android:id="@+id/widget_apple_station_art_3"
+                        android:layout_width="72dp" android:layout_height="72dp"
+                        android:background="@drawable/widget_apple_station_placeholder" android:clipToOutline="true">
+                        <ImageView android:id="@+id/widget_apple_station_icon_3"
+                            android:layout_width="36dp" android:layout_height="36dp" android:layout_gravity="center"
+                            android:padding="6dp" android:background="@drawable/widget_apple_capsule"
+                            android:src="@drawable/widget_ic_play" android:tint="#FFFFFF" android:importantForAccessibility="no" />
+                    </FrameLayout>
+                    <TextView android:id="@+id/widget_apple_station_label_3"
+                        android:layout_width="74dp" android:layout_height="28dp" android:layout_marginTop="4dp"
+                        android:gravity="top|center_horizontal" android:includeFontPadding="false" android:ellipsize="end"
+                        android:maxLines="2" android:fontFamily="sans-serif-medium" android:textSize="12sp"
+                        android:textColor="#FFFFFF" android:text="@string/private_fm_familiar_mode" />
+                </LinearLayout>
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
+</FrameLayout>

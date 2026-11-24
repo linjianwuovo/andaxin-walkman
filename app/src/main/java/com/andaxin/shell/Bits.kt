@@ -13,7 +13,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -46,6 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -57,9 +60,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -77,8 +82,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import io.github.neoruaa.glasmio.ui.GlasmioButton
-import io.github.neoruaa.glasmio.ui.GlasmioCard
-import io.github.neoruaa.glasmio.ui.GlasmioSectionTitle
+import com.andaxin.core.design.safeGlassSurface
+import androidx.compose.foundation.layout.heightIn
 
 /*
  * 全仓共用的那一层排版零件。
@@ -223,27 +228,39 @@ fun Refreshable(
 @Composable
 private fun BoxScope.IosRefreshSpinner(pull: PullToRefreshState, refreshing: Boolean) {
     val ink = LocalInk.current
-    val spin = rememberInfiniteTransition(label = "iosRefresh")
-    val turn by spin.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(animation = tween(Motion.pageEnter, easing = LinearEasing)),
-        label = "iosRefreshTurn",
-    )
-    val fraction = pull.distanceFraction.coerceIn(0f, 1f)
+    // 转圈只在真刷新时才建：rememberInfiniteTransition 一旦组合上就每帧推进，
+    // 静置时照样把整帧时钟占满（实测空转 120fps、CPU 155%，见 11-17 真机采样）。
+    // 静止态这里只读下拉距离，不碰动画时钟。
+    if (refreshing) {
+        val spin = rememberInfiniteTransition(label = "iosRefresh")
+        val turn by spin.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(animation = tween(Motion.pageEnter, easing = LinearEasing)),
+            label = "iosRefreshTurn",
+        )
+        RefreshRing(ink = ink.faint, alpha = 1f, startAngle = turn, sweepAngle = 300f)
+    } else {
+        val fraction = pull.distanceFraction.coerceIn(0f, 1f)
+        RefreshRing(ink = ink.faint, alpha = fraction, startAngle = -90f, sweepAngle = 360f * fraction)
+    }
+}
+
+@Composable
+private fun BoxScope.RefreshRing(ink: Color, alpha: Float, startAngle: Float, sweepAngle: Float) {
     Canvas(
         modifier = Modifier
             .align(Alignment.TopCenter)
             .padding(top = Gap.sm)
             .size(20.dp)
-            .alpha(if (refreshing) 1f else fraction),
+            .alpha(alpha),
     ) {
         val stroke = 2.dp.toPx()
         val inset = stroke / 2
         drawArc(
-            color = ink.faint,
-            startAngle = if (refreshing) turn else -90f,
-            sweepAngle = if (refreshing) 300f else 360f * fraction,
+            color = ink,
+            startAngle = startAngle,
+            sweepAngle = sweepAngle,
             useCenter = false,
             topLeft = Offset(inset, inset),
             size = Size(size.width - stroke, size.height - stroke),
@@ -252,30 +269,143 @@ private fun BoxScope.IosRefreshSpinner(pull: PullToRefreshState, refreshing: Boo
     }
 }
 
-/**
- * 一张卡。底子和圆角交给 Miuix 的 `Card`（HyperOS 的设置卡就是那个样子：
- * 16 圆角、`surfaceContainer` 底色、无投影），内边距走 [Rhythm.cardPad]。
- */
+/** Shared inset card with a static glass material that is safe inside sampled content. */
 @Composable
 fun Sheet(
     modifier: Modifier = Modifier,
-    @Suppress("UNUSED_PARAMETER") tint: Color = MaterialTheme.colorScheme.surface,
+    tint: Color = MaterialTheme.colorScheme.surface,
+    contentPadding: Dp = Rhythm.cardPad,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // ios 分支：分组卡换成 Glasmio 的玻璃卡。tint 参数保留在签名里（二十几个调用点不改），
-    // 但不再涂死颜色 —— iOS 那张卡的底是采样出来的玻璃,不是填色。
-    GlasmioCard(modifier = modifier.fillMaxWidth(), onClick = null) {
-        androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().padding(Rhythm.cardPad), content = content)
+    Column(
+        modifier = modifier.fillMaxWidth().clip(Radius.card).safeGlassSurface(Radius.card, tint = tint),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(contentPadding), content = content)
     }
 }
 
-/** 分组小标题：Miuix 的 `SmallTitle`，上下留白按区块节奏给。 */
+/** 分组标题用自然行高，避免 Glasmio 固定高度在大字号下裁切。 */
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    GlasmioSectionTitle(
-        title = text,
-        modifier = modifier.padding(top = Rhythm.sectionGap),
+    Text(
+        text = text,
+        fontSize = Type.body,
+        fontWeight = FontWeight.SemiBold,
+        color = LocalInk.current.strong,
+        modifier = modifier.fillMaxWidth().padding(top = Rhythm.sectionGap, bottom = Gap.xs),
     )
+}
+
+@Composable
+internal fun <T> ServiceGrid(
+    entries: List<T>,
+    tile: @Composable (T, Modifier, Boolean) -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val columns = if (fontScale <= 1.3f && maxWidth >= 352.dp * fontScale + Gap.sm) 2 else 1
+        val cellWidth = (maxWidth - Gap.sm * (columns - 1).toFloat()) / columns.toFloat()
+        val horizontal = cellWidth >= 224.dp && fontScale <= 1.3f
+        // Weighted FlowRow children can be asked for intrinsics; keep constraint measurement at the grid boundary.
+        Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(Gap.sm)) {
+            entries.chunked(columns).forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(Gap.sm),
+                ) {
+                    row.forEach { entry -> tile(entry, Modifier.weight(1f), horizontal) }
+                    if (row.size < columns) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ServiceTile(
+    title: String,
+    subtitle: String = "",
+    icon: Int,
+    accentIcon: Int,
+    horizontal: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val ink = LocalInk.current
+    val accent = MaterialTheme.colorScheme.primary
+    Sheet(
+        modifier = modifier
+            .heightIn(min = if (horizontal) 88.dp else 124.dp)
+            .pressClick(shrink = false, onClick = onClick),
+    ) {
+        if (horizontal) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ServiceTileIcon(icon, accentIcon, ink.strong, accent)
+                Spacer(Modifier.width(Gap.sm))
+                ServiceTileText(title, subtitle, Modifier.weight(1f), ink.strong, ink.muted)
+                Spacer(Modifier.width(Gap.xs))
+                Text("›", fontSize = Type.title, color = ink.faint)
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                ServiceTileIcon(icon, accentIcon, ink.strong, accent)
+                Spacer(Modifier.weight(1f))
+                Text("›", fontSize = Type.title, color = ink.faint)
+            }
+            Spacer(Modifier.height(Gap.sm))
+            ServiceTileText(title, subtitle, Modifier.fillMaxWidth(), ink.strong, ink.muted)
+        }
+    }
+}
+
+@Composable
+private fun ServiceTileIcon(icon: Int, accentIcon: Int, primary: Color, accent: Color) {
+    Box(Modifier.size(30.dp)) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(icon),
+            contentDescription = null,
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(primary),
+            modifier = Modifier.matchParentSize(),
+        )
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(accentIcon),
+            contentDescription = null,
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(accent),
+            modifier = Modifier.matchParentSize(),
+        )
+    }
+}
+
+@Composable
+private fun ServiceTileText(
+    title: String,
+    subtitle: String,
+    modifier: Modifier,
+    primary: Color,
+    secondary: Color,
+) {
+    Column(modifier) {
+        Text(
+            title,
+            fontSize = Type.body,
+            lineHeight = Type.bodyLine,
+            fontWeight = FontWeight.Medium,
+            color = primary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (subtitle.isNotBlank()) {
+            Spacer(Modifier.height(Gap.xxs))
+            Text(
+                subtitle,
+                fontSize = Type.meta,
+                lineHeight = Type.metaLine,
+                color = secondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 /**
@@ -302,63 +432,71 @@ fun RowLine(
     leading: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val ink = LocalInk.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (onClick != null) Modifier.pressClick(onClick = onClick, shrink = false) else Modifier)
-            .padding(vertical = Rhythm.rowV),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (leading != null) {
-            leading()
-            Spacer(Modifier.width(Gap.md))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                fontSize = Type.title,
-                lineHeight = Type.bodyLine,
-                fontWeight = FontWeight.Medium,
-                color = ink.strong,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (sub.isNotBlank()) {
-                Spacer(Modifier.height(Gap.xxs))
+    val fontScale = LocalDensity.current.fontScale
+    val statusColor = when (flag) {
+        Flag.Ok -> if (ink.dark) Palette.NightTeal else Palette.TealInk
+        Flag.Bad -> MaterialTheme.colorScheme.error
+        Flag.Warn -> if (ink.dark) Palette.NightAmber else Palette.AmberInk
+        Flag.Unread -> MaterialTheme.colorScheme.primary
+        Flag.None -> ink.faint
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val stacked = fontScale > 1.3f || maxWidth < 280.dp
+        val rightWidth = minOf(150.dp, maxWidth * Rhythm.rightMax)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (onClick != null) Modifier.heightIn(min = 48.dp).pressClick(onClick = onClick, shrink = false) else Modifier)
+                .padding(vertical = Rhythm.rowV),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (leading != null) {
+                leading()
+                Spacer(Modifier.width(Gap.md))
+            }
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = sub,
-                    fontSize = Type.meta,
-                    lineHeight = Type.metaLine,
-                    color = ink.muted,
-                    maxLines = 1,
+                    text = title,
+                    fontSize = Type.title,
+                    lineHeight = Type.bodyLine,
+                    fontWeight = FontWeight.Medium,
+                    color = ink.strong,
+                    maxLines = if (stacked) Int.MAX_VALUE else 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (sub.isNotBlank()) {
+                    Spacer(Modifier.height(Gap.xxs))
+                    Text(
+                        text = sub,
+                        fontSize = Type.meta,
+                        lineHeight = Type.metaLine,
+                        color = ink.muted,
+                        maxLines = if (stacked) Int.MAX_VALUE else 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (stacked && right.isNotBlank()) {
+                    Spacer(Modifier.height(Gap.xs))
+                    Text(right, fontSize = Type.meta, lineHeight = Type.metaLine, color = statusColor)
+                }
             }
-        }
-        if (right.isNotBlank()) {
-            Spacer(Modifier.width(Gap.sm))
-            Text(
-                text = right,
-                fontSize = Type.meta,
-                lineHeight = Type.metaLine,
-                color = when (flag) {
-                    // 状态字是 12sp，吃"写字那一档"的状态色（见 `Palette` 里 TealInk/AmberInk 那段）；
-                    // 夜间本来就浅，直接吃亮档。
-                    Flag.Ok -> if (ink.dark) Palette.NightTeal else Palette.TealInk
-                    Flag.Bad -> MaterialTheme.colorScheme.error
-                    Flag.Warn -> if (ink.dark) Palette.NightAmber else Palette.AmberInk
-                    Flag.Unread -> MaterialTheme.colorScheme.primary
-                    Flag.None -> ink.faint
-                },
-                textAlign = TextAlign.End,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 150.dp),
-            )
-        }
-        if (onClick != null) {
-            Spacer(Modifier.width(Gap.xs))
-            Text("›", fontSize = Type.title, color = ink.faint)
+            if (!stacked && right.isNotBlank()) {
+                Spacer(Modifier.width(Gap.sm))
+                Text(
+                    text = right,
+                    fontSize = Type.meta,
+                    lineHeight = Type.metaLine,
+                    color = statusColor,
+                    textAlign = TextAlign.End,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = rightWidth),
+                )
+            }
+            if (onClick != null) {
+                Spacer(Modifier.width(Gap.xs))
+                Text("›", fontSize = Type.title, color = ink.faint)
+            }
         }
     }
 }
@@ -378,7 +516,7 @@ fun MetricCell(
     modifier: Modifier = Modifier,
 ) {
     val ink = LocalInk.current
-    Column(modifier, horizontalAlignment = Alignment.Start) {
+    Column(modifier.heightIn(min = 48.dp), horizontalAlignment = Alignment.Start) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 text = value,
@@ -406,7 +544,7 @@ fun MetricCell(
             }
         }
         Spacer(Modifier.height(Gap.xxs))
-        Text(label, fontSize = Type.micro, color = ink.faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, fontSize = Type.micro, lineHeight = Type.microLine, color = ink.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -420,23 +558,17 @@ fun MetricCell(
 @Composable
 fun Chip(text: String, picked: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val ink = LocalInk.current
-    /*
-     * 选中那颗的底要比没选中的那颗**更显眼**，两套主题都得成立。
-     * 夜里原来那层 primary@13% 压在近黑底上比未选中的灰底还暗，两颗是反的
-     * （10-21 凌晨深色扫课程表「本周/下周」撞见的），所以夜里把选中底提到 0.30。
-     */
-    val pickedAlpha = if (ink.dark) 0.30f else 0.13f
     Text(
         text = text,
         fontSize = Type.meta,
         fontWeight = if (picked) FontWeight.Medium else FontWeight.Normal,
         color = if (picked) MaterialTheme.colorScheme.primary else ink.muted,
         modifier = modifier
+            .heightIn(min = 48.dp)
+            .widthIn(min = 48.dp)
             .pressClick(onClick = onClick)
-            .background(
-                if (picked) MaterialTheme.colorScheme.primary.copy(alpha = pickedAlpha) else ink.offFill,
-                Radius.pill,
-            )
+            .safeGlassSurface(Radius.pill, tint = ink.offFill, selected = picked)
+            .wrapContentHeight(Alignment.CenterVertically)
             .padding(horizontal = Gap.md, vertical = Gap.sm),
     )
 }
@@ -459,27 +591,34 @@ fun StatBlock(label: String, value: String, modifier: Modifier = Modifier) {
 @Composable
 fun Labeled(label: String, value: String, modifier: Modifier = Modifier) {
     val ink = LocalInk.current
-    Row(
-        modifier.fillMaxWidth().padding(vertical = Gap.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            fontSize = Type.body,
-            color = ink.muted,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(Gap.sm))
-        Text(
-            text = value,
-            fontSize = Type.body,
-            lineHeight = Type.bodyLine,
-            color = ink.strong,
-            textAlign = TextAlign.End,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 210.dp),
-        )
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(modifier.fillMaxWidth().padding(vertical = Gap.xs)) {
+        if (fontScale > 1.3f || maxWidth < 280.dp) {
+            Column {
+                Text(label, fontSize = Type.meta, lineHeight = Type.metaLine, color = ink.muted)
+                Spacer(Modifier.height(Gap.xxs))
+                Text(value, fontSize = Type.body, lineHeight = Type.bodyLine, color = ink.strong)
+            }
+        } else {
+            Row(verticalAlignment = Alignment.Top) {
+                Text(
+                    text = label,
+                    fontSize = Type.body,
+                    lineHeight = Type.bodyLine,
+                    color = ink.muted,
+                    modifier = Modifier.weight(Rhythm.rightMax),
+                )
+                Spacer(Modifier.width(Gap.md))
+                Text(
+                    text = value,
+                    fontSize = Type.body,
+                    lineHeight = Type.bodyLine,
+                    color = ink.strong,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f - Rhythm.rightMax),
+                )
+            }
+        }
     }
 }
 
@@ -526,10 +665,11 @@ fun ShelfTail() {
 fun EmptyState(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        fontSize = Type.meta,
-        lineHeight = Type.metaLine,
-        color = LocalInk.current.faint,
-        modifier = modifier.fillMaxWidth().padding(vertical = Gap.lg),
+        fontSize = Type.body,
+        lineHeight = Type.bodyLine,
+        color = LocalInk.current.muted,
+        textAlign = TextAlign.Center,
+        modifier = modifier.fillMaxWidth().padding(horizontal = Gap.lg, vertical = Gap.xl),
     )
 }
 
@@ -541,16 +681,16 @@ fun EmptyState(text: String, modifier: Modifier = Modifier) {
  */
 @Composable
 fun ErrorLine(text: String, modifier: Modifier = Modifier, retry: (() -> Unit)? = null) {
-    val ink = LocalInk.current
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    val largeText = LocalDensity.current.fontScale > 1.3f
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Text(
             text = text,
             fontSize = Type.meta,
             lineHeight = Type.metaLine,
             color = MaterialTheme.colorScheme.error,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            maxLines = if (largeText) Int.MAX_VALUE else 4,
+            overflow = if (largeText) TextOverflow.Clip else TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(vertical = Gap.sm),
         )
         if (retry != null) {
             Spacer(Modifier.width(Gap.sm))
@@ -558,7 +698,11 @@ fun ErrorLine(text: String, modifier: Modifier = Modifier, retry: (() -> Unit)? 
                 text = "重试",
                 fontSize = Type.meta,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.pressClick(onClick = retry).padding(horizontal = Gap.xs, vertical = Gap.xs),
+                modifier = Modifier
+                    .pressClick(onClick = retry, shrink = false)
+                    .heightIn(min = 48.dp)
+                    .wrapContentHeight(Alignment.CenterVertically)
+                    .padding(horizontal = Gap.sm),
             )
         }
     }
@@ -629,7 +773,8 @@ fun LoadWhy(why: String?, modifier: Modifier = Modifier, wide: Boolean = true) {
                     text = "去登录",
                     fontSize = Type.meta,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.pressClick { scope.launch { graph.session.leaveBrowsing() } },
+                    modifier = Modifier.pressClick { scope.launch { graph.session.leaveBrowsing() } }
+                        .heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically),
                 )
             }
         }

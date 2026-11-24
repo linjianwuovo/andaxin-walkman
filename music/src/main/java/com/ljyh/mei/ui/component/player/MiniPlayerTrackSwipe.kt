@@ -35,6 +35,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import com.ljyh.mei.ui.component.sheet.LocalPlayerSheet
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
 import com.ljyh.mei.data.model.MediaMetadata
 import com.ljyh.mei.data.model.metadata
@@ -230,6 +231,15 @@ internal fun MiniPlayerTrackSwipe(
     }
 }
 
+@Composable
+internal fun autoMixIncomingMetadataDominant(mix: AutoMixVisuals? = LocalAutoMixVisuals.current): Boolean {
+    return remember(mix) {
+        derivedStateOf(structuralEqualityPolicy()) { mix.isIncomingMetadataDominant() }
+    }.value
+}
+
+internal fun AutoMixVisuals?.isIncomingMetadataDominant(): Boolean = this != null && progress() >= 0.5f
+
 /** Retain the full-player text viewport while sharing metadata paging behavior. */
 @Composable
 internal fun PlayerMetadataTrackSwipe(
@@ -247,7 +257,36 @@ internal fun PlayerMetadataTrackSwipe(
         Column(modifier) { content(null, true) }
     } else {
         MiniPlayerTrackSwipe(connection, metadata, modifier, edgeInset = edgeInset, consumeMovement = true, enabled = enabled, pageWidth = physicalPageWidth) { track, marquee ->
-            Column(Modifier.fillMaxWidth()) { content(track, marquee) }
+            val mix = LocalAutoMixVisuals.current?.takeIf {
+                marquee && (track.trackRef != it.incoming.trackRef || track.id != it.incoming.id)
+            }
+            val incomingDominant = autoMixIncomingMetadataDominant(mix)
+            Box(Modifier.fillMaxWidth()) {
+                val outgoingFade = if (mix == null) Modifier else Modifier.graphicsLayer {
+                    alpha = 1f - mix.progress()
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                }
+                val hideText = Modifier.clearAndSetSemantics { }
+                Column(
+                    Modifier.fillMaxWidth()
+                        .then(outgoingFade)
+                        .then(if (incomingDominant) hideText else Modifier),
+                ) {
+                    content(track, marquee)
+                }
+                if (mix != null) {
+                    Column(
+                        Modifier.matchParentSize()
+                            .graphicsLayer {
+                                alpha = mix.progress()
+                                compositingStrategy = CompositingStrategy.ModulateAlpha
+                            }
+                            .then(if (incomingDominant) Modifier else hideText),
+                    ) {
+                        content(mix.incoming, false)
+                    }
+                }
+            }
         }
     }
 }

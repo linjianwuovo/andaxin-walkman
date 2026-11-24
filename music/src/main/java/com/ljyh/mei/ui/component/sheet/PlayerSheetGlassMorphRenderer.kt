@@ -13,6 +13,8 @@
 
 package com.ljyh.mei.ui.component.sheet
 
+import androidx.annotation.RequiresApi
+import io.github.neoruaa.glasmio.glass.render.isRuntimeShaderSupported
 import io.github.neoruaa.glasmio.glass.*
 
 import io.github.neoruaa.glasmio.core.*
@@ -142,8 +144,9 @@ internal class PlayerSheetGlassMorphRenderer(
     private val materialPreset: NavigationGlassMaterial? = null,
     private val materialDark: Boolean = false,
 ) {
-    private val shader = if (appearance.usesRefraction) programs?.refraction ?: RuntimeShader(TransitionRefractionShader) else null
-    private val highlight = programs?.highlight ?: RuntimeShader(TransitionHighlightShader)
+    private val shader = if (isRuntimeShaderSupported() && appearance.usesRefraction) programs?.refraction ?: RuntimeShader(TransitionRefractionShader) else null
+    private val highlight =
+        if (isRuntimeShaderSupported()) programs?.highlight ?: RuntimeShader(TransitionHighlightShader) else null
     private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { shader = highlight }
     private val highlightBlender: NativeVibrantColorMatrixBlender? =
         if (Build.VERSION.SDK_INT >= 36) NativeVibrantColorMatrixBlender() else null
@@ -166,8 +169,10 @@ internal class PlayerSheetGlassMorphRenderer(
         useNativeProfile = true,
         nativeMaterial = materialPreset,
     )
-    private val shadowLiftShader = if (appearance.usesBackdrop) RuntimeShader(NavigationShadowLiftShader) else null
-    private val shadowLiftEffect = shadowLiftShader?.let { RenderEffect.createRuntimeShaderEffect(it, "content") }
+    private val shadowLiftShader = if (isRuntimeShaderSupported() && appearance.usesBackdrop) RuntimeShader(NavigationShadowLiftShader) else null
+    private val shadowLiftEffect = if (isRuntimeShaderSupported()) {
+        shadowLiftShader?.let { RenderEffect.createRuntimeShaderEffect(it, "content") }
+    } else null
     private val reusableOutlinePath = Path()
     private var materialWidth = 0
     private var materialHeight = 0
@@ -212,11 +217,9 @@ internal class PlayerSheetGlassMorphRenderer(
         } else color)?.asComposeRenderEffect()
     }
 
-    internal fun materialEffect(isDark: Boolean, alpha: Float = 1f): RenderEffect =
-        innerShadows.materialEffect(resolveRecipe(isDark, null, 1.25f), alpha)
-
     internal fun drawDropShadow(scope: DrawScope, shape: Shape, bounds: Rect, alpha: Float) {
-        dropShadow.draw(scope, shape, bounds, alpha, nativeMorphShadowField(shape))
+        val field: NativeGlassFilterField? = if (isRuntimeShaderSupported()) nativeMorphShadowField(shape) else null
+        dropShadow.draw(scope, shape, bounds, alpha, field)
     }
 
     internal fun paintMaterial(scope: DrawScope, isDark: Boolean, material: NavigationGlassMaterial?, alpha: Float) {
@@ -253,8 +256,10 @@ internal class PlayerSheetGlassMorphRenderer(
     }
 
     fun release() {
-        shader?.let { bindLiquidMenuField(it, null) }
-        bindLiquidMenuField(highlight, null)
+        if (isRuntimeShaderSupported()) {
+            shader?.let { bindLiquidMenuField(it, null) }
+            highlight?.let { bindLiquidMenuField(it, null) }
+        }
         innerShadows.release()
         dropShadow.release()
         nativeFilterScope.reset()
@@ -314,7 +319,7 @@ internal class PlayerSheetGlassMorphRenderer(
         val opticalScale = if (referenceSize != null)
             materialScale.takeIf { it.isFinite() && it > 0f } ?: 1f else 1f
         val customOptics = refractionHeight.value.isFinite() || refractionAmount.value.isFinite()
-        val nativeBackgroundFilter = navigationMaterial && appearance.usesBackdrop
+        val nativeBackgroundFilter = isRuntimeShaderSupported() && navigationMaterial && appearance.usesBackdrop
         val usesNativeMaterial = navigationMaterial || materialEffect != null
         if (sourceUsesNativeMaterial != usesNativeMaterial || sourceUsesNativeFilter != nativeBackgroundFilter) {
             sourceUsesNativeMaterial = usesNativeMaterial
@@ -322,7 +327,7 @@ internal class PlayerSheetGlassMorphRenderer(
             sourceEffect = createSourceEffect(sourceEffectRadius)
             recordedViewport = null
         }
-        val recipe: NavigationMaterialRecipe? = if (navigationMaterial && materialPaint == null && appearance.usesBackdrop) {
+        val recipe: NavigationMaterialRecipe? = if (nativeBackgroundFilter && materialPaint == null) {
             val resolved: NavigationMaterialRecipe = resolveRecipe(isDark, materialTint, tintMultiplier)
             if (referenceSize != null) resolved.forMinimumDimension(materialExtent) else resolved
         } else null
@@ -353,6 +358,7 @@ internal class PlayerSheetGlassMorphRenderer(
             (sourceOffset.y + bounds.top * sampleScale.y) * renderScale,
         )
         val contourField = referenceSize != null || cornerRadii != null || secondaryLensBounds != null || menuField != null
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
         fun fieldAdapter(scale: Offset, offset: Offset, fieldOrigin: Offset): NativeGlassFilterField {
             val primary = lensBounds ?: bounds
             val secondary = secondaryLensBounds ?: primary
@@ -377,9 +383,9 @@ internal class PlayerSheetGlassMorphRenderer(
             }
         }
         val filterField: NativeGlassFilterField? =
-            if (contourField) fieldAdapter(effectScale, effectOffset, effectOrigin) else null
+            if (isRuntimeShaderSupported() && contourField) fieldAdapter(effectScale, effectOffset, effectOrigin) else null
         val edgeField: NativeGlassFilterField? =
-            if (contourField) fieldAdapter(Offset(1f, 1f), Offset.Zero, bounds.topLeft) else null
+            if (isRuntimeShaderSupported() && contourField) fieldAdapter(Offset(1f, 1f), Offset.Zero, bounds.topLeft) else null
         if (dropShadowAlpha > 0f && !completeNativeMaterial) {
             drawDropShadow(this, shape, bounds, dropShadowAlpha)
         }
@@ -530,7 +536,7 @@ internal class PlayerSheetGlassMorphRenderer(
             }
             return@with
         }
-        val refractionEffect = if (shader != null && (!nativeBackgroundFilter || customOptics)) {
+        val refractionEffect = if (isRuntimeShaderSupported() && shader != null && (!nativeBackgroundFilter || customOptics)) {
             val opticalBounds = lensBounds ?: bounds
             val sampleBounds = Rect(
                 sourceOffset.x + opticalBounds.left * sampleScale.x,
@@ -578,7 +584,7 @@ internal class PlayerSheetGlassMorphRenderer(
         val liftProgress = shadowLiftProgress.coerceIn(0f, 1f)
         val opticalEffect = if (nativeBackgroundEffect != null && refractionEffect != null)
             RenderEffect.createChainEffect(refractionEffect, nativeBackgroundEffect) else nativeBackgroundEffect ?: refractionEffect
-        val sampledEffect = if (!usesNativeMaterial && navigationMaterial && !isDark && shadowLiftEffect != null && liftProgress > 0f) {
+        val sampledEffect = if (isRuntimeShaderSupported() && !usesNativeMaterial && navigationMaterial && !isDark && shadowLiftEffect != null && liftProgress > 0f) {
             shadowLiftShader?.setFloatUniform("suppression", 1f - liftProgress)
             if (opticalEffect != null) RenderEffect.createChainEffect(shadowLiftEffect, opticalEffect)
             else shadowLiftEffect
@@ -588,7 +594,7 @@ internal class PlayerSheetGlassMorphRenderer(
             sampledHighlight = Highlight(alpha = highlightOpacity, style = HighlightStyle.Default())
             sampledHighlightAlpha = highlightOpacity
         }
-        val colorEffect = if (completeNativeMaterial) null else if (Build.VERSION.SDK_INT < 36 && nativeBackgroundFilter) {
+        val colorEffect = if (completeNativeMaterial) null else if (isRuntimeShaderSupported() && Build.VERSION.SDK_INT < 36 && nativeBackgroundFilter) {
             val edge = innerShadows.materialEffect(recipe ?: resolveRecipe(isDark, materialTint, tintMultiplier),
                 alpha = if (materialEffect == null) 1f else 0f,
                 minimumDimension = materialExtent,
@@ -610,30 +616,32 @@ internal class PlayerSheetGlassMorphRenderer(
             }
             drawPath(path, Color(0xFF6E6E6E).copy(alpha = GlassBoxShadowAlpha), style = Stroke(0.65.dp.toPx()))
         }
-        val opticalHighlightBounds = lensBounds ?: bounds
-        highlight.setFloatUniform("center", opticalHighlightBounds.center.x, opticalHighlightBounds.center.y)
-        highlight.setFloatUniform("halfSize", opticalHighlightBounds.width / 2f, opticalHighlightBounds.height / 2f)
-        highlight.setFloatUniform("radius", radius)
-        highlight.setFloatUniform("ellipticalCorners", if (cornerRadii != null) 1f else 0f)
-        highlight.setFloatUniform("cornerRadii", cornerRadii?.x ?: radius, cornerRadii?.y ?: radius)
-        highlight.setFloatUniform("secondaryEnabled", if (secondaryLensBounds != null) 1f else 0f)
-        val secondaryHighlight = secondaryLensBounds ?: opticalHighlightBounds
-        highlight.setFloatUniform("secondaryCenter", secondaryHighlight.center.x, secondaryHighlight.center.y)
-        highlight.setFloatUniform("secondaryHalfSize", secondaryHighlight.width / 2f, secondaryHighlight.height / 2f)
-        highlight.setFloatUniform("secondaryRadii", secondaryLensRadii?.x ?: radius, secondaryLensRadii?.y ?: radius)
-        highlight.setFloatUniform("smoothing", lensSmoothing)
-        bindLiquidMenuField(highlight, menuField)
-        highlight.setFloatUniform("opacity", highlightOpacity)
-        highlight.setFloatUniform("angle", 0f)
-        highlight.setFloatUniform("curvature", .75f)
-        highlight.setFloatUniform("height", scope.density)
+        if (isRuntimeShaderSupported() && highlight != null) {
+            val opticalHighlightBounds = lensBounds ?: bounds
+            highlight.setFloatUniform("center", opticalHighlightBounds.center.x, opticalHighlightBounds.center.y)
+            highlight.setFloatUniform("halfSize", opticalHighlightBounds.width / 2f, opticalHighlightBounds.height / 2f)
+            highlight.setFloatUniform("radius", radius)
+            highlight.setFloatUniform("ellipticalCorners", if (cornerRadii != null) 1f else 0f)
+            highlight.setFloatUniform("cornerRadii", cornerRadii?.x ?: radius, cornerRadii?.y ?: radius)
+            highlight.setFloatUniform("secondaryEnabled", if (secondaryLensBounds != null) 1f else 0f)
+            val secondaryHighlight = secondaryLensBounds ?: opticalHighlightBounds
+            highlight.setFloatUniform("secondaryCenter", secondaryHighlight.center.x, secondaryHighlight.center.y)
+            highlight.setFloatUniform("secondaryHalfSize", secondaryHighlight.width / 2f, secondaryHighlight.height / 2f)
+            highlight.setFloatUniform("secondaryRadii", secondaryLensRadii?.x ?: radius, secondaryLensRadii?.y ?: radius)
+            highlight.setFloatUniform("smoothing", lensSmoothing)
+            bindLiquidMenuField(highlight, menuField)
+            highlight.setFloatUniform("opacity", highlightOpacity)
+            highlight.setFloatUniform("angle", 0f)
+            highlight.setFloatUniform("curvature", .75f)
+            highlight.setFloatUniform("height", scope.density)
+        }
         // This rectangle anchors the light field; only the moving glass outline clips it.
         val lightBounds = pressHighlightBounds ?: bounds
         val glow = pressHighlight?.takeIf { it.glowProgress > 0f }
         val glowTint = pressTint ?: recipe?.tint
         val glowClear = pressClear ?: ((sourceFilterMaterial ?: materialPreset) == NavigationGlassMaterial.Clear)
         val glowDark = pressIsDark ?: isDark
-        if (completeNativeMaterial) {
+        if (isRuntimeShaderSupported() && completeNativeMaterial) {
             fun Offset.sampled() = Offset(x * sampleScale.x, y * sampleScale.y)
             fun Size.sampled() = Size(width * sampleScale.x, height * sampleScale.y)
             // Materialize the explicit transition optics at their original texture raster.
@@ -672,7 +680,7 @@ internal class PlayerSheetGlassMorphRenderer(
             val completed = requireNotNull(atlasBacking)
             completed.clip = true
             completed.compositingStrategy = CompositingStrategy.Offscreen
-            completed.renderEffect = (if (Build.VERSION.SDK_INT < 36 && glow != null) {
+            completed.renderEffect = (if (isRuntimeShaderSupported() && Build.VERSION.SDK_INT < 36 && glow != null) {
                 val sourceBounds = Rect(outputOrigin + (lightBounds.topLeft - bounds.topLeft).sampled(),
                     lightBounds.size.sampled())
                 RenderEffect.createChainEffect(pressLight.effect(glow.glowProgress,
@@ -707,7 +715,7 @@ internal class PlayerSheetGlassMorphRenderer(
             }
             return@with
         }
-        val useNavigationMaterial = navigationMaterial && appearance.usesBackdrop
+        val useNavigationMaterial = nativeBackgroundFilter
         var materialOrigin = Offset.Zero
         if (useNavigationMaterial) {
             val nativeSize = size
@@ -766,7 +774,7 @@ internal class PlayerSheetGlassMorphRenderer(
                     }
                 }
             }
-            material.renderEffect = if (Build.VERSION.SDK_INT < 36 && glow != null) {
+            material.renderEffect = if (isRuntimeShaderSupported() && Build.VERSION.SDK_INT < 36 && glow != null) {
                 val sourceBounds = Rect(
                     (lightBounds.topLeft + sourceOffset) * renderScale - materialOrigin,
                     lightBounds.size * renderScale,
@@ -938,6 +946,7 @@ float navigationGlassShadowDistance(float2 point) { return liquidAnalyticFieldGr
 """
 
 /** A contour's conservative capture bounds are not its physical shadow silhouette. */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private fun nativeMorphShadowField(shape: Shape): NativeGlassFilterField? {
     val contour = shape as? LiquidMenuContour ?: return null
     return NativeGlassFilterField(MorphGlassFieldShader) { shader ->

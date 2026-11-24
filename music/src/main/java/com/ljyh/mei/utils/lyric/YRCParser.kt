@@ -15,7 +15,8 @@ object YRCParser : ILyricsParser {
     private val translationLineRegex = "\\[(\\d{2}):(\\d{2})[.:](\\d{2,3})\\].*".toRegex()
 
     fun parse(yrcLyrics: String, translationLrc: String?): SyncedLyrics {
-        val karaokeLines = parseInternal(yrcLyrics.lineSequence())
+        val headerOffsetMs = extractLyricHeaderOffsetMs(yrcLyrics)
+        val karaokeLines = parseInternal(yrcLyrics.lineSequence()).applyHeaderOffset(headerOffsetMs)
         val mergedLines = TranslationHelper.merge(karaokeLines, translationLrc)
         return SyncedLyrics(lines = mergedLines)
     }
@@ -29,11 +30,21 @@ object YRCParser : ILyricsParser {
     }
 
     override fun parse(lines: List<String>): SyncedLyrics {
-        val mainLyricsLines = lines.filter { line ->
-            val trimmed = line.trim()
-            YRC_LINE_REGEX.matches(trimmed) || trimmed.startsWith("[bg:") || trimmed.startsWith("{")
+        val offsetLine = extractLyricHeaderOffsetMs(lines).takeIf { it != 0 }?.let { "[offset:$it]" }
+        val mainLyricsLines = buildList {
+            offsetLine?.let(::add)
+            lines.forEach { line ->
+                val trimmed = line.trim()
+                if (YRC_LINE_REGEX.matches(trimmed) || trimmed.startsWith("[bg:") || trimmed.startsWith("{")) {
+                    add(line)
+                }
+            }
         }
-        val translationLines = lines.filter { translationLineRegex.matches(it.trim()) }
+        val translationLines = buildList {
+            val transCandidates = lines.filter { translationLineRegex.matches(it.trim()) }
+            if (transCandidates.isNotEmpty() && offsetLine != null) add(offsetLine)
+            addAll(transCandidates)
+        }
         return parse(
             yrcLyrics = mainLyricsLines.joinToString("\n"),
             translationLrc = translationLines.joinToString("\n").ifBlank { null }

@@ -76,6 +76,8 @@ val RestorePlaybackPositionKey = booleanPreferencesKey("playback.restorePosition
 // 「恢复播放状态」开关已删除：回来一律停在暂停态，见 PlaybackPersistence.withRestorePreferences。
 val NotificationLeftActionKey = stringPreferencesKey("notification.leftAction")
 val NotificationRightActionKey = stringPreferencesKey("notification.rightAction")
+val QueueModesIntroDismissedKey = booleanPreferencesKey("player.queueModesIntroDismissed")
+
 val AutoMixEnabledKey = booleanPreferencesKey("autoMix.enabled")
 val AutoMixModeKey = stringPreferencesKey("autoMix.mode")
 val AutoMixDurationKey = floatPreferencesKey("autoMix.fixedDuration")
@@ -116,10 +118,12 @@ val MeshSubdivisionKey = intPreferencesKey("meshSubdivision")
 val LibraryStyleKey = stringPreferencesKey("libraryStyle")
 val LibraryDefaultPageKey = stringPreferencesKey("libraryDefaultPage")
 val KeepBottomBarExpandedKey = booleanPreferencesKey("appearance.keepBottomBarExpanded")
+val HorizontalSafeAreaEnabledKey = booleanPreferencesKey("appearance.horizontalSafeAreaEnabled")
 val BottomFloatingContentExtraSpacingKey = intPreferencesKey("appearance.bottomFloatingContentExtraSpacing")
 const val DefaultBottomFloatingContentExtraSpacing = 8
 const val MaxBottomFloatingContentExtraSpacing = 64
 val LiquidGlassEnabledKey = booleanPreferencesKey("appearance.liquidGlassEnabled")
+val LegacyApiCompatibilityNoticeShownKey = booleanPreferencesKey("appearance.legacyApiCompatibilityNoticeShown")
 val GlassHdrEffectsKey = booleanPreferencesKey("appearance.glassHdrEffects")
 val ReduceTransparencyKey = booleanPreferencesKey("appearance.reduceTransparency")
 val ColorfulDetailBackgroundsKey = booleanPreferencesKey("appearance.colorfulDetailBackgrounds")
@@ -154,7 +158,7 @@ val NavigationTabOrderKey = stringPreferencesKey("navigation.tabOrder")
 val AppAppearanceKey = stringPreferencesKey("application.appearance")
 val LastSelectedTabKey = stringPreferencesKey("navigation.lastSelectedTab")
 val RecognizeClipboardLinksKey = booleanPreferencesKey("application.recognizeClipboardLinks")
-val BetaUpdatesEnabledKey = booleanPreferencesKey("application.betaUpdatesEnabled")
+// BetaUpdatesEnabledKey 已删除：检测更新归宿主关于页，音乐模块不再有自己的更新通道与 beta 开关。
 val QqTimeoutKey = stringPreferencesKey("qq_timeout")
 
 enum class QqTimeout(val seconds: Int, val label: String) {

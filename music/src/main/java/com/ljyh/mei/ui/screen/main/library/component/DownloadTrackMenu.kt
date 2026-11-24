@@ -1,7 +1,6 @@
 package com.ljyh.mei.ui.screen.main.library.component
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.ljyh.mei.R
@@ -9,6 +8,7 @@ import com.ljyh.mei.data.model.room.DownloadStatus
 import com.ljyh.mei.data.model.room.DownloadTask
 import com.ljyh.mei.data.model.room.Song
 import com.ljyh.mei.data.model.room.SourceType
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenu
 import io.github.neoruaa.glasmio.ui.GlasmioCascadingMenuItem
 import com.ljyh.mei.utils.setClipboard
@@ -18,7 +18,7 @@ import com.ljyh.mei.utils.setClipboard
 internal fun DownloadTrackMenu(
     song: Song?,
     task: DownloadTask?,
-    anchorBounds: Rect?,
+    menuAnchorState: GlasmioMenuAnchorState,
     canPlay: Boolean,
     matchTitle: String,
     onDismiss: () -> Unit,
@@ -156,7 +156,8 @@ internal fun DownloadTrackMenu(
         ))
     }
     GlasmioCascadingMenu(
-        anchorBounds = anchorBounds,
+        anchorBounds = menuAnchorState.bounds,
+        menuAnchorState = menuAnchorState,
         items = items,
         headerActions = headerActions,
         useAccentIcons = false,

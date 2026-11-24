@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_apple_title">#FFFFFF</color>
+    <color name="widget_apple_detail">#D9FFFFFF</color>
+    <color name="widget_apple_overlay">#33FF375F</color>
+    <color name="widget_apple_open_fill">#B336363A</color>
+    <color name="widget_apple_open_icon">#FFFFFFFF</color>
+    <color name="widget_apple_gradient_start">#303030</color>
+    <color name="widget_apple_gradient_end">#141414</color>
+    <color name="widget_apple_header">#FA2D48</color>
+</resources>

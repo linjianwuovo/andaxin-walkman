@@ -123,7 +123,7 @@ class LyricManager @Inject constructor(
     // ==================== 歌词缓存 ====================
 
     /** 内存缓存，FIFO 淘汰，最多 5 首 */
-    private val lyricCache = LinkedHashMap<String, LyricData>()
+    private val lyricCache = MutableStateFlow<Map<String, LyricData>>(emptyMap())
     private var lastPersistedLyric: CachedLyric? = null
 
     /** 预加载协程 Job */
@@ -200,7 +200,7 @@ class LyricManager @Inject constructor(
         preferredSource = knownSettings?.source
         preferredVariant = knownSettings?.variant
         _lyricOffsetMs.value = knownSettings?.offsetMs ?: 0
-        val memory = if (!forceReload) lyricCache[songId] else null
+        val memory = if (!forceReload) lyricCache.value[songId] else null
         publishRawLyricData(memory?.takeIf {
             settingsReady && it.matchesLyricPreference(preferredSource, preferredVariant)
         } ?: createDefaultLyricData("歌词加载中", source = LyricSource.Loading))
@@ -236,8 +236,7 @@ class LyricManager @Inject constructor(
                         )
                         if (selected !== rawLyricData) {
                             publishRawLyricData(selected)
-                            lyricCache[songId] = selected
-                            trimCache()
+                            cacheLyrics(songId, selected)
                         }
                     }
                 }
@@ -261,7 +260,17 @@ class LyricManager @Inject constructor(
             } else providerLyricResult.value = Resource.Error("No additional provider lyric")
 
             val selectionGeneration = sourceSelectionGeneration
-            val localSong = qqSongRepository.getQQSong(songId).firstOrNull()
+            val storedQQSong = qqSongRepository.getQQSong(songId).firstOrNull()
+            val localSong = storedQQSong?.takeIf { song ->
+                preferredSource == LyricSource.QQMusic || QQLyricMatcher.isStoredSongCompatible(metadata, song)
+            }
+            if (storedQQSong != null && localSong == null) {
+                settingsMutex.withLock {
+                    if (isCurrentLoad(songId, generation) && preferredSource != LyricSource.QQMusic) {
+                        qqSongRepository.deleteSongById(songId)
+                    }
+                }
+            }
             if (!isCurrentLoad(songId, generation)) return@launch
             val qqTimeout = try {
                 QqTimeout.valueOf(
@@ -335,42 +344,18 @@ class LyricManager @Inject constructor(
         generation: Long,
     ): SearchResult.Request.Data.Body.ItemSong? {
         val songId = metadata.lyricStorageKey()
-        val targetDurationSec = metadata.duration / 1000
-        val artistName = metadata.artists.firstOrNull()?.name.orEmpty()
-        val title = metadata.title
-        val cleanedTitle = cleanTitle(title)
         val searchToken = searchGeneration
-        val keywords = buildList {
-            add(cleanedTitle)
-            add(title)
-            if (artistName.isNotBlank()) {
-                add("$cleanedTitle $artistName")
-                add("$title $artistName")
-            }
-        }.distinct()
+        val keywords = QQLyricMatcher.searchKeywords(metadata)
         for (keyword in keywords) {
             val result = repository.searchNew(keyword)
             currentCoroutineContext().ensureActive()
             if (!isCurrentLoad(songId, generation)) return null
             if (searchToken == searchGeneration) publishSearchResult(result)
-            val best = (result as? Resource.Success)?.data?.request?.data?.body?.itemSong
-                ?.take(5)?.firstOrNull { abs(targetDurationSec - it.interval) <= 5 }
+            val candidates = (result as? Resource.Success)?.data?.request?.data?.body?.itemSong.orEmpty()
+            val best = QQLyricMatcher.selectBestMatch(metadata, candidates)
             if (best != null) return best
         }
         return null
-    }
-
-    /**
-     * 去除歌名中的括号内容（如 feat./with/remix 等附加信息）
-     *
-     * 处理中文括号（）和英文括号 ()。
-     * 例如 "abc (feat. xxx)" → "abc"
-     */
-    private fun cleanTitle(title: String): String {
-        return title
-            .replace(Regex("""[\(（][^)）]*[\)）]"""), "")
-            .replace(Regex("""\s+"""), " ")
-            .trim()
     }
 
     /**
@@ -618,9 +603,8 @@ class LyricManager @Inject constructor(
         )
         if (selected !== current) publishRawLyricData(selected)
         if (selected.source == LyricSource.Loading || selected.source == LyricSource.Empty) return
-        if (lyricCache[songIdAtStart] != selected) {
-            lyricCache[songIdAtStart] = selected
-            trimCache()
+        if (lyricCache.value[songIdAtStart] != selected) {
+            cacheLyrics(songIdAtStart, selected)
         }
         // A retained snapshot must never be stored with a rejected source's raw text.
         if (selected != mergeResult.lyricData) return
@@ -812,7 +796,7 @@ class LyricManager @Inject constructor(
                 settingsCache[songId] = settings.copy(source = null, variant = null)
                 qqSongRepository.deleteSongById(songId)
                 cacheMutex.withLock {
-                    lyricCache.remove(songId)
+                    lyricCache.update { it - songId }
                     cachedLyricRepository.delete(songId)
                 }
             }
@@ -848,30 +832,71 @@ class LyricManager @Inject constructor(
      */
     fun preloadLyrics(metadata: MediaMetadata) {
         val songId = metadata.lyricStorageKey()
-        if (lyricCache.containsKey(songId) || currentSongId == songId) return
+        if (currentSongId == songId) return
+        val knownSettings = settingsCache[songId]
+        if (knownSettings != null &&
+            lyricCache.value[songId]?.matchesLyricPreference(knownSettings.source, knownSettings.variant) == true
+        ) return
 
         preloadJob?.cancel()
         preloadJob = scope.launch {
-            val result = preloader.preload(metadata)
+            val settings = settingsMutex.withLock { readSettings(songId) }
+            if (lyricCache.value[songId]?.matchesLyricPreference(settings.source, settings.variant) == true) {
+                return@launch
+            }
+            val persisted = try {
+                withContext(Dispatchers.IO) {
+                    cachedLyricRepository.get(songId).firstOrNull()?.toLyricData()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.tag(TAG).w(error, "Unable to read preloaded lyrics")
+                null
+            }?.takeIf { it.matchesLyricPreference(settings.source, settings.variant) }
+            val result = persisted ?: preloader.preload(metadata)
             currentCoroutineContext().ensureActive()
             if (result != null && result.source != LyricSource.Empty
                 && result.source != LyricSource.Loading && result.lyricLine.lines.isNotEmpty()
+                && result.matchesLyricPreference(settings.source, settings.variant)
             ) {
                 // A late preload must not replace an already aligned foreground cache.
-                lyricCache[songId] = lyricCache[songId]?.let { existing ->
+                val compatible = lyricCache.value[songId]?.takeIf {
+                    it.matchesLyricPreference(settings.source, settings.variant)
+                }
+                val selected = compatible?.let { existing ->
                     selectLyricUpdate(existing, result, sourcesFinished = false, alignmentFinished = false)
                 } ?: result
-                trimCache()
+                cacheLyrics(songId, selected)
             }
         }
     }
 
-    // ==================== 缓存管理 ====================
+    internal fun preloadedLyrics(metadata: MediaMetadata): Flow<LyricData?> = flow {
+        val songId = metadata.lyricStorageKey()
+        val settings = settingsMutex.withLock { readSettings(songId) }
+        emitAll(
+            lyricCache.map { it[songId] }
+                .distinctUntilChanged()
+                .map { cached ->
+                    cached?.takeIf { it.matchesLyricPreference(settings.source, settings.variant) }
+                        ?.let { lyrics ->
+                            withContext(Dispatchers.Default) {
+                                try {
+                                    lyrics.withTimingOffset(settings.offsetMs)
+                                } catch (_: IllegalArgumentException) {
+                                    lyrics
+                                }
+                            }
+                        }
+                },
+        )
+    }
 
-    /** 内存缓存 FIFO 逐出，保留最近 5 首 */
-    private fun trimCache() {
-        while (lyricCache.size > 5) {
-            lyricCache.remove(lyricCache.entries.first().key)
+    private fun cacheLyrics(songId: String, lyrics: LyricData) {
+        lyricCache.update { cached ->
+            val updated = cached + (songId to lyrics)
+            if (updated.size > 5) updated - updated.keys.first() else updated
         }
     }
 

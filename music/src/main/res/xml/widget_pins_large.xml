@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_apple_pins_large"
+    android:previewLayout="@layout/widget_apple_pins_large"
+    android:previewImage="@drawable/widget_preview_pins_large"
+    android:description="@string/widget_pins_description"
+    android:minWidth="280dp"
+    android:minHeight="280dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="4"
+    android:resizeMode="none"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen"
+    android:configure="com.ljyh.mei.widget.WidgetCollectionConfigureActivity"
+    android:widgetFeatures="reconfigurable|configuration_optional" />

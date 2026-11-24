@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -16,17 +17,15 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.andaxin.shell.pressClick
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.currentCoroutineContext
 import kotlin.random.Random
 import kotlin.math.PI
 import kotlin.math.cos
@@ -142,6 +141,12 @@ private fun silAt(y: Float): FloatArray {
     return rows[r]
 }
 
+/**
+ * 这一页现在是不是"落在"当前那格。翻页器（HorizontalPager 的 beyondViewportPageCount=1）
+ * 会把相邻页也留在组合里，装饰性动效不该跟着烧帧；由 shell 那一层提供，默认 true。
+ */
+val LocalShelfPageActive = staticCompositionLocalOf { true }
+
 @Composable
 fun MascotBall(
     /** 该往哪儿看：x/y 都在 -1..1，(0,0) = 正前方（没人碰它 = 走待机那档的飘）。 */
@@ -155,27 +160,64 @@ fun MascotBall(
     body: Color = MaterialTheme.colorScheme.primary,
     eye: Color = Color.White,
 ) {
-    val tr = rememberInfiniteTransition(label = "ball")
-    // 一周期 = 它 blink 的 interval 3800ms；drift = 它待机 glance 的 2800ms
-    val blinkT = tr.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(3_800, easing = LinearEasing), RepeatMode.Restart),
-        label = "blink",
-    )
-    val driftT = tr.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2_800, easing = LinearEasing), RepeatMode.Restart),
-        label = "drift",
-    )
+    // 三条慢相位（眨眼 3800ms / 待机飘 2800ms / 思考扫视 1800ms）原先各挂一条
+    // rememberInfiniteTransition。那东西一进组合就每帧推进，静止时也把整帧时钟占满 ——
+    // 真机（Mi11）静置实测 120fps 整帧重绘、CPU 183%。注意这不只是重画这颗球：顶栏那块玻璃
+    // 每帧都要重采一次它背后的内容（framestats 实测单帧 GPU 13ms），所以球动一帧 = 整块玻璃重算一次。
+    // 现在只在真正需要新帧的时候醒来：待机时等下一次眨眼，眨眼那 200ms 里按帧推进；
+    // "思考中"才是连续动画。页不在当前那格时（翻页器把相邻页也留在组合里）整条表停掉。
+    // 读值放在 Canvas 的 draw 里，只失效绘制、不失效组合。
+    val active = LocalShelfPageActive.current || thinking
+    val clock = produceState(0f, active, thinking) {
+        if (!active) {
+            value = 0f
+            return@produceState
+        }
+        // 无障碍"移除动画"（animator scale = 0）下保持静止，与原来 infinite transition 一致
+        val scale = currentCoroutineContext()[MotionDurationScale]?.scaleFactor ?: 1f
+        if (scale == 0f) {
+            value = 0f
+            return@produceState
+        }
+        val blinkPeriod = 3.8f
+        val blinkSpan = 200f
+        var elapsed = 0f
+        var last = -1L
+        while (true) {
+            if (thinking) {
+                // 思考扫视是连续转动，按帧推进
+                withFrameNanos { now ->
+                    if (last < 0L) last = now
+                    elapsed += (now - last) / 1_000_000_000f * scale
+                    last = now
+                    value = elapsed
+                }
+                continue
+            }
+            val phase = (elapsed % blinkPeriod) * 1_000f
+            if (phase < blinkSpan) {
+                withFrameNanos { now ->
+                    if (last < 0L) last = now
+                    elapsed += (now - last) / 1_000_000_000f * scale
+                    last = now
+                    value = elapsed
+                }
+            } else {
+                // 睡到下一次眨眼前一点点；待机飘的相位也跟着这一步走（每 3.8s 挪一档，
+                // 落在眨眼那一刻，肉眼看不出来），不再为了 1px 的飘持续烧帧。
+                val wait = ((blinkPeriod - elapsed % blinkPeriod) * 1_000f - 16f).toLong().coerceAtLeast(1L)
+                delay(wait)
+                elapsed += wait / 1_000f * scale
+                last = -1L
+                value = elapsed
+            }
+        }
+    }
     // 它"思考中"的目光：原式是 `lookX sine amp 9 / period 2600`（只左右扫）。
     // 他 10-27 要的是**转圈**："那个小球加载动画要思考转圈那个思考" —— 所以同一对振幅
     // 补一个 cos 分量（纵向 6.5，球面上下比左右窄，给到 9 就要顶到轮廓钳制线），
     // 周期从 2600 收到 1800：一次典型刷新是 1~2 秒，2600 那一圈他看不到一半就结束了。
-    val scanT = tr.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(1_800, easing = LinearEasing), RepeatMode.Restart),
-        label = "scan",
-    )
+    // 思考扫视的周期还是 1800ms，见下面取相位的式子。
     /*
      * 眼环池：`seq[0]` = 待机（它的 `EXPRESSIONS[0]`），`seq[1..5]` = "思考中"那五对
      * （`pool: [8, 16, 14, 17, 5]`）。`ringStep` 是池里的格号，`ringPos` 是弹簧追过去的位置，
@@ -226,7 +268,9 @@ fun MascotBall(
              * 它 blink()：`p = t % interval`，`p < dur` 那一段里
              * `open += -depth * sin(PI * p/dur)`，depth 默认 1 → 闭到底再张回来。
              */
-            val p = blinkT.value * 3_800f
+            // 秒数只在绘制里读，时钟推进只会失效绘制，不会把整棵组合重算一遍
+            val t = clock.value
+            val p = (t % 3.8f) * 1_000f
             val open = if (p < 200f) 1f - sin(PI.toFloat() * (p / 200f)) else 1f
             // 当前显示的那一环 = 池里相邻两格逐点插值出来的（它 lerpRing 原式）
             val i = floor(ringPos).toInt().coerceIn(0, seq.size - 1)
@@ -234,11 +278,11 @@ fun MascotBall(
             val l = blendRing(seq[i][0], seq[j][0], (ringPos - i).coerceIn(0f, 1f))
             val r = blendRing(seq[i][1], seq[j][1], (ringPos - i).coerceIn(0f, 1f))
             val lookX =
-                if (thinking) 9f * sin(2f * PI.toFloat() * scanT.value) + gaze.x * 8f
-                else gaze.x * 14f + 2.4f * sin(2f * PI.toFloat() * driftT.value)
+                if (thinking) 9f * sin(2f * PI.toFloat() * (t / 1.8f)) + gaze.x * 8f
+                else gaze.x * 14f + 2.4f * sin(2f * PI.toFloat() * (t / 2.8f))
             // 它"思考中" eyes.both 的 `y: -2` + `lookY: -6` = 整体抬 8；待机就跟着手指走
             val lookY =
-                if (thinking) -8f + 6.5f * cos(2f * PI.toFloat() * scanT.value)
+                if (thinking) -8f + 6.5f * cos(2f * PI.toFloat() * (t / 1.8f))
                 else gaze.y * 9f
             if (thinking) {
                 // 它 body 的 `rotate: -3`：歪的是整个人那一格，眼睛跟着一起歪

@@ -1,5 +1,7 @@
 package com.ljyh.mei.ui.screen.playlist
 
+import com.ljyh.mei.ui.component.item.trackPressViewport
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +36,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
@@ -57,7 +60,6 @@ import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
 import com.ljyh.mei.ui.navigation.MeiloXPinnedPage
 import com.ljyh.mei.ui.navigation.meiloxHeaderAction
 import com.ljyh.mei.ui.screen.playlist.component.PlaylistHeader
-import com.ljyh.mei.ui.screen.playlist.component.PlaylistShimmer
 import com.ljyh.mei.ui.screen.playlist.component.TrackItemShimmer
 import com.ljyh.mei.ui.screen.playlist.component.playlistTrackItems
 import com.ljyh.mei.utils.rememberEnumPreference
@@ -67,10 +69,12 @@ import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.core.LocalGroupedListBackgroundAlpha
 import io.github.neoruaa.glasmio.core.SheetGroupedListBackgroundAlpha
 import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderAction
+import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderCollapseDefaults
 import io.github.neoruaa.glasmio.scaffold.GlasmioHeaderSearchState
 import io.github.neoruaa.glasmio.scaffold.rememberGlasmioHeaderSearch
 import io.github.neoruaa.glasmio.ui.GlasmioButton
@@ -137,6 +141,8 @@ fun SongListDetailScreen(
         androidx.compose.foundation.lazy.rememberLazyListState(),
     headerMetadata: String? = null,
     footer: (androidx.compose.foundation.lazy.LazyListScope.() -> Unit)? = null,
+    loadingTrackCount: Int = 0,
+    searchResultsLoading: Boolean = false,
     useCoverBackground: Boolean = false,
     usePlaylistTrackStyle: Boolean = useCoverBackground,
     showTrackArtwork: Boolean = true,
@@ -148,6 +154,7 @@ fun SongListDetailScreen(
     onTrackMore: (MediaMetadata, Rect) -> Unit,
     overlayContent: @Composable BoxScope.() -> Unit = {},
     artwork: DetailArtworkViewModel = hiltViewModel(),
+    trackMenuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
     val playerConnection = LocalPlayerConnection.current
     val currentTrackId = playerConnection?.mediaMetadata?.collectAsState()?.value?.mediaId
@@ -252,7 +259,7 @@ fun SongListDetailScreen(
                     if (adaptiveLandscape && landscapeLayout == SongListLandscapeLayout.AlbumHeader) 32.dp
                     else if (usePlaylistTrackStyle) { if (device.isLandscape) DetailPageHorizontalPadding else 20.dp } else 16.dp,
                 splitHeader = adaptiveLandscape && landscapeLayout == SongListLandscapeLayout.Split,
-                hero = if (!isLoading || adaptiveLandscape) hero else null,
+                hero = hero,
                 onNavigateBack = if (selectionMode) onSelectionDone else onBack,
                 actionSearch = actionSearch,
                 actions = {
@@ -304,26 +311,7 @@ fun SongListDetailScreen(
                     searchAction + detailAction
                 },
             ) {
-                if (isLoading) {
-                    if (adaptiveLandscape) {
-                        items(10) {
-                            ShimmerHost {
-                                TrackItemShimmer(
-                                    isTablet = false,
-                                    flatDetailStyle = usePlaylistTrackStyle,
-                                    showArtwork = showTrackArtwork,
-                                    showDuration = adaptiveLandscape &&
-                                        landscapeLayout == SongListLandscapeLayout.AlbumHeader,
-                                )
-                            }
-                        }
-                    } else
-                        item(key = "playlist-loading") {
-                            Box(Modifier.fillMaxWidth().height(620.dp)) {
-                                PlaylistShimmer(flatDetailStyle = usePlaylistTrackStyle)
-                            }
-                        }
-                } else {
+                if (!isLoading) {
                     playlistTrackItems(
                         pagingItems = pagingItems,
                         staticTracks = uiData.tracks,
@@ -342,9 +330,29 @@ fun SongListDetailScreen(
                         showLeadingDivider = useCoverBackground,
                         trackNumber = trackNumber,
                         onMoreClick = onTrackMore,
+                        menuAnchorState = trackMenuAnchorState,
                         emptyMessage =
-                            playlistSearchQuery.takeIf { it.isNotBlank() }?.let { "未找到匹配的歌曲" },
+                            playlistSearchQuery.takeIf { it.isNotBlank() && !searchResultsLoading }
+                                ?.let { "未找到匹配的歌曲" },
                     )
+                }
+                val pendingTrackCount = if (isLoading) maxOf(uiData.count, loadingTrackCount) else loadingTrackCount
+                if (pendingTrackCount > 0) {
+                    items(
+                        count = pendingTrackCount,
+                        key = { index -> "playlist-loading-track:$index" },
+                        contentType = { "track-skeleton" },
+                    ) {
+                        ShimmerHost {
+                            TrackItemShimmer(
+                                isTablet = device.isTablet && device.isLandscape,
+                                flatDetailStyle = usePlaylistTrackStyle,
+                                showArtwork = showTrackArtwork,
+                                showDuration = adaptiveLandscape &&
+                                    landscapeLayout == SongListLandscapeLayout.AlbumHeader,
+                            )
+                        }
+                    }
                 }
                 footer?.invoke(this)
             }
@@ -435,6 +443,16 @@ internal fun SongListDetailPage(
         }
         return
     }
+    val heroScrollState = rememberScrollState()
+    val blurDistancePx = with(LocalDensity.current) {
+        GlasmioHeaderCollapseDefaults.EnterBreakpoint.toPx().coerceAtLeast(1f)
+    }
+    val topBarBlurProgress by remember(heroScrollState, listState, blurDistancePx) {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) 1f
+            else (heroScrollState.value / blurDistancePx).coerceAtMost(1f)
+        }
+    }
     MeiloXPinnedPage(
         title = title,
         subtitle = subtitle,
@@ -444,10 +462,7 @@ internal fun SongListDetailPage(
         onNavigateBack = onNavigateBack,
         actionSearch = actionSearch,
         actions = actions,
-        topBarBlurProgress =
-            if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0)
-                1f
-            else 0f,
+        topBarBlurProgress = topBarBlurProgress,
     ) { padding ->
         val panePadding = remember(padding, horizontalContentPadding) {
             object : PaddingValues by padding {
@@ -455,12 +470,14 @@ internal fun SongListDetailPage(
                 override fun calculateRightPadding(layoutDirection: LayoutDirection) = horizontalContentPadding
             }
         }
-        Row(Modifier.fillMaxSize()) {
+        // Keep the opaque cover gradient available to button blending inside the scroll-edge fade layer.
+        val blendBackground = backgroundBrush?.takeIf { topBarBlurProgress > 0f }
+        Row(Modifier.fillMaxSize().then(blendBackground?.let { Modifier.background(it) } ?: Modifier)) {
             Column(
                 Modifier.weight(1f)
                     .fillMaxHeight()
                     .testTag("DetailHeroPane")
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(heroScrollState)
                     .padding(panePadding),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -468,7 +485,7 @@ internal fun SongListDetailPage(
             }
             LazyColumn(
                 state = listState,
-                modifier = Modifier.weight(1f).fillMaxHeight().testTag("DetailTrackPane"),
+                modifier = Modifier.weight(1f).fillMaxHeight().testTag("DetailTrackPane").trackPressViewport(),
                 contentPadding = panePadding,
             ) {
                 // Preserve the hero slot so list indices survive orientation changes.

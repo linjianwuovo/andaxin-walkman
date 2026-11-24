@@ -98,6 +98,9 @@ class AndaXinApp : Application(), SingletonImageLoader.Factory {
         sourceScope.launch { sourcePlugins.loadInstalled() }
         // 市场更新检查：启动一次而已，不参与音源健康判定
         sourceUpdates.checkOnStartup()
+        // 本地 MCP 服务（上游在自己的 AppContext 里注入并 start）。
+        // McpService 是 internal，宿主摸不到类型，缝在 music 模块的 startMusicMcp 里。
+        com.ljyh.mei.startMusicMcp(this)
     }
 
     /**

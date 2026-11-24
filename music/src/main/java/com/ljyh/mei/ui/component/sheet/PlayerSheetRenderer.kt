@@ -92,6 +92,7 @@ import com.kyant.capsule.continuities.G1Continuity
 import io.github.neoruaa.glasmio.glass.GlassPressHighlight
 import io.github.neoruaa.glasmio.glass.clipGlassShape
 import io.github.neoruaa.glasmio.core.LocalGlassColors
+import com.ljyh.mei.ui.component.player.AutoMixIncomingArtwork
 import com.ljyh.mei.ui.component.player.LocalMiniPlayerAppearance
 import com.ljyh.mei.ui.component.player.LocalPlayerArtwork
 import kotlinx.coroutines.CoroutineScope
@@ -889,11 +890,12 @@ fun BottomSheet(
 @Composable
 internal fun PlayerSheetArtworkOverlay(layers: PlayerSheetLayers) {
     val artwork = LocalPlayerArtwork.current
-    SideEffect { layers.artworkSourceAvailable = artwork != null }
+    val painter = artwork?.second
+    SideEffect { layers.artworkSourceAvailable = painter != null }
     DisposableEffect(layers) {
         onDispose { layers.artworkSourceAvailable = false }
     }
-    if (artwork == null) return
+    if (painter == null) return
 
     // A stable, non-zero image host exists before the first transition frame.
     // The same Coil painter supplies mini/full/overlay rendering without another
@@ -923,10 +925,7 @@ internal fun PlayerSheetArtworkOverlay(layers: PlayerSheetLayers) {
         }
         val imageWidth = if (layoutSize.width > 0) with(density) { layoutSize.width.toDp() } else minOf(maxWidth, maxHeight)
         val imageHeight = if (layoutSize.height > 0) with(density) { layoutSize.height.toDp() } else imageWidth
-        Image(
-            painter = artwork.second,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier.size(imageWidth, imageHeight)
                 .graphicsLayer {
                     if (!layers.sharesArtwork) {
@@ -968,8 +967,16 @@ internal fun PlayerSheetArtworkOverlay(layers: PlayerSheetLayers) {
                     // Loading/error painters can be empty. Preserve the endpoint's
                     // surface frame instead of depending on a capture to fill it.
                     drawRect(layers.artworkBackgroundColor)
-                },
-        )
+            },
+        ) {
+            Image(
+                painter = painter,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            AutoMixIncomingArtwork { layers.motionProgress }
+        }
     }
 }
 

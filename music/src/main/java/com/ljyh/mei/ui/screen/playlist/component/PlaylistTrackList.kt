@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.screen.playlist.component
 
+import com.ljyh.mei.ui.component.item.trackPressViewport
 import com.kyant.capsule.ContinuousRoundedRectangle
 import androidx.compose.ui.geometry.Rect
 
@@ -21,7 +22,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -44,8 +44,10 @@ import com.ljyh.mei.data.model.supportsNeteaseSongActions
 import com.ljyh.mei.data.model.MediaMetadata
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.core.LocalGroupedListBackgroundAlpha
+import io.github.neoruaa.glasmio.glass.GlasmioMenuAnchorState
 import com.ljyh.mei.ui.component.item.Track
 import com.ljyh.mei.utils.rememberPreference
+import com.ljyh.mei.ui.component.shimmer.ShimmerHost
 
 @Composable
 fun PlaylistTrackList(
@@ -61,6 +63,7 @@ fun PlaylistTrackList(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     emptyMessage: String? = null,
     flatDetailStyle: Boolean = false,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
 
     val playlistTrackTableHeader by rememberPreference(PlaylistTrackTableHeaderKey,  false)
@@ -73,7 +76,7 @@ fun PlaylistTrackList(
 
         LazyColumn(
             state = lazyListState,
-            modifier = Modifier.weight(1f), // 占据剩余空间
+            modifier = Modifier.weight(1f).trackPressViewport(),
             contentPadding = contentPadding
         ) {
             if (headerContent != null) {
@@ -90,6 +93,7 @@ fun PlaylistTrackList(
                     onTrackClick = onTrackClick, onMoreClick = onMoreClick,
                     emptyMessage = emptyMessage, flatDetailStyle = true,
                     showLeadingDivider = headerContent == null,
+                    menuAnchorState = menuAnchorState,
                 )
                 return@LazyColumn
             }
@@ -112,12 +116,14 @@ fun PlaylistTrackList(
                             onClick = { onTrackClick(track, index) },
                             selected = null,
                             onMoreClick = { onMoreClick(track, it) },
+                            menuAnchorState = menuAnchorState,
                         ) else Track(
                             track = track,
                             index = index,
                             isTablet = isTablet,
                             onClick = { onTrackClick(track, index) },
                             onMoreClick = { onMoreClick(track, it) },
+                            menuAnchorState = menuAnchorState,
                         )
                     }
                 }
@@ -125,13 +131,12 @@ fun PlaylistTrackList(
                 when (pagingItems.loadState.append) {
                     is LoadState.Loading -> {
                         item {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(Modifier.size(24.dp))
+                            ShimmerHost {
+                                TrackItemShimmer(
+                                    isTablet = isTablet,
+                                    flatDetailStyle = flatDetailStyle,
+                                    showArtwork = true,
+                                )
                             }
                         }
                     }
@@ -186,12 +191,14 @@ fun PlaylistTrackList(
                         onClick = { onTrackClick(track, index) },
                         selected = null,
                         onMoreClick = { onMoreClick(track, it) },
+                        menuAnchorState = menuAnchorState,
                     ) else Track(
                         track = track,
                         index = index,
                         isTablet = isTablet,
                         onClick = { onTrackClick(track, index) },
                         onMoreClick = { onMoreClick(track, it) },
+                        menuAnchorState = menuAnchorState,
                     )
                 }
             }
@@ -224,6 +231,7 @@ fun LazyListScope.playlistTrackItems(
     isPlaying: Boolean = false,
     favoriteTrackIds: Set<String> = emptySet(),
     showLeadingDivider: Boolean = true,
+    menuAnchorState: GlasmioMenuAnchorState? = null,
 ) {
     val itemCount = pagingItems?.itemCount ?: staticTracks.size
     val showsTableHeader = isTablet && showTableHeader && !flatDetailStyle
@@ -267,6 +275,7 @@ fun LazyListScope.playlistTrackItems(
                             isFavorite = track.mediaId in favoriteTrackIds,
                             onClick = { onTrackClick(track, index) },
                             onMoreClick = if (selectionMode) null else { { onMoreClick(track, it) } },
+                            menuAnchorState = menuAnchorState,
                             selected = if (selectionMode) track.mediaId in selectedTrackIds else null,
                         )
                     } else {
@@ -274,8 +283,10 @@ fun LazyListScope.playlistTrackItems(
                             track = track,
                             index = index,
                             isTablet = isTablet,
+                            showPressIndication = true,
                             onClick = { onTrackClick(track, index) },
                             onMoreClick = if (selectionMode) null else { { onMoreClick(track, it) } },
+                            menuAnchorState = menuAnchorState,
                             selected = if (selectionMode) track.mediaId in selectedTrackIds else null,
                         )
                     }
@@ -297,11 +308,13 @@ fun LazyListScope.playlistTrackItems(
         when (pagingItems.loadState.append) {
             is LoadState.Loading -> item(key = "playlist-append-loading") {
                 PlaylistSurface(isFirst = false, isLast = true, flatDetailStyle = flatDetailStyle) {
-                    Box(
-                        Modifier.fillMaxWidth().padding(18.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    ShimmerHost {
+                        TrackItemShimmer(
+                            isTablet = isTablet,
+                            flatDetailStyle = flatDetailStyle,
+                            showArtwork = showArtwork,
+                            showDuration = showDuration,
+                        )
                     }
                 }
             }
@@ -336,6 +349,7 @@ fun LazyListScope.playlistTrackItems(
                         isFavorite = track.mediaId in favoriteTrackIds,
                         onClick = { onTrackClick(track, index) },
                         onMoreClick = if (selectionMode) null else { { onMoreClick(track, it) } },
+                        menuAnchorState = menuAnchorState,
                         selected = if (selectionMode) track.mediaId in selectedTrackIds else null,
                     )
                 } else {
@@ -343,8 +357,10 @@ fun LazyListScope.playlistTrackItems(
                         track = track,
                         index = index,
                         isTablet = isTablet,
+                        showPressIndication = true,
                         onClick = { onTrackClick(track, index) },
                         onMoreClick = if (selectionMode) null else { { onMoreClick(track, it) } },
+                        menuAnchorState = menuAnchorState,
                         selected = if (selectionMode) track.mediaId in selectedTrackIds else null,
                     )
                 }

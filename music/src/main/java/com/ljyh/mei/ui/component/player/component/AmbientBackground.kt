@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -28,6 +30,9 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import com.ljyh.mei.ui.component.player.LocalAutoMixUpcomingArtworkUrl
+import com.ljyh.mei.ui.component.player.LocalAutoMixVisuals
+import com.ljyh.mei.ui.component.sheet.LocalPlayerSheet
 import com.skydoves.cloudy.cloudy
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import kotlinx.coroutines.Dispatchers
@@ -37,9 +42,9 @@ import kotlinx.coroutines.withContext
 @Composable
 fun AmbientBackground(
     imageUrl: String?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    animated: Boolean = true,
 ) {
-    val context = LocalContext.current
     val isDark = LocalGlassColors.current.isDark
     val density = LocalDensity.current
 
@@ -52,37 +57,54 @@ fun AmbientBackground(
         }
     }
 
-    var fluidColors by remember { mutableStateOf(defaultColors) }
-
-    // 1. 异步取色
-    LaunchedEffect(imageUrl) {
-        if (imageUrl.isNullOrEmpty()) return@LaunchedEffect
-
-        // 放在 IO 线程，不阻塞 UI
-        withContext(Dispatchers.IO) {
-            val loader = context.imageLoader
-            val request = ImageRequest.Builder(context)
-                .data(imageUrl)
-                .size(200) // 稍微大一点点以获得更准确的色调，但仍然很小
-                .allowHardware(false)
-                .build()
-
-            val result = loader.execute(request)
-            if (result is SuccessResult) {
-                val bitmap = result.image.toBitmap()
-                // 使用增强版取色算法
-                val newColors = extractVibrantColorsImproved(bitmap, isDark)
-                fluidColors = newColors
-            }
+    val autoMix = LocalAutoMixVisuals.current
+    val upcomingUrl = LocalAutoMixUpcomingArtworkUrl.current
+    val sheet = LocalPlayerSheet.current
+    val sheetVisible by remember(sheet) {
+        derivedStateOf { sheet == null || sheet.state.isExpanded || sheet.isTransitioning }
+    }
+    val outgoingUrl = imageUrl?.takeIf(String::isNotBlank)
+    val incomingUrl = autoMix?.incoming?.coverUrl?.takeIf(String::isNotBlank)
+    val prewarmUrl = (if (autoMix == null) upcomingUrl else incomingUrl)
+        ?.takeIf { sheetVisible && it.isNotBlank() && it != outgoingUrl }
+    val loadedPalettes = listOfNotNull(outgoingUrl, prewarmUrl).associateWith { url ->
+        key(url, isDark) { rememberAmbientPalette(url, isDark) }
+    }
+    val mixPalette = when {
+        autoMix == null || incomingUrl == outgoingUrl -> null
+        incomingUrl == null -> defaultColors
+        else -> loadedPalettes[incomingUrl]
+    }
+    var previousMixPalette by remember(isDark) { mutableStateOf<Pair<String?, List<Color>>?>(null) }
+    val promotedPalette = previousMixPalette?.takeIf { it.first == outgoingUrl }?.second
+    SideEffect {
+        if (mixPalette != null) {
+            previousMixPalette = incomingUrl to mixPalette
+        } else if (promotedPalette == null) {
+            previousMixPalette = null
         }
     }
 
+    var fluidColors by remember(isDark) { mutableStateOf(defaultColors) }
+    val loadedCurrent = promotedPalette ?: outgoingUrl?.let(loadedPalettes::get)
+    LaunchedEffect(loadedCurrent) {
+        if (loadedCurrent != null) fluidColors = loadedCurrent
+    }
+
     // 2. 动画设置：时间稍微缩短一点，LinearEasing 改为 FastOutSlowIn 让变化更有节奏
-    val animSpec = tween<Color>(durationMillis = 1200, easing = FastOutSlowInEasing)
-    val c1 by animateColorAsState(fluidColors[0], animSpec, label = "c1")
-    val c2 by animateColorAsState(fluidColors[1], animSpec, label = "c2")
-    val c3 by animateColorAsState(fluidColors[2], animSpec, label = "c3")
-    val c4 by animateColorAsState(fluidColors[3], animSpec, label = "c4")
+    val animSpec = if (promotedPalette == null) {
+        tween<Color>(durationMillis = 1200, easing = FastOutSlowInEasing)
+    } else {
+        snap<Color>()
+    }
+    val animatedColors = List(4) { index ->
+        animateColorAsState(fluidColors[index], animSpec, label = "Ambient color $index")
+    }
+    val progress = if (mixPalette != null) autoMix?.let { it::backgroundProgress } else null
+    val colorAt: (Int, Float) -> Color = { index, fraction ->
+        val outgoing = promotedPalette?.get(index) ?: animatedColors[index].value
+        if (mixPalette == null) outgoing else lerp(outgoing, mixPalette[index], fraction)
+    }
 
     // 3. 模糊半径优化：不要过大，保留一点色块的形体感
 //    val blurEffect = remember {
@@ -102,11 +124,13 @@ fun AmbientBackground(
     Box(modifier = modifier.fillMaxSize()) {
         // 背景底色：使用最深的一个颜色作为底，避免漏光
         // 增加 saturation 确保底色也不灰
-        val baseColor = if(isDark) c2.darken(0.6f) else Color(0xFFF0F0F0)
-
-        Box(modifier = Modifier
-            .fillMaxSize()
-            .background(baseColor)
+        Box(
+            modifier = Modifier.fillMaxSize().drawBehind {
+                val baseColor = if (isDark) {
+                    colorAt(1, progress?.invoke() ?: 0f).darken(0.6f)
+                } else Color(0xFFF0F0F0)
+                drawRect(baseColor)
+            },
         )
 
         // 流体层
@@ -131,8 +155,9 @@ fun AmbientBackground(
                 )
         ) {
             FluidCanvasImproved(
-                colors = listOf(c1, c2, c3, c4),
-                isDark = isDark
+                colorAt = colorAt,
+                progress = progress,
+                animated = animated,
             )
         }
 
@@ -155,24 +180,52 @@ fun AmbientBackground(
 }
 
 @Composable
-fun FluidCanvasImproved(colors: List<Color>, isDark: Boolean) {
-    val infiniteTransition = rememberInfiniteTransition(label = "fluid")
+private fun rememberAmbientPalette(imageUrl: String, isDark: Boolean): List<Color>? {
+    val context = LocalContext.current
+    val colors by produceState<List<Color>?>(null, imageUrl, isDark) {
+        val result = context.imageLoader.execute(
+            ImageRequest.Builder(context)
+                .data(imageUrl)
+                .size(200)
+                .allowHardware(false)
+                .build(),
+        )
+        if (result is SuccessResult) {
+            value = withContext(Dispatchers.Default) {
+                extractVibrantColorsImproved(result.image.toBitmap(), isDark)
+            }
+        }
+    }
+    return colors
+}
+
+@Composable
+private fun FluidCanvasImproved(
+    colorAt: (Int, Float) -> Color,
+    progress: (() -> Float)?,
+    animated: Boolean,
+) {
+    val infiniteTransition = if (animated) rememberInfiniteTransition(label = "fluid") else null
 
     // 定义三种不同频率的运动，打破规律感
-    val t1 by infiniteTransition.animateFloat(
+    val t1State = infiniteTransition?.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(15000, easing = LinearEasing), RepeatMode.Reverse), label = "t1"
     )
-    val t2 by infiniteTransition.animateFloat(
+    val t2State = infiniteTransition?.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(23000, easing = LinearEasing), RepeatMode.Reverse), label = "t2"
     )
-    val t3 by infiniteTransition.animateFloat(
+    val t3State = infiniteTransition?.animateFloat(
         initialValue = 0f, targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(18000, easing = LinearEasing), RepeatMode.Reverse), label = "t3"
     )
 
     Canvas(modifier = Modifier.fillMaxSize()) {
+        val fraction = progress?.invoke() ?: 0f
+        val t1 = t1State?.value ?: 0f
+        val t2 = t2State?.value ?: 0f
+        val t3 = t3State?.value ?: 0f
         val w = size.width
         val h = size.height
 
@@ -182,14 +235,14 @@ fun FluidCanvasImproved(colors: List<Color>, isDark: Boolean) {
 
         // 1. 主色块（左上，大范围移动）
         drawCircle(
-            color = colors[0].copy(alpha = 0.8f),
+            color = colorAt(0, fraction).copy(alpha = 0.8f),
             radius = w * 0.7f,
             center = Offset(w * 0.2f + (w * 0.3f * t1), h * 0.3f - (h * 0.1f * t2))
         )
 
         // 2. 辅助色块（右下，定调色）
         drawCircle(
-            color = colors[1].copy(alpha = 0.8f),
+            color = colorAt(1, fraction).copy(alpha = 0.8f),
             radius = w * 0.8f,
             center = Offset(w * 0.9f - (w * 0.3f * t2), h * 0.8f - (h * 0.2f * t1))
         )
@@ -197,14 +250,14 @@ fun FluidCanvasImproved(colors: List<Color>, isDark: Boolean) {
         // 3. 提亮色块（中间偏左，呼吸感）- 这里的颜色最亮
         val scale3 = 0.8f + (0.3f * t3) // 忽大忽小
         drawCircle(
-            color = colors[2].copy(alpha = 0.6f),
+            color = colorAt(2, fraction).copy(alpha = 0.6f),
             radius = w * 0.5f * scale3,
             center = Offset(w * 0.3f, h * 0.5f + (h * 0.2f * t2))
         )
 
         // 4. 补色/强调色块（右上，游走）- 制造冲突感
         drawCircle(
-            color = colors[3].copy(alpha = 0.6f),
+            color = colorAt(3, fraction).copy(alpha = 0.6f),
             radius = w * 0.6f,
             center = Offset(w * 0.8f, h * 0.2f + (h * 0.4f * t3))
         )

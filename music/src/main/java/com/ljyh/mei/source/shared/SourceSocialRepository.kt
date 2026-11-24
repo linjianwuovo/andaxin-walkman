@@ -91,11 +91,7 @@ class SourceSocialSession internal constructor(val owner: BoundSourceFeatures, v
     }
     suspend fun shareLink(resource: SourceShareResource): String? {
         requireResource(resource)
-        if (!owner.supports("social", "shareLink")) return null
-        val result = owner.invoke("social", "shareLink", featureParameters { add("resource", resourceJson(resource)) })
-        if (result.isJsonNull) return null
-        if (!result.isJsonPrimitive || !result.asJsonPrimitive.isString) invalidFeature()
-        return result.asString.takeIf { it.startsWith("https://") && it.length <= 8192 } ?: invalidFeature()
+        return owner.shareResourceLink(resource)
     }
     suspend fun media(resource: SourceShareResource): MediaItem {
         requireResource(resource)
@@ -112,9 +108,20 @@ class SourceSocialSession internal constructor(val owner: BoundSourceFeatures, v
             ShareResourceKind.Album -> resource.ref !is AlbumRef
         }) invalidFeature()
     }
-    private fun resourceJson(resource: SourceShareResource) = featureParameters {
-        addProperty("id", resource.ref.contentId); addProperty("kind", resource.kind.name); addProperty("title", resource.title)
-    }
+}
+
+private fun resourceJson(resource: SourceShareResource) = featureParameters {
+    addProperty("id", resource.ref.contentId)
+    addProperty("kind", resource.kind.name)
+    addProperty("title", resource.title)
+}
+
+internal suspend fun BoundSourceFeatures.shareResourceLink(resource: SourceShareResource): String? {
+    if (!supports("social", "shareLink")) return null
+    val result = invoke("social", "shareLink", featureParameters { add("resource", resourceJson(resource)) })
+    if (result.isJsonNull) return null
+    if (!result.isJsonPrimitive || !result.asJsonPrimitive.isString) invalidFeature()
+    return result.asString.takeIf { it.startsWith("https://") && it.length <= 8192 } ?: invalidFeature()
 }
 
 internal fun parseSourceContact(providerId: String, value: JsonElement): SourceMessageContact {

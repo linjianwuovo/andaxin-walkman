@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_apple_charts"
+    android:previewLayout="@layout/widget_apple_charts"
+    android:previewImage="@drawable/widget_preview_charts"
+    android:description="@string/widget_charts_description"
+    android:minWidth="104dp"
+    android:minHeight="104dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:resizeMode="none"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

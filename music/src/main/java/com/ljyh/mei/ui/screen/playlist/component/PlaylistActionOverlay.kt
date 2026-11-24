@@ -43,14 +43,16 @@ fun PlaylistActionOverlay(
             }
             SongInfoSheet(metadata = overlay.metadata, qqSongId = qqSongId, onDismissRequest = onDismiss)
         }
-        is OverlayState.AddToPlaylist -> LaunchedEffect(overlay.mediaId) {
-            val ref = TrackRefCodec.decode(overlay.mediaId.toString())
+        is OverlayState.AddToPlaylist -> LaunchedEffect(overlay.track) {
             onDismiss()
-            if (ref != null) Screen.SourcePlaylistPicker.navigate(nav) { addPath(Uri.encode(TrackRefCodec.encode(ref))) }
+            Screen.SourcePlaylistPicker.navigate(nav) {
+                addPath(Uri.encode(TrackRefCodec.encode(overlay.track)))
+            }
         }
         is OverlayState.TrackActionMenu -> SourceTrackActions(
             metadata = overlay.track,
             anchorBounds = overlay.anchorBounds,
+            menuAnchorState = overlay.menuAnchorState,
             onDismiss = onDismiss,
             viewModel = sourceViewModel,
             playerViewModel = playerViewModel,

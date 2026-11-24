@@ -1,5 +1,6 @@
 package com.ljyh.mei.playback
 
+import android.os.Build
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -31,8 +32,9 @@ class SleepTimerNotification(private val context: Context) {
     }
 
     fun isEnabled(): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED && manager.areNotificationsEnabled() &&
+        (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED) && manager.areNotificationsEnabled() &&
             manager.getNotificationChannel(CHANNEL_ID)?.importance != NotificationManager.IMPORTANCE_NONE
 
     fun update(state: SleepTimerState) {

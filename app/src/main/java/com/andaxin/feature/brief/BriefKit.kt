@@ -3,7 +3,9 @@ package com.andaxin.feature.brief
 import com.andaxin.core.design.LocalSamplingBackdrop
 import com.andaxin.core.design.NoSamplingBackdrop
 import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
-import io.github.neoruaa.glasmio.glass.GlassSurface
+import com.andaxin.core.design.safeGlassSurface
+import com.andaxin.core.design.glassEdge
+import com.andaxin.core.design.glassPageBackground
 import androidx.compose.material3.HorizontalDivider
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
 import io.github.neoruaa.glasmio.glass.rememberCrossWindowBackdrop
@@ -35,6 +37,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
@@ -109,7 +114,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 /* ───────────────────────── 状态 ───────────────────────── */
 
@@ -614,6 +618,7 @@ private fun PhotoThumb(uri: String, modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FieldRow(
     field: Field,
@@ -624,7 +629,9 @@ private fun FieldRow(
     val ink = LocalInk.current
     var picking by remember { mutableStateOf(false) }
     when (field) {
-        is Field.Text -> Column {
+        is Field.Text -> Column(
+            Modifier.fillMaxWidth().safeGlassSurface(Radius.field).padding(Gap.md),
+        ) {
             Text(field.label, fontSize = Type.meta, color = ink.muted)
             Spacer(Modifier.height(Gap.xs))
             GlasmioTextField(
@@ -660,7 +667,10 @@ private fun FieldRow(
             }
             Text(field.label, fontSize = Type.meta, color = ink.muted)
             Spacer(Modifier.height(Gap.xs))
-            Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(Gap.sm),
+                verticalArrangement = Arrangement.spacedBy(Gap.sm),
+            ) {
                 picked.forEach { uri ->
                     Box(Modifier.size(PhotoTile)) {
                         PhotoThumb(uri = uri, modifier = Modifier.fillMaxSize())
@@ -747,7 +757,12 @@ private fun FieldRow(
                     onDismiss = { picking = false },
                 )
             }
-            Column(Modifier.pressClick(shrink = false) { picking = true }) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .safeGlassSurface(Radius.field)
+                    .pressClick(shrink = false) { picking = true }
+                    .padding(Gap.md),
+            ) {
                 Text(field.label, fontSize = Type.meta, color = ink.muted)
                 Spacer(Modifier.height(Gap.xs))
                 Text(
@@ -785,8 +800,10 @@ private fun FieldRow(
                 Column(
                     Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .safeGlassSurface(Radius.field)
                         .pressClick(shrink = false) { open = true }
-                        .padding(vertical = Gap.sm),
+                        .padding(Gap.md),
                 ) {
                     Text(field.label, fontSize = Type.meta, color = ink.muted)
                     Spacer(Modifier.height(Gap.xxs))
@@ -835,7 +852,7 @@ private fun PickDialog(
     )
     val glass = LocalGlassColors.current
     val sheetShape = RoundedCornerShape(24.dp)
-    val shellTint = glass.elevatedBackground.copy(alpha = 0.62f)
+    val shellTint = glass.elevatedBackground.copy(alpha = if (ink.dark) 0.86f else 0.90f)
     val blurPx = with(LocalDensity.current) { 24.dp.toPx() }
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -848,6 +865,7 @@ private fun PickDialog(
                     onDrawSurface = { drawRect(shellTint) },
                 )
                 .clip(sheetShape)
+                .glassEdge(sheetShape)
                 .padding(top = Gap.md, bottom = Gap.xs),
         ) {
             Text(
@@ -869,6 +887,8 @@ private fun PickDialog(
                         Row(
                             Modifier
                                 .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .then(if (o == cur) Modifier.safeGlassSurface(Radius.field, selected = true) else Modifier)
                                 .pressClick(shrink = false) { onPick(o) }
                                 .padding(horizontal = Gap.md, vertical = Gap.sm),
                             verticalAlignment = Alignment.CenterVertically,
@@ -974,9 +994,8 @@ fun ScaffoldPage(
     // 11-14：顶上那片糊只在滚起来之后才画 —— 静止时状态栏区还是纯背景，
     // 内容往上钻才糊出来（iOS 大标题那种行为）。
     //
-    // 内容层里的玻璃件只有 GlasmioCard,而库自己的 Card 把 backdrop 参数标了
-    // @Suppress("UNUSED_PARAMETER") —— 它压根不采样,只是填色,所以不存在
-    // "玻璃采自己"的递归（库注释警告的是另一种接法）。
+    // Sheet uses static material inside sampled content; NoSamplingBackdrop also guards
+    // library controls here. Sampling remains confined to the separate overlay/window.
     val scroll = rememberScrollState()
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // 滚过 12dp 就完全糊住：再往上滚只是让内容更深地钻进糊层,不必更糊。
@@ -994,7 +1013,7 @@ fun ScaffoldPage(
             // 递归），11-02 报修单页就是这么崩的。业务 content() 里的 GlasmioButton 全在这层里，
             // 所以这里统一把采样关掉。
             NoSamplingBackdrop {
-            Box(Modifier.fillMaxSize().background(LocalGlassColors.current.groupedBackground)) {
+            Box(Modifier.fillMaxSize().glassPageBackground()) {
                 Refreshable(onRefresh, Modifier.fillMaxSize()) {
                     Column(
                         Modifier
@@ -1009,17 +1028,22 @@ fun ScaffoldPage(
                             // 勉强盖住 —— 换三键导航机型(inset≈48dp)最后一行就会被压住。
                             .navigationBarsPadding()
                             .padding(horizontal = Gap.screen),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        // 让开状态栏 + 那颗 44dp 的悬浮返回钮。放在滚动容器里面而不是用
-                        // statusBarsPadding,内容才能滚进状态栏区去。
-                        Spacer(Modifier.height(statusBarHeight + GlassBackInset))
-                        // 给了标题才画：登录那一屏自己带一枚图标和名字，不需要顶端再挂一个"登录"。
-                        if (title.isNotBlank()) {
-                            Text(title, fontSize = Type.largeTitle, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
-                            Spacer(Modifier.height(Gap.lg))
+                        Column(
+                            modifier = Modifier
+                                .widthIn(max = 760.dp)
+                                .fillMaxWidth()
+                                .align(Alignment.CenterHorizontally),
+                        ) {
+                            Spacer(Modifier.height(statusBarHeight + GlassBackInset))
+                            if (title.isNotBlank()) {
+                                Text(title, fontSize = Type.largeTitle, fontWeight = FontWeight.SemiBold, color = LocalInk.current.strong)
+                                Spacer(Modifier.height(Gap.lg))
+                            }
+                            content()
+                            Spacer(Modifier.height(Gap.xxl))
                         }
-                        content()
-                        Spacer(Modifier.height(Gap.xxl))
                     }
                 }
             }

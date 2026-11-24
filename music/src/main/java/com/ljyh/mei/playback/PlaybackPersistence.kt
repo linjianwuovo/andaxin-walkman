@@ -152,6 +152,7 @@ class PlaybackPersistence(
     private var cachedOrder: List<Int>? = null
     private var savedQueue: PlaybackSnapshot? = null
     private var savedCheckpoint: PlaybackCheckpoint? = null
+    private var latestSaveSequence = 0L
     private val saveMutex = Mutex()
 
     fun invalidateQueue() {
@@ -202,9 +203,12 @@ class PlaybackPersistence(
         )
     }
 
-    suspend fun save(snapshot: PlaybackSnapshot) {
+    suspend fun save(snapshot: PlaybackSnapshot, sequence: Long) {
         withContext(Dispatchers.IO) {
             saveMutex.withLock {
+                // IO dispatch can let a final checkpoint overtake an older capture.
+                if (sequence <= latestSaveSequence) return@withLock
+                latestSaveSequence = sequence
                 val previous = savedQueue
                 val sameQueue = previous != null && previous.items === snapshot.items &&
                     previous.shuffleOrder === snapshot.shuffleOrder && previous.queueTitle == snapshot.queueTitle &&

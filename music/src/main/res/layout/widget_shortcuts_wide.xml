@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_ncm_feature_background"
+    android:clipToOutline="true">
+
+    <ImageView
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:layout_gravity="bottom|center_horizontal"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_ncm_feature_intro_wide"
+        android:importantForAccessibility="no" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="16dp"
+        android:text="@string/widget_shortcuts"
+        android:textColor="#FFFFFFFF"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:includeFontPadding="false" />
+
+    <ImageView
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="16dp"
+        android:src="@drawable/widget_meilox_badge"
+        android:importantForAccessibility="no" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start" android:layout_marginBottom="18dp"
+        android:layout_marginStart="16dp"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="5dp"
+        android:maxWidth="135dp"
+        android:text="@string/widget_feature_setup_wide"
+        android:textColor="#80FFFFFF"
+        android:textSize="12sp" />
+</FrameLayout>

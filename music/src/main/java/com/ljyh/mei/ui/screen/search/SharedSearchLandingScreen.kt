@@ -1,6 +1,7 @@
 package com.ljyh.mei.ui.screen.search
 
 
+import com.ljyh.mei.ui.component.home.homeArtworkBorder
 import com.ljyh.mei.ui.component.item.FixedCardCaption
 import io.github.neoruaa.glasmio.core.swipeBackExcluded
 import android.net.Uri
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
@@ -40,6 +42,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -69,6 +72,8 @@ import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalContentPadding
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalEdgeToEdge
 import com.ljyh.mei.ui.screen.Screen
 import com.ljyh.mei.ui.component.utils.rememberDeviceInfo
 import com.ljyh.mei.utils.rememberPreference
@@ -133,9 +138,9 @@ fun SharedSearchLandingScreen(
     val isLandscape = rememberDeviceInfo().isLandscape
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val categorySpacing = if (isLandscape) 16.dp else 12.dp
-        val categoryColumns = if (isLandscape) {
-            ((maxWidth - 32.dp + categorySpacing) / (164.dp + categorySpacing)).toInt().coerceIn(2, 5)
-        } else 2
+        val categoryColumns = ((maxWidth - 32.dp + categorySpacing) /
+            (156.dp * LocalDensity.current.fontScale.coerceAtLeast(1f) + categorySpacing))
+            .toInt().coerceIn(1, if (isLandscape) 5 else 2)
         MeiloXPinnedListPage(
             title = stringResource(R.string.app_tab_search),
             bottomPadding = 0.dp,
@@ -206,8 +211,8 @@ fun SharedSearchLandingScreen(
             state.discovery?.let { discovery ->
                 item(key = "recommendations") {
                     LazyRow(
-                        modifier = Modifier.swipeBackExcluded(),
-                        contentPadding = PaddingValues(horizontal = HomeRowHorizontalPadding),
+                        modifier = Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded(),
+                        contentPadding = glasmioHorizontalContentPadding(PaddingValues(horizontal = HomeRowHorizontalPadding)),
                         horizontalArrangement = Arrangement.spacedBy(homeCardSpacing(isLandscape)),
                     ) {
                         items(discovery.recommendations, key = SearchRecommendation::id) { playlist ->
@@ -313,6 +318,7 @@ private fun SearchRecommendationCard(
     cardSize: Dp,
     onClick: () -> Unit,
 ) {
+    val coverShape = ContinuousRoundedRectangle(8.dp)
     Column(
         modifier = Modifier.width(cardSize).clickable(onClick = onClick),
     ) {
@@ -322,7 +328,7 @@ private fun SearchRecommendationCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(ContinuousRoundedRectangle(8.dp)),
+                .clip(coverShape).homeArtworkBorder(coverShape),
             contentScale = ContentScale.Crop,
         )
         val subtitle = playlist.copywriter?.takeIf(String::isNotBlank)
@@ -343,13 +349,13 @@ private fun SearchCategoryCard(
     landscape: Boolean = false,
     onClick: () -> Unit,
 ) {
-    Box(
+    BoxWithConstraints(
         modifier = modifier
-            .aspectRatio(if (landscape) 16f / 9f else 1.55f)
             .clip(ContinuousRoundedRectangle(14.dp))
             .background(Brush.linearGradient(listOf(category.startColor, category.endColor)))
             .clickable(onClick = onClick),
     ) {
+        Box(Modifier.fillMaxWidth().heightIn(min = maxWidth / if (landscape) (16f / 9f) else 1.55f)) {
         SfIcon(
             symbol = category.icon,
             contentDescription = null,
@@ -363,9 +369,8 @@ private fun SearchCategoryCard(
             style = IosTypography.headline,
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            maxLines = if (landscape) 2 else 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, end = 12.dp, top = 48.dp, bottom = 12.dp),
         )
+        }
     }
 }

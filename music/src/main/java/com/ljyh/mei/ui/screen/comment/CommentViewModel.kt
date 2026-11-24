@@ -93,9 +93,13 @@ class CommentViewModel @Inject constructor(
             Pager(
                 config = PagingConfig(pageSize = 20, initialLoadSize = 20, enablePlaceholders = false),
                 pagingSourceFactory = {
-                    CommentPagingSource(repository, id, sort) {
-                        if (version == contextVersion) _total.value = it
-                    }
+                    CommentPagingSource(
+                        sortType = sort,
+                        loadPage = { pageNo, pageSize, cursor ->
+                            repository.getComment(id, sortType = sort, pageNo = pageNo, pageSize = pageSize, cursor = cursor)
+                        },
+                        onTotalReceived = { if (version == contextVersion) _total.value = it },
+                    )
                 },
             ).flow
         }.cachedIn(viewModelScope)

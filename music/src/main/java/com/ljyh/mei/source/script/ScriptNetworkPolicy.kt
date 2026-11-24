@@ -192,7 +192,7 @@ class ScriptNetworkPolicy(
         var bytesRemaining = cached.sumOf { it.length() }
         var countRemaining = cached.size
         cached.filter { it != file }.forEach { old ->
-            if (bytesRemaining > MAX_ARTWORK_CACHE_BYTES || countRemaining > 256) {
+            if (bytesRemaining > MAX_ARTWORK_CACHE_BYTES || countRemaining > MAX_ARTWORK_CACHE_FILES) {
                 val size = old.length()
                 if (old.delete()) { bytesRemaining -= size; countRemaining-- }
             }
@@ -340,6 +340,7 @@ class ScriptNetworkPolicy(
         const val MAX_REQUEST_BYTES = 256 * 1024
         const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
         internal const val MAX_ARTWORK_CACHE_BYTES = 128L * 1024 * 1024
+        private const val MAX_ARTWORK_CACHE_FILES = 2048
         internal const val API_CONCURRENCY = 4
         internal const val ARTWORK_CONCURRENCY = 2
         internal const val AUDIO_CONCURRENCY = 2

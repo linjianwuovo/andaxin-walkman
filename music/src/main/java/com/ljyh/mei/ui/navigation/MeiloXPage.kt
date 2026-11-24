@@ -1,16 +1,14 @@
 package com.ljyh.mei.ui.navigation
 
+import com.ljyh.mei.ui.component.item.trackPressViewport
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +53,17 @@ internal class MeiloXPageHeaders {
 
 internal val LocalMeiloXSearchTopPadding = compositionLocalOf { 0.dp }
 private val LocalMeiloXPageHeader = staticCompositionLocalOf<MeiloXPageHeader?> { null }
+
+/** Detach full-screen dialog pages from the underlying route's navigation header and sidebar state. */
+@Composable
+fun MeiloXStandalonePageScope(content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalMeiloXPageHeader provides null,
+        LocalMeiloXSearchTopPadding provides 0.dp,
+        LocalGlasmioSidebarExpanded provides false,
+        content = content,
+    )
+}
 
 @Composable
 internal fun registerMeiloXNavigationViewport(listState: LazyListState) {
@@ -197,7 +206,7 @@ fun MeiloXPinnedPage(
         ) { SfIcon(SfSymbol.ChevronBack, null, mirrored = true) })))
     }.orEmpty()
     val isLandscape = rememberDeviceInfo().isLandscape
-    val hidesHeading = isLandscape && !LocalGlasmioSidebarExpanded.current
+    val hidesHeading = header != null && isLandscape && !LocalGlasmioSidebarExpanded.current
     val trailingActions = actions()
     val locatorHost = LocalPlaylistLocateHost.current
     val locatorRegistration = locatorHost?.registrationFor(LocalPlaylistLocateOwner.current)
@@ -246,7 +255,9 @@ fun MeiloXPinnedPage(
                 trailingActions.forEach { action ->
                     key(action.key) {
                         GlasmioIconButton(action.onClick, enabled = action.enabled,
-                            modifier = action.menuAnchor?.let { Modifier.glasmioMenuAnchor(it) } ?: Modifier,
+                            modifier = action.menuAnchor?.let {
+                                Modifier.glasmioMenuAnchor(it, action.onClick.takeIf { action.enabled })
+                            } ?: Modifier,
                         ) { action.content() }
                     }
                 }
@@ -308,7 +319,6 @@ fun MeiloXLoadingPage(title: String, onNavigateBack: (() -> Unit)? = null) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MeiloXPinnedListPage(
     title: String,
@@ -359,10 +369,17 @@ fun MeiloXPinnedListPage(
                     (bottomPaddingValues?.calculateBottomPadding() ?: 0.dp)
             }
         }
-        val listContent: @Composable () -> Unit = {
+        val listContent: @Composable (Boolean) -> Unit = { parentProvidesEdgeToEdge ->
             key(listState) {
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
-                    contentPadding = listPadding, verticalArrangement = verticalArrangement,
+                LazyColumn(state = listState,
+                    // Expose cross-axis space for nested full-width horizontal rows; regular list
+                    // content keeps the safe area through contentPadding below.
+                    modifier = Modifier.fillMaxSize().then(
+                        if (parentProvidesEdgeToEdge) Modifier
+                        else Modifier.glasmioHorizontalEdgeToEdge(),
+                    ).trackPressViewport(),
+                    contentPadding = glasmioHorizontalContentPadding(listPadding),
+                    verticalArrangement = verticalArrangement,
                 ) {
                     if (showTitle) item(key = "ios-large-title:$title") {
                         Column(Modifier.fillMaxWidth().graphicsLayer {
@@ -384,13 +401,17 @@ fun MeiloXPinnedListPage(
             }
         }
         if (onRefresh == null) {
-            listContent()
+            listContent(false)
         } else {
-            val refreshState = rememberPullToRefreshState()
-            PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = onRefresh, state = refreshState) {
-                Box(Modifier.fillMaxSize().pullToRefreshRebound(refreshState, isRefreshing)) {
-                    listContent()
-                }
+            GlasmioPullToRefreshBox(
+                modifier = Modifier.fillMaxSize().glasmioHorizontalEdgeToEdge(),
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                indicatorPadding = glasmioHorizontalContentPadding(
+                    PaddingValues(top = padding.calculateTopPadding()),
+                ),
+            ) {
+                listContent(true)
             }
         }
     }

@@ -23,7 +23,8 @@ object QRCParser : ILyricsParser {
      * @return 包含合并后歌词的 SyncedLyrics 对象。
      */
     fun parse(qrcLyrics: String, translationLrc: String?): SyncedLyrics {
-        val karaokeLines = parseInternal(qrcLyrics.lineSequence())
+        val headerOffsetMs = extractLyricHeaderOffsetMs(qrcLyrics)
+        val karaokeLines = parseInternal(qrcLyrics.lineSequence()).applyHeaderOffset(headerOffsetMs)
         val mergedLines = TranslationHelper.merge(karaokeLines, translationLrc)
         return SyncedLyrics(lines = mergedLines)
     }
@@ -46,11 +47,21 @@ object QRCParser : ILyricsParser {
      */
     override fun parse(lines: List<String>): SyncedLyrics {
         // 智能分离主歌词行和翻译行
-        val mainLyricsLines = lines.filter { line ->
-            val trimmed = line.trim()
-            QRC_LINE_REGEX.matches(trimmed) || trimmed.startsWith("[bg:")
+        val offsetLine = extractLyricHeaderOffsetMs(lines).takeIf { it != 0 }?.let { "[offset:$it]" }
+        val mainLyricsLines = buildList {
+            offsetLine?.let(::add)
+            lines.forEach { line ->
+                val trimmed = line.trim()
+                if (QRC_LINE_REGEX.matches(trimmed) || trimmed.startsWith("[bg:")) {
+                    add(line)
+                }
+            }
         }
-        val translationLines = lines.filter { translationLineRegex.matches(it.trim()) }
+        val translationLines = buildList {
+            val transCandidates = lines.filter { translationLineRegex.matches(it.trim()) }
+            if (transCandidates.isNotEmpty() && offsetLine != null) add(offsetLine)
+            addAll(transCandidates)
+        }
 
         return parse(
             qrcLyrics = mainLyricsLines.joinToString("\n"),

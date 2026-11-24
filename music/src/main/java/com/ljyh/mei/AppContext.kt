@@ -1,6 +1,8 @@
 package com.ljyh.mei
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 原来这里是 MeiloX 自己的 Application（@HiltAndroidApp + Coil 的 SingletonImageLoader.Factory）。
@@ -19,7 +21,32 @@ import android.content.Context
 object AppContext {
     lateinit var instance: Context
 
+    /** 宿主经 startMusicMcp 注入的本地 MCP 服务；类型是 internal，字段也只能 internal，同模块读。 */
+    internal lateinit var mcpService: com.ljyh.mei.mcp.McpService
+
     fun attachSourceArtwork(store: com.ljyh.mei.source.script.SourceArtworkStore) {
         com.ljyh.mei.source.script.SourceArtworkRegistry.attach(store)
+    }
+
+}
+
+/**
+ * 上游 AppContext 还承担 Coil 图片缓存的两个查询（`AppContext.instance.hasCachedImage(...)`
+ * 这种读法）。宿主已注册 SingletonImageLoader factory，这里做成 Context 扩展转调同一份 loader。
+ */
+internal suspend fun Context.hasCachedImage(url: String): Boolean =
+    withContext(Dispatchers.IO) {
+        try {
+            coil3.SingletonImageLoader.get(applicationContext).diskCache
+                ?.openSnapshot(url)?.use { true } ?: false
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+internal suspend fun Context.clearImageCache() {
+    coil3.SingletonImageLoader.get(applicationContext).let { loader ->
+        loader.memoryCache?.clear()
+        loader.diskCache?.clear()
     }
 }

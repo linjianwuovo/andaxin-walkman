@@ -111,7 +111,7 @@ object AlbumTextureProcessor {
         )
     }
 
-    private fun stackBlur(bitmap: Bitmap, radius: Int): Bitmap {
+    internal fun stackBlur(bitmap: Bitmap, radius: Int): Bitmap {
         val w = bitmap.width
         val h = bitmap.height
         val src = IntArray(w * h)

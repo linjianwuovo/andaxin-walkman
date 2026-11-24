@@ -4,14 +4,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.ljyh.mei.ui.screen.source.LibraryShareAsyncImage
+import com.ljyh.mei.ui.screen.source.LocalLibraryShareArtwork
 
 @Composable
 fun PlayingImageView(
@@ -19,19 +20,20 @@ fun PlayingImageView(
     isPlaying: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val request = remember(context, imageUrl) {
+        ImageRequest.Builder(context).data(imageUrl).crossfade(true).build()
+    }
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
         // 使用Coil 3加载网络图片
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(imageUrl)
-                .crossfade(true)
-                .build(),
+        LibraryShareAsyncImage(
+            model = request,
             contentDescription = "Album Art",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            artwork = LocalLibraryShareArtwork.current,
         )
 
         // 如果正在播放，则显示动态音波动画

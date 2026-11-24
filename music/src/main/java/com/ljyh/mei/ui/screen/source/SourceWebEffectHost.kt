@@ -194,8 +194,8 @@ private fun SourceWebPage(page: SourceWebRequest, modifier: Modifier) {
                             domStorageEnabled = true
                             blockNetworkLoads = false
                             cacheMode = WebSettings.LOAD_DEFAULT
-                            useWideViewPort = false
-                            loadWithOverviewMode = false
+                            useWideViewPort = true
+                            loadWithOverviewMode = true
                             allowFileAccess = false
                             allowContentAccess = false
                             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW

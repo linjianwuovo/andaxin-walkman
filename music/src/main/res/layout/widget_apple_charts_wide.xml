@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_apple_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_apple_surface" android:clipToOutline="true">
+    <ImageView android:id="@+id/widget_apple_ambience"
+        android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY"
+        android:importantForAccessibility="no" android:visibility="gone" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="12dp">
+        <FrameLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="6dp">
+            <TextView android:id="@+id/widget_apple_section"
+                android:layout_width="match_parent" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end" android:textSize="16sp"
+                android:textColor="@color/widget_apple_header" android:text="@string/widget_apple_top_charts" android:layout_marginEnd="21dp" />
+            <ImageView android:layout_width="15dp"
+                android:layout_height="15dp" android:layout_gravity="top|end" android:src="@drawable/widget_meilox_mark"
+                android:tint="@color/widget_apple_header" android:importantForAccessibility="no" />
+        </FrameLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal">
+            <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="12dp">
+                <LinearLayout android:id="@+id/widget_apple_cell_1"
+                    android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+                    android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/widget_apple_number_1"
+                        android:layout_width="17dp" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end"
+                        android:textSize="12sp" android:textColor="@color/widget_apple_title" android:gravity="center_vertical" />
+                    <ImageView android:id="@+id/widget_apple_cover_1"
+                        android:layout_width="36dp" android:layout_height="36dp" android:scaleType="centerCrop"
+                        android:importantForAccessibility="no" android:background="@drawable/widget_apple_cover"
+                        android:clipToOutline="true" />
+                    <LinearLayout android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+                        android:orientation="vertical">
+                        <TextView android:id="@+id/widget_apple_title_1"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="13sp" android:textColor="@color/widget_apple_title" />
+                        <TextView android:id="@+id/widget_apple_detail_1"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="10sp" android:textColor="@color/widget_apple_detail"
+                            android:layout_marginTop="1dp" />
+                    </LinearLayout>
+                    <ImageView android:id="@+id/widget_apple_row_play_1"
+                        android:layout_width="30dp" android:layout_height="30dp" android:layout_marginStart="8dp"
+                        android:padding="4dp" android:src="@drawable/widget_ic_play" android:tint="#FFFFFF"
+                        android:background="@drawable/widget_apple_capsule" android:contentDescription="@string/widget_play"
+                        android:visibility="gone" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/widget_apple_cell_2"
+                    android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+                    android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/widget_apple_number_2"
+                        android:layout_width="17dp" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end"
+                        android:textSize="12sp" android:textColor="@color/widget_apple_title" android:gravity="center_vertical" />
+                    <ImageView android:id="@+id/widget_apple_cover_2"
+                        android:layout_width="36dp" android:layout_height="36dp" android:scaleType="centerCrop"
+                        android:importantForAccessibility="no" android:background="@drawable/widget_apple_cover"
+                        android:clipToOutline="true" />
+                    <LinearLayout android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+                        android:orientation="vertical">
+                        <TextView android:id="@+id/widget_apple_title_2"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="13sp" android:textColor="@color/widget_apple_title" />
+                        <TextView android:id="@+id/widget_apple_detail_2"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="10sp" android:textColor="@color/widget_apple_detail"
+                            android:layout_marginTop="1dp" />
+                    </LinearLayout>
+                    <ImageView android:id="@+id/widget_apple_row_play_2"
+                        android:layout_width="30dp" android:layout_height="30dp" android:layout_marginStart="8dp"
+                        android:padding="4dp" android:src="@drawable/widget_ic_play" android:tint="#FFFFFF"
+                        android:background="@drawable/widget_apple_capsule" android:contentDescription="@string/widget_play"
+                        android:visibility="gone" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/widget_apple_cell_3"
+                    android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+                    android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/widget_apple_number_3"
+                        android:layout_width="17dp" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end"
+                        android:textSize="12sp" android:textColor="@color/widget_apple_title" android:gravity="center_vertical" />
+                    <ImageView android:id="@+id/widget_apple_cover_3"
+                        android:layout_width="36dp" android:layout_height="36dp" android:scaleType="centerCrop"
+                        android:importantForAccessibility="no" android:background="@drawable/widget_apple_cover"
+                        android:clipToOutline="true" />
+                    <LinearLayout android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+                        android:orientation="vertical">
+                        <TextView android:id="@+id/widget_apple_title_3"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="13sp" android:textColor="@color/widget_apple_title" />
+                        <TextView android:id="@+id/widget_apple_detail_3"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="10sp" android:textColor="@color/widget_apple_detail"
+                            android:layout_marginTop="1dp" />
+                    </LinearLayout>
+                    <ImageView android:id="@+id/widget_apple_row_play_3"
+                        android:layout_width="30dp" android:layout_height="30dp" android:layout_marginStart="8dp"
+                        android:padding="4dp" android:src="@drawable/widget_ic_play" android:tint="#FFFFFF"
+                        android:background="@drawable/widget_apple_capsule" android:contentDescription="@string/widget_play"
+                        android:visibility="gone" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/widget_apple_cell_4"
+                    android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+                    android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/widget_apple_number_4"
+                        android:layout_width="17dp" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end"
+                        android:textSize="12sp" android:textColor="@color/widget_apple_title" android:gravity="center_vertical" />
+                    <ImageView android:id="@+id/widget_apple_cover_4"
+                        android:layout_width="36dp" android:layout_height="36dp" android:scaleType="centerCrop"
+                        android:importantForAccessibility="no" android:background="@drawable/widget_apple_cover"
+                        android:clipToOutline="true" />
+                    <LinearLayout android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+                        android:orientation="vertical">
+                        <TextView android:id="@+id/widget_apple_title_4"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="13sp" android:textColor="@color/widget_apple_title" />
+                        <TextView android:id="@+id/widget_apple_detail_4"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="10sp" android:textColor="@color/widget_apple_detail"
+                            android:layout_marginTop="1dp" />
+                    </LinearLayout>
+                    <ImageView android:id="@+id/widget_apple_row_play_4"
+                        android:layout_width="30dp" android:layout_height="30dp" android:layout_marginStart="8dp"
+                        android:padding="4dp" android:src="@drawable/widget_ic_play" android:tint="#FFFFFF"
+                        android:background="@drawable/widget_apple_capsule" android:contentDescription="@string/widget_play"
+                        android:visibility="gone" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/widget_apple_cell_5"
+                    android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+                    android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/widget_apple_number_5"
+                        android:layout_width="17dp" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end"
+                        android:textSize="12sp" android:textColor="@color/widget_apple_title" android:gravity="center_vertical" />
+                    <ImageView android:id="@+id/widget_apple_cover_5"
+                        android:layout_width="36dp" android:layout_height="36dp" android:scaleType="centerCrop"
+                        android:importantForAccessibility="no" android:background="@drawable/widget_apple_cover"
+                        android:clipToOutline="true" />
+                    <LinearLayout android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+                        android:orientation="vertical">
+                        <TextView android:id="@+id/widget_apple_title_5"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="13sp" android:textColor="@color/widget_apple_title" />
+                        <TextView android:id="@+id/widget_apple_detail_5"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="10sp" android:textColor="@color/widget_apple_detail"
+                            android:layout_marginTop="1dp" />
+                    </LinearLayout>
+                    <ImageView android:id="@+id/widget_apple_row_play_5"
+                        android:layout_width="30dp" android:layout_height="30dp" android:layout_marginStart="8dp"
+                        android:padding="4dp" android:src="@drawable/widget_ic_play" android:tint="#FFFFFF"
+                        android:background="@drawable/widget_apple_capsule" android:contentDescription="@string/widget_play"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </LinearLayout>
+            <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical">
+                <LinearLayout android:id="@+id/widget_apple_cell_6"
+                    android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+                    android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/widget_apple_number_6"
+                        android:layout_width="17dp" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end"
+                        android:textSize="12sp" android:textColor="@color/widget_apple_title" android:gravity="center_vertical" />
+                    <ImageView android:id="@+id/widget_apple_cover_6"
+                        android:layout_width="36dp" android:layout_height="36dp" android:scaleType="centerCrop"
+                        android:importantForAccessibility="no" android:background="@drawable/widget_apple_cover"
+                        android:clipToOutline="true" />
+                    <LinearLayout android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+                        android:orientation="vertical">
+                        <TextView android:id="@+id/widget_apple_title_6"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="13sp" android:textColor="@color/widget_apple_title" />
+                        <TextView android:id="@+id/widget_apple_detail_6"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="10sp" android:textColor="@color/widget_apple_detail"
+                            android:layout_marginTop="1dp" />
+                    </LinearLayout>
+                    <ImageView android:id="@+id/widget_apple_row_play_6"
+                        android:layout_width="30dp" android:layout_height="30dp" android:layout_marginStart="8dp"
+                        android:padding="4dp" android:src="@drawable/widget_ic_play" android:tint="#FFFFFF"
+                        android:background="@drawable/widget_apple_capsule" android:contentDescription="@string/widget_play"
+                        android:visibility="gone" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/widget_apple_cell_7"
+                    android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+                    android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/widget_apple_number_7"
+                        android:layout_width="17dp" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end"
+                        android:textSize="12sp" android:textColor="@color/widget_apple_title" android:gravity="center_vertical" />
+                    <ImageView android:id="@+id/widget_apple_cover_7"
+                        android:layout_width="36dp" android:layout_height="36dp" android:scaleType="centerCrop"
+                        android:importantForAccessibility="no" android:background="@drawable/widget_apple_cover"
+                        android:clipToOutline="true" />
+                    <LinearLayout android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+                        android:orientation="vertical">
+                        <TextView android:id="@+id/widget_apple_title_7"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="13sp" android:textColor="@color/widget_apple_title" />
+                        <TextView android:id="@+id/widget_apple_detail_7"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="10sp" android:textColor="@color/widget_apple_detail"
+                            android:layout_marginTop="1dp" />
+                    </LinearLayout>
+                    <ImageView android:id="@+id/widget_apple_row_play_7"
+                        android:layout_width="30dp" android:layout_height="30dp" android:layout_marginStart="8dp"
+                        android:padding="4dp" android:src="@drawable/widget_ic_play" android:tint="#FFFFFF"
+                        android:background="@drawable/widget_apple_capsule" android:contentDescription="@string/widget_play"
+                        android:visibility="gone" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/widget_apple_cell_8"
+                    android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+                    android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/widget_apple_number_8"
+                        android:layout_width="17dp" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end"
+                        android:textSize="12sp" android:textColor="@color/widget_apple_title" android:gravity="center_vertical" />
+                    <ImageView android:id="@+id/widget_apple_cover_8"
+                        android:layout_width="36dp" android:layout_height="36dp" android:scaleType="centerCrop"
+                        android:importantForAccessibility="no" android:background="@drawable/widget_apple_cover"
+                        android:clipToOutline="true" />
+                    <LinearLayout android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+                        android:orientation="vertical">
+                        <TextView android:id="@+id/widget_apple_title_8"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="13sp" android:textColor="@color/widget_apple_title" />
+                        <TextView android:id="@+id/widget_apple_detail_8"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="10sp" android:textColor="@color/widget_apple_detail"
+                            android:layout_marginTop="1dp" />
+                    </LinearLayout>
+                    <ImageView android:id="@+id/widget_apple_row_play_8"
+                        android:layout_width="30dp" android:layout_height="30dp" android:layout_marginStart="8dp"
+                        android:padding="4dp" android:src="@drawable/widget_ic_play" android:tint="#FFFFFF"
+                        android:background="@drawable/widget_apple_capsule" android:contentDescription="@string/widget_play"
+                        android:visibility="gone" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/widget_apple_cell_9"
+                    android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+                    android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/widget_apple_number_9"
+                        android:layout_width="17dp" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end"
+                        android:textSize="12sp" android:textColor="@color/widget_apple_title" android:gravity="center_vertical" />
+                    <ImageView android:id="@+id/widget_apple_cover_9"
+                        android:layout_width="36dp" android:layout_height="36dp" android:scaleType="centerCrop"
+                        android:importantForAccessibility="no" android:background="@drawable/widget_apple_cover"
+                        android:clipToOutline="true" />
+                    <LinearLayout android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+                        android:orientation="vertical">
+                        <TextView android:id="@+id/widget_apple_title_9"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="13sp" android:textColor="@color/widget_apple_title" />
+                        <TextView android:id="@+id/widget_apple_detail_9"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="10sp" android:textColor="@color/widget_apple_detail"
+                            android:layout_marginTop="1dp" />
+                    </LinearLayout>
+                    <ImageView android:id="@+id/widget_apple_row_play_9"
+                        android:layout_width="30dp" android:layout_height="30dp" android:layout_marginStart="8dp"
+                        android:padding="4dp" android:src="@drawable/widget_ic_play" android:tint="#FFFFFF"
+                        android:background="@drawable/widget_apple_capsule" android:contentDescription="@string/widget_play"
+                        android:visibility="gone" />
+                </LinearLayout>
+                <LinearLayout android:id="@+id/widget_apple_cell_10"
+                    android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+                    android:gravity="center_vertical" android:orientation="horizontal">
+                    <TextView android:id="@+id/widget_apple_number_10"
+                        android:layout_width="17dp" android:layout_height="wrap_content" android:fontFamily="sans-serif-medium"
+                        android:includeFontPadding="false" android:singleLine="true" android:ellipsize="end"
+                        android:textSize="12sp" android:textColor="@color/widget_apple_title" android:gravity="center_vertical" />
+                    <ImageView android:id="@+id/widget_apple_cover_10"
+                        android:layout_width="36dp" android:layout_height="36dp" android:scaleType="centerCrop"
+                        android:importantForAccessibility="no" android:background="@drawable/widget_apple_cover"
+                        android:clipToOutline="true" />
+                    <LinearLayout android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp"
+                        android:orientation="vertical">
+                        <TextView android:id="@+id/widget_apple_title_10"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="13sp" android:textColor="@color/widget_apple_title" />
+                        <TextView android:id="@+id/widget_apple_detail_10"
+                            android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-medium" android:includeFontPadding="false" android:singleLine="true"
+                            android:ellipsize="end" android:textSize="10sp" android:textColor="@color/widget_apple_detail"
+                            android:layout_marginTop="1dp" />
+                    </LinearLayout>
+                    <ImageView android:id="@+id/widget_apple_row_play_10"
+                        android:layout_width="30dp" android:layout_height="30dp" android:layout_marginStart="8dp"
+                        android:padding="4dp" android:src="@drawable/widget_ic_play" android:tint="#FFFFFF"
+                        android:background="@drawable/widget_apple_capsule" android:contentDescription="@string/widget_play"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

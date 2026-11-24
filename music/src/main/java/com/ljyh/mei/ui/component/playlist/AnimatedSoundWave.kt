@@ -66,3 +66,13 @@ fun AnimatedSoundWave(
         }
     }
 }
+@Composable
+internal fun TrackPlaybackWave(color: Color) {
+    AnimatedSoundWave(
+        modifier = Modifier.size(width = 18.dp, height = 12.dp),
+        barCount = 5,
+        barColor = color,
+        barWidth = 2.dp,
+        barSpacing = 2.dp,
+    )
+}

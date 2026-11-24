@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.screen.local
 
+import com.ljyh.mei.ui.component.home.homeArtworkBorder
 import com.ljyh.mei.ui.navigation.MeiloXLoadingPage
 import androidx.compose.ui.geometry.Rect
 
@@ -77,6 +78,7 @@ import io.github.neoruaa.glasmio.ui.GlasmioIconButton
 import io.github.neoruaa.glasmio.ui.GlasmioButton
 import io.github.neoruaa.glasmio.ui.GlasmioButtonSize
 import io.github.neoruaa.glasmio.glass.GlassEmphasis
+import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import com.ljyh.mei.ui.navigation.MeiloXPinnedPage
 import io.github.neoruaa.glasmio.icons.SfIcon
 import com.ljyh.mei.ui.local.LocalNavController
@@ -118,6 +120,7 @@ fun LocalSongListScreen(
         songs.map { it.toMediaMetadata() }
     }
     var actionAnchor by remember { mutableStateOf<Rect?>(null) }
+    val trackMenuAnchor = rememberGlasmioMenuAnchorState()
     var shareTrack by remember { mutableStateOf<MediaMetadata?>(null) }
     var actionTrack by remember { mutableStateOf<MediaMetadata?>(null) }
     val coverUrl = remember(songs) {
@@ -189,6 +192,7 @@ fun LocalSongListScreen(
                             }
                         },
                         onMoreClick = { track, anchor -> actionTrack = track; actionAnchor = anchor },
+                        menuAnchorState = trackMenuAnchor,
                     )
                 }
             } else {
@@ -216,6 +220,7 @@ fun LocalSongListScreen(
                         }
                     },
                     onMoreClick = { track, anchor -> actionTrack = track; actionAnchor = anchor },
+                    menuAnchorState = trackMenuAnchor,
                     flatDetailStyle = device.isPortrait,
                     contentPadding = PaddingValues(
                         start = if (device.isPortrait) 20.dp else 24.dp,
@@ -236,6 +241,7 @@ fun LocalSongListScreen(
             TrackActionMenu(
                 targetTrack = track,
                 anchorBounds = actionAnchor,
+                menuAnchorState = trackMenuAnchor,
                 onShare = if (track.isLocal || track.isPodcast) null else ({ shareTrack = track }),
                 onDismiss = { actionTrack = null },
                 onCopyId = { setClipboard(context, track.trackRef.trackId, "id") },
@@ -274,10 +280,11 @@ private fun LocalSongListHeader(
     ) {
         Spacer(Modifier.height(24.dp))
 
+        val coverShape = ContinuousRoundedRectangle(16.dp)
         Card(
-            shape = ContinuousRoundedRectangle(16.dp),
+            shape = coverShape,
             elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
-            modifier = Modifier.size(220.dp)
+            modifier = Modifier.size(220.dp).homeArtworkBorder(coverShape)
         ) {
             if (coverList.size >= 5) {
                 FinalPerfectCollage(imageUrls = coverList, modifier = Modifier.fillMaxSize())

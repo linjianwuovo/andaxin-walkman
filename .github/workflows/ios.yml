@@ -1,0 +1,473 @@
+name: ios
+
+# 出包流水线（macOS runner，公开仓免费）。骨架第二版：
+#  - 先在 CI 上链真机 framework（Windows 上 KGP 跳过的那步，在这补上证据）
+#  - Xcode/模拟器那截仍是骨架，失败不会拦住 framework 产物上传
+
+on:
+  push:
+    branches: [ios-shell]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the unsigned IPA as a GitHub prerelease
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    name: framework + 模拟器 + 无签名 ipa
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: 补执行位（文件是从 Windows 侧推上去的，模式全是 100644）
+        run: |
+          # run 43718278933 的命：这一步后面 ./gradlew: Permission denied 三连，
+          # 整发红在「链真机 release framework」。根因不是 Gradle，是 gradlew 在索引里没有 +x
+          # （git 在 Windows 上不记执行位，API 建 blob 时也只能给 100644）。
+          chmod +x gradlew
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: 缓存 Gradle 依赖与 Kotlin/Native 工具链（那 14.6 分钟大多是在重下这两样）
+        uses: actions/cache@v4
+        with:
+          # 实测（run 40251089157，全 26.1 分）：`linkReleaseFrameworkIosArm64` 一步就占 14.6 分，
+          # xcodebuild 5.2 分、模拟器截图 3.9 分。链接那步里真正在算的时间远没有下载多：
+          # 每发都是空机器，`~/.gradle`（依赖 + build-cache）和 `~/.konan`（clang 交叉工具链 + LLVM）
+          # 全从零拉。这两样跨 commit 基本不变，缓存命中就能把这十几分钟砍掉大半。
+          # build/ 不放缓存：产物小、又最容易因为陈旧缓存给出"过了但其实没重编"的假绿。
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: mac-gradle-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', 'gradle.properties') }}
+          restore-keys: |
+            mac-gradle-
+
+      - name: Verify committed production inputs
+        run: python3 .github/scripts/ios_lyrics_smoke.py guard write "$RUNNER_TEMP/ios-production-source.json"
+
+      - name: 链真机 release framework（本机做不了的那步，在这出证据）
+        run: |
+          # 102 那发死在这一步，但不是代码：maven.aliyun.com 那个 mirror 回了一次 502，
+          # Gradle 就把整条仓库标成 disabled，紧跟着 kotlin-native-prebuilt:2.4.20 也解析不出来，
+          # 8 分半之后整发红（现场：Could not GET .../animation-core-iossimulatorarm64/1.12.0-beta01/…
+          # Received status code 502）。mirror 抖一下不该烧掉一整发 —— 重试三次，间隔 20/40 秒；
+          # 三发都不过才让整发红，那才是真问题。
+          n=0
+          until ./gradlew :shared:linkReleaseFrameworkIosArm64 --console=plain; do
+            n=$((n + 1))
+            if [ "$n" -ge 3 ]; then echo "三连败，不是 mirror 抖动了"; exit 1; fi
+            echo "第 $n 次没过，等 $((20 * n)) 秒再来一遍"
+            sleep $((20 * n))
+          done
+
+      - name: 这台机器上有哪几套 Xcode / SDK（决定底栏能不能是浮起玻璃）
+        run: |
+          # 为什么要单独问一句：苹果那套浮起液态玻璃（含底栏那颗水滴珠子）是
+          # **按"你用哪个 SDK 编的"放行**的，不是按跑它的系统。99 那发我想用
+          # iOS 26 的 tabBarMinimizeBehavior，编译器直接说 UITabBarController 没这个成员
+          # —— 怀疑这台镜像的默认 Xcode 还是 15/16 那档。先只把现场打出来，
+          # 不在这个改动里换 Xcode：K/N 2.4.20 对 Xcode 版本是有支持区间的，
+          # 换错了一整发就白烧，所以先看清单再决定钉哪一套。
+          xcodebuild -version
+          xcode-select -p
+          echo "--- /Applications 里装了哪些 Xcode"
+          ls -d /Applications/Xcode*.app 2>/dev/null || echo "(只有默认那一套)"
+          echo "--- 默认这套能看到的 SDK"
+          xcodebuild -showsdks 2>/dev/null | grep -i "ios" || echo "(读不到 SDK 清单)"
+          echo "--- 每一套各自的 iOS SDK 版本"
+          for app in $(ls -d /Applications/Xcode*.app 2>/dev/null); do
+            v=$("$app/Contents/Developer/usr/bin/xcodebuild" -showsdks 2>/dev/null | grep -io "iphoneos[0-9.]*" | sort -u | tr '\n' ' ')
+            echo "   $app -> ${v:-读不到}"
+          done
+
+      - name: 把后面几步的 Xcode 钉到带 iOS 26 SDK 的那一套（底栏水滴归它管）
+        run: |
+          # 上面那串清单跑出来的现场（run 40251089157）：默认是 Xcode_16.4 → iphoneos18.5，
+          # 但机器上同时装了 26.0 / 26.1 / 26.2 / 26.3，模拟器运行时也已经有 iOS 26.2 那一台
+          # （构建和截图用的 2911FD29… 就是 OS:26.2 的 iPhone 16）。
+          # 所以之前截出来的底栏是死胶囊：苹果按**编译用的 SDK**放行浮起玻璃，不按设备系统版本。
+          #
+          # 只往下游生效：这一步之后才是 xcodegen / 模拟器构建 / ipa，
+          # 上面那一发 gradle :shared:linkReleaseFrameworkIosArm64 已经用默认 Xcode 跑完了 ——
+          # K/N 2.4.20 对 Xcode 版本有支持区间，不该拿一整个 job 去试它。
+          # 逐套试，试到"既有 26 的 SDK、又列得出 iPhone 模拟器"那套才停。
+          # 为什么要逐套：101 那发实测 —— 先按版本序挑中 Xcode_26.3.0，它 SDK 是 iphoneos26.2，
+          # 但那套底下列不到任何可用 iPhone，于是下面那道护栏把整个换 Xcode 放弃了、退回默认 16.4，
+          # 结果这发还是拿 18.5 SDK 编的，他手机上底栏依旧是死胶囊。护栏没错，错在只试一套就收工。
+          # 每台被拒都单独打一行：下次不用再猜是哪套、缺的是 SDK 还是模拟器。
+          # 103 那发的现场：十套 26.x **一套都列不出 iPhone 模拟器**（那台 OS:26.2 的 iPhone 16
+          # 在默认 16.4 那套 simctl 的视野里），所以"SDK 与模拟器都要"这道条件把十套全筛掉了、
+          # 又退回 16.4 —— 水滴还是没有。结论是这两件事不该绑在一起：浮起玻璃只看
+          # **ipa 是用哪套 SDK 链的**，而 ipa 那一步是 generic/platform=iOS，压根不需要模拟器。
+          # 所以这里只挑"有 26 SDK"的一套，导出成 IOS26_DEV，交给『无签名真机 ipa』那一步单独用；
+          # 模拟器那两步继续留在默认 Xcode（要的是能开机能截图，跟 SDK 无关）。
+          CHOICE=""
+          for app in $(ls -d /Applications/Xcode_26.2*.app /Applications/Xcode_26*.app 2>/dev/null | sort -V -r); do
+            dev="$app/Contents/Developer"
+            sdk=$(DEVELOPER_DIR="$dev" "$dev/usr/bin/xcodebuild" -showsdks 2>/dev/null | grep -io "iphoneos2[6-9][0-9.]*" | head -1)
+            if [ -z "$sdk" ]; then echo "跳过 $app：没有 iOS 26 SDK"; continue; fi
+            # 末尾那个 `|| true` 是 104 的命：`grep -c` 一个都没数到时退出码是 1，
+            # 而 CI 每一步都是 `bash -e` 跑的 —— 赋值语句里嵌的命令替换一非零，整步当场终止。
+            # 也就是说 104 不是"换 Xcode 换错了"，是"数出 0 台模拟器"这个事实本身把整步弄崩的。
+            sims=$(DEVELOPER_DIR="$dev" "$dev/usr/bin/xcrun" simctl list devices available 2>/dev/null | grep -c 'iPhone' || true)
+            CHOICE="$dev"; echo "选 $app（$sdk）只给真机 ipa 用；它自己列出的 iPhone 模拟器 $sims 台，不影响模拟器那两步"
+            break
+          done
+          if [ -z "$CHOICE" ]; then
+            echo "::warning::这台机器上没有可用的 26 SDK —— ipa 还是 18.5 编的，底栏没有水滴"
+          else
+            echo "IOS26_DEV=$CHOICE" >> "$GITHUB_ENV"
+          fi
+          echo "真机 ipa 将用：${CHOICE:-（保持默认 Xcode）}"
+          true
+
+      - name: 预置 framework 占位（xcodegen 生成时要能找到路径；对应 flavor 由脚本相位构建时替换）
+        run: |
+          mkdir -p shared/build/xcodeFrameworks
+          cp -R shared/build/bin/iosArm64/releaseFramework/shared.framework shared/build/xcodeFrameworks/shared.framework
+
+      - name: 装 xcodegen / xcbeautify 并生成工程
+        run: |
+          brew install xcodegen xcbeautify
+          cd iosApp && xcodegen -s project.yml
+
+      - name: Record production inputs after XcodeGen
+        run: python3 .github/scripts/ios_lyrics_smoke.py guard write "$RUNNER_TEMP/ios-production-inputs.json"
+
+      - name: 选一台模拟器（构建和截图共用这一台）
+        run: |
+          # 27944b6 那发：xcodebuild 按 name=iPhone 16 挑目标，在那台 VM 上直接 "Unable to find a device
+          # matching the provided destination specifier"，可用目标里只剩 My Mac / Any iOS Device ——
+          # 同样这条命令三十分钟前在另一台 VM 上是过的，所以是镜像差异，不是代码。
+          # 而且按名字挑还有个老毛病：构建走 OS:26.2 那台，截图那步 grep head -1 取到的是最旧 runtime 那台。
+          # 现在 job 开头选一台（simctl 的文本按运行时从旧到新分段，取最后出现的），
+          # 构建、安装、启动、截图全用同一个 id，两类错一起消掉。
+          DEVLIST=$(xcrun simctl list devices available)
+          pick() { printf '%s\n' "$DEVLIST" | grep "$1" | tail -1 | awk -F'[()]' '{print $2}'; }
+          SIM_UDID=$(pick 'iPhone 16 (')
+          [ -n "$SIM_UDID" ] || SIM_UDID=$(pick 'iPhone ')
+          [ -n "$SIM_UDID" ] || SIM_UDID=$(pick 'iPad')
+          if [ -z "$SIM_UDID" ]; then
+            echo "这台 VM 上没有可用的 iOS 模拟器，把现场留全："
+            xcrun simctl list runtimes || true
+            printf '%s\n' "$DEVLIST" | tail -40
+            exit 1
+          fi
+          echo "SIM_UDID=$SIM_UDID" >> "$GITHUB_ENV"
+          printf '%s\n' "$DEVLIST" | grep -E '^-- |iPhone|iPad' | tail -8
+          echo "选中这台：$SIM_UDID"
+
+      - name: 模拟器构建（framework 由工程里那段 preBuildScript 按 SDK 现编现嵌）
+        run: |
+          set -o pipefail
+          xcodebuild -project iosApp/AndaXin.xcodeproj \
+            -scheme AndaXin -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build \
+            | xcbeautify
+
+      - name: 模拟器装上、点亮、截屏
+        run: |
+          UDID="$SIM_UDID"   # 就是"选一台模拟器"那步定下、xcodebuild 也用的那一台，不再自己另挑
+          echo "装机截图用这台：$UDID"
+          if [ -z "$UDID" ]; then echo "前面没选出模拟器（不该发生）"; exit 1; fi
+          xcrun simctl boot "$UDID" || true
+          APP=$(find build/Build/Products -name 'AndaXin.app' -path '*iphonesimulator*' | head -1)
+          xcrun simctl install "$UDID" "$APP" || { echo "install 就失败了"; exit 1; }
+          xcrun simctl get_app_container "$UDID" com.andaxin.ios data >/dev/null 2>&1 && echo "app 容器在" || echo "app 容器不在（装没装上都有问题）"
+          # bf00b9c 那发：同一台机器装上并起了（PID 39247），12 秒后前台还是桌面；console 只有 23 字节
+          # （就是 `com.andaxin.ios: 39247` 那一行），两处崩溃报告目录都翻不到，按进程名查统一日志也是空的。
+          # 60c026a 那发把现场看全了：进程其实活着（Metal 在编着色器），是 Compose 的 PlistSanityCheck
+          # 在第一帧抛未捕获 Kotlin 异常、K/N 的 TerminateHandler 直接 abort()（真机 .ips 已定性）。
+          # 而 abort 那句人话打在 app 自己的 stderr 上，log stream 按进程名过滤捞不到它
+          # （崩溃线程都排在 dispatch 全局队列上）—— 所以这一发起改用 --console：
+          # launch 挂着不返回，把 app 的 stdout/stderr 直接灌进文件，崩没崩、为什么崩都在里面。
+          xcrun simctl spawn "$UDID" log stream --style compact \
+            --predicate 'process == "AndaXin" OR eventMessage CONTAINS[c] "com.andaxin.ios" OR eventMessage CONTAINS[c] "AndaXin"' \
+            > simlog.txt 2>&1 &
+          LPID=$!
+          sleep 2
+          xcrun simctl launch --console --terminate-running-process "$UDID" com.andaxin.ios > console.txt 2>&1 &
+          CPID=$!
+          sleep 8
+          xcrun simctl io "$UDID" screenshot iosApp/simulator-launch.png || true
+          if kill -0 "$CPID" 2>/dev/null; then echo "8 秒：--console 还挂着 = app 活着"; else echo "8 秒：app 已经自己退了，这就是崩"; fi
+          sleep 8
+          xcrun simctl io "$UDID" screenshot iosApp/simulator-later.png || true
+          # 活没活别问 ps 也别问 launchctl —— 这俩在模拟器里都看不见 app 进程：
+          # 93 那发 ps 报"没有 AndaXin"，而 16 秒截屏明明是登录页（假阴性）。
+          # 现在问 RunningBoard：它记"有没有真把 app 切到前台"，比进程表贴近我们要的答案。
+          xcrun simctl spawn "$UDID" log show --style compact --last 2m \
+            --predicate 'eventMessage CONTAINS[c] "com.andaxin.ios" AND (eventMessage CONTAINS[c] "activat" OR eventMessage CONTAINS[c] "foreground" OR eventMessage CONTAINS[c] "scene")' \
+            2>/dev/null | tail -25 || echo "统一日志里没查到前台切换记录"
+          kill "$LPID" 2>/dev/null || true
+          kill "$CPID" 2>/dev/null || true
+          echo "--- app 自己的 stdout/stderr（$(wc -c < console.txt) 字节，崩因第一现场）"
+          head -120 console.txt 2>/dev/null || echo "console.txt 一个字节都没有"
+          # 未登录那台模拟器永远停在登录页 —— 顶栏、底栏水滴、红点、五格真数据
+          # 一张都截不到，我就只能改完等你手机验。app 里留了一扇只认启动参数的门
+          # （-AndaXinGuest，正常装机不带这个参数 = 死分支），带上它就直接进「逛逛」那五格。
+          echo "--- 第二趟：带 -AndaXinGuest 再起一次，截五格（顶栏 / 底栏水滴 / 红点）"
+          xcrun simctl terminate "$UDID" com.andaxin.ios 2>/dev/null || true
+          sleep 2
+          xcrun simctl launch --console --terminate-running-process "$UDID" com.andaxin.ios -AndaXinGuest > console2.txt 2>&1 &
+          GPID=$!
+          sleep 12
+          xcrun simctl io "$UDID" screenshot iosApp/simulator-guest.png || true
+          # 这一句必须在第三趟之前判：第三趟起 app 带的也是 --terminate-running-process，
+          # 它会把第二趟那个正被 kill -0 检查的进程顶掉 —— 上一发就是这样报了个
+          # "逛逛那五格：自己退了，这就是崩"的假崩（17:45:27 起、17:45:43 被顶、判定排在后面）。
+          if kill -0 "$GPID" 2>/dev/null; then echo "逛逛那五格：12 秒还在跑"; else echo "逛逛那五格：自己退了，这才是真崩"; fi
+
+          # 第三趟：带 -AndaXinOpen 直接把某一屏推进去，stderr 收进 console3.txt。
+          # 这是给"某屏一点就 abort"那类问题准备的自证通道 —— Kotlin 的异常原话只走 stderr，
+          # .ips 里只有栈、没有那句人话。开哪一扇由 workflow_dispatch 的输入定，默认 sport。
+          OPEN_KEY="${{ github.event.inputs.openKey || 'sport' }}"
+          xcrun simctl terminate "$UDID" com.andaxin.ios 2>/dev/null || true
+          xcrun simctl launch --console --terminate-running-process "$UDID" com.andaxin.ios \
+            -AndaXinGuest -AndaXinOpen "$OPEN_KEY" > console3.txt 2>&1 &
+          GPID3=$!
+          sleep 14
+          xcrun simctl io "$UDID" screenshot "iosApp/simulator-open-$OPEN_KEY.png" || true
+          echo "--- 推 $OPEN_KEY 那一扇之后的 stderr（$(wc -c < console3.txt) 字节，异常原话就在这儿）"
+          tail -60 console3.txt 2>/dev/null || echo "console3.txt 空的"
+          if kill -0 "$GPID3" 2>/dev/null; then echo "推完之后还活着：那一屏没崩"; else echo "推完之后进程没了：这一扇就是崩点"; fi
+          kill "$GPID" 2>/dev/null || true
+          echo "--- 第二趟的 stderr（$(wc -c < console2.txt) 字节）"
+          head -40 console2.txt 2>/dev/null || true
+          echo "--- 这个包里嵌的 framework 到底有没有二进制"
+          ls -la "$APP/Frameworks" 2>/dev/null || echo "没有 Frameworks 目录"
+          file "$APP/Frameworks/"*.framework/* 2>/dev/null | head -6 || true
+          echo "--- app 二进制链接了谁"
+          otool -L "$APP/AndaXin" 2>/dev/null | head -12 || echo "读不到 app 二进制"
+          echo "--- 统一日志（最多 140 行，崩因就在这儿）"
+          head -140 simlog.txt 2>/dev/null || echo "log stream 一行都没抓到"
+          # 崩溃报告找对地方：模拟器里 app 的 .ips 落在【这台设备 data 下的 DiagnosticReports】，
+          # 我上一版找的是 data/Library/Logs/CrashReporter —— 那个目录压根不放 app 崩溃，所以翻出来是空的。
+          # .ips 第一行是元数据、第二行是一整行 JSON 载荷，所以按字节切而不是按行 head。
+          for d in "$HOME/Library/Developer/CoreSimulator/Devices/$UDID/data/Library/Logs/DiagnosticReports" \
+                   "$HOME/Library/Logs/DiagnosticReports"; do
+            echo "--- 翻 $d"
+            find "$d" -name '*.ips' -mmin -10 2>/dev/null | while read -r c; do
+              echo "===== $c"
+              head -2 "$c" | cut -c1-2000
+            done
+          done
+          echo "--- 设备里那份 stderr（Kotlin/Native 的未捕获异常打在这）"
+          tail -60 "$HOME/Library/Developer/CoreSimulator/Devices/$UDID/data/System/Log/kernel.txt" 2>/dev/null || true
+          for f in $(find "$HOME/Library/Developer/CoreSimulator/Devices/$UDID/data/Library/Logs" -name '*.txt' -o -name 'system.log' 2>/dev/null | head -3); do
+            echo "===== $f"; tail -40 "$f"
+          done
+          echo "--- 系统日志里的 AndaXin"
+          xcrun simctl spawn "$UDID" log show --style compact --last 3m --predicate 'process == "AndaXin"' 2>/dev/null | tail -30 || true
+          # 这里原来还有一条 ps 探针，删了：它在模拟器里看不见 app 进程，
+          # 只会吐一句"已经没有 AndaXin"骗人。判断只看两样 ——
+          # 上面那段"有没有真把 app 切到前台"的 RunningBoard 记录，和 app 自己的 stderr。
+          echo "--- 收尾：app 自己的 stderr 现在 $(wc -c < console.txt) 字节（壳里每走一步都 NSLog 一句，断在哪儿就在这儿）"
+          # 装进去的那份 plist 到底长什么样：xcodebuild 警告说缺启动屏，而仓库那份现在已改成由 project.yml 生成
+          echo "--- 产物里的 Info.plist 关键键"
+          plutil -p "$APP/Info.plist" 2>/dev/null | grep -iE "UILaunchScreen|UISupportedInterfaceOrientations|UIRequiresFullScreen|CFBundleIdentifier|MinimumOSVersion|NSExceptionDomains" || echo "读不到 $APP/Info.plist"
+
+      - name: Capture deterministic native iOS lyrics
+        timeout-minutes: 25
+        run: |
+          python3 .github/scripts/ios_lyrics_smoke.py capture \
+            --temp "$RUNNER_TEMP" --artifacts "$RUNNER_TEMP/ios-lyrics-visual"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-lyrics-visual
+          path: ${{ runner.temp }}/ios-lyrics-visual/
+          if-no-files-found: warn
+
+      - name: Verify production inputs before device packaging
+        run: python3 .github/scripts/ios_lyrics_smoke.py guard compare "$RUNNER_TEMP/ios-production-inputs.json"
+
+      - name: 无签名真机 ipa（Sideloadly/爱思在 PC 上重签用）
+        run: |
+          set -o pipefail
+          # 只有这一步换 Xcode：苹果按"用哪套 SDK 链的"放行浮起玻璃，而这步不需要模拟器，
+          # 所以碰不到 103 那种"26 那套列不出 iPhone 模拟器"的死结。
+          if [ -n "$IOS26_DEV" ]; then
+            export DEVELOPER_DIR="$IOS26_DEV"
+            echo "这一发的 ipa 用 $("$DEVELOPER_DIR/usr/bin/xcodebuild" -version | head -1)"
+          fi
+          xcodebuild -project iosApp/AndaXin.xcodeproj \
+            -scheme AndaXin -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build-device CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build \
+            | xcbeautify
+          APP=$(find build-device/Build/Products -name 'AndaXin.app' -path '*iphoneos*' | head -1)
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry AndaXin-unsigned.ipa Payload
+          # Read the declared settings with macOS Ruby's standard YAML/JSON libraries.
+          ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV.fetch(0)).fetch("targets").fetch("AndaXin").fetch("settings").fetch("base"))' iosApp/project.yml > "$RUNNER_TEMP/ios-package-settings.json"
+          python3 - "$APP" AndaXin-unsigned.ipa "$RUNNER_TEMP/ios-package-settings.json" <<'PY'
+          import json
+          import plistlib
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+
+          app = Path(sys.argv[1])
+          settings = json.loads(Path(sys.argv[3]).read_text())
+          require(app.is_dir(), f"Missing built app: {app}")
+          for name in ("Info.plist", "Assets.car"):
+              path = app / name
+              require(path.is_file() and path.stat().st_size > 0, f"Missing or empty built {name}")
+          with (app / "Info.plist").open("rb") as source:
+              info = plistlib.load(source)
+          for key, setting in (("CFBundleShortVersionString", "MARKETING_VERSION"),
+                               ("CFBundleVersion", "CURRENT_PROJECT_VERSION")):
+              expected = str(settings[setting])
+              require(info.get(key) == expected, f"{key}: expected {expected}, got {info.get(key)!r}")
+          executable = info.get("CFBundleExecutable")
+          require(isinstance(executable, str) and executable not in ("", ".", "..")
+                  and Path(executable).name == executable, "Missing or invalid CFBundleExecutable")
+          binary = app / executable
+          require(binary.is_file() and binary.stat().st_size > 0, f"Missing or empty executable: {executable}")
+          icon = settings.get("ASSETCATALOG_COMPILER_APPICON_NAME")
+          require(isinstance(icon, str) and bool(icon), "Missing AppIcon build setting")
+          require("CFBundleIcons" in info, "Missing primary app icon declaration")
+          for key in ("CFBundleIcons", "CFBundleIcons~ipad"):
+              if key in info:
+                  primary = info[key].get("CFBundlePrimaryIcon", {})
+                  require(primary.get("CFBundleIconName") == icon, f"{key}: expected primary app icon {icon}")
+          with zipfile.ZipFile(sys.argv[2]) as ipa:
+              prefix = f"Payload/{app.name}/"
+              for name in ("Info.plist", executable, "Assets.car"):
+                  member = prefix + name
+                  require(member in ipa.namelist(), f"Missing IPA entry: {member}")
+                  entry = ipa.getinfo(member)
+                  require(not entry.is_dir() and entry.file_size > 0, f"Empty IPA entry: {member}")
+              require(plistlib.loads(ipa.read(prefix + "Info.plist")) == info,
+                      "IPA Info.plist differs from the built app")
+          print(f"Validated unsigned IPA: {info['CFBundleShortVersionString']}/{info['CFBundleVersion']}, icon {icon}")
+          PY
+          unzip -l AndaXin-unsigned.ipa | head -5
+          # 拆过 60c026a 那发：包里带 Payload/AndaXin.app/Frameworks/shared.framework/shared，
+          # 一个 33,128 字节的空壳 —— 而符号早在主二进制里（47,891,544 字节、一次都没有 @rpath）。
+          # 静态 framework 不该被嵌入；真机 amfi 校验这空壳过不去，就是重签后启动闪退。
+          # 这条检查先把关：以后再嵌进去，CI 直接红，不用等你在手机上复现。
+          #  listing 先落文件再 grep，不走管道 —— 这一步开了 pipefail，grep -q 提前退出
+          #  会让 unzip 吃 SIGPIPE，把"检查通过"变成"流水线失败"。
+          unzip -l AndaXin-unsigned.ipa > ipa_list.txt
+          echo "主二进制: $(wc -c < "$APP/AndaXin") 字节"
+          echo "包里 Frameworks 相关条目: $(grep -c 'Payload/AndaXin.app/Frameworks/' ipa_list.txt) 条"
+          if grep -q 'Payload/AndaXin.app/Frameworks/' ipa_list.txt; then
+            echo "包内仍有嵌套 framework —— 真机重签后会闪退，这一发不发"
+            exit 1
+          fi
+          echo "OK：只链接未嵌入，包里没有 Frameworks/"
+          if ! python3 .github/scripts/ios_lyrics_smoke.py guard compare "$RUNNER_TEMP/ios-production-inputs.json" ||
+             ! python3 .github/scripts/ios_lyrics_smoke.py scan-package "$APP" AndaXin-unsigned.ipa; then
+            rm -f AndaXin-unsigned.ipa
+            exit 1
+          fi
+
+      - name: 打包 framework 产物
+        if: always()
+        run: |
+          if [ -d shared/build/bin/iosArm64/releaseFramework ]; then
+            zip -qry shared-framework.zip shared/build/bin/iosArm64/releaseFramework
+          else
+            echo "framework 目录不存在（链接那步没过？）"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-artifacts
+          path: |
+            iosApp/simulator-launch.png
+            iosApp/simulator-later.png
+            iosApp/simulator-guest.png
+            iosApp/simulator-open-*.png
+            simlog.txt
+            console.txt
+            console2.txt
+            console3.txt
+            AndaXin-unsigned.ipa
+            shared-framework.zip
+          if-no-files-found: warn
+
+  publish:
+    name: Publish iOS prerelease
+    needs: build
+    if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.publish == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-artifacts
+          path: release-artifact
+
+      - name: 发一版 Release（仅显式 publish=true 时发布无签名 ipa）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 只用 curl + shell 内建，不引第三方 action：
+          # 上一轮连着三发都栽在"探针没在目标环境验过"，这里能少一个依赖就少一个。
+          API=https://api.github.com/repos/$GITHUB_REPOSITORY
+          SHORT="${GITHUB_SHA:0:7}"
+          # Full SHA avoids reusing old short tags that may target another commit.
+          TAG="ios-${{ github.sha }}"
+          IPA="AndaXin-$SHORT-${{ github.run_id }}-${{ github.run_attempt }}-unsigned.ipa"
+          cp release-artifact/AndaXin-unsigned.ipa "$IPA"
+          echo "这一发的包：$IPA（$(wc -c < "$IPA") 字节）"
+          # 发版这步连着四发都回 400 "Problems parsing JSON"。上一发拿到了硬证据：
+          # 我这边按同样内容算出来 275 字节，runner 上 wc -c 报 267 —— 那串中文经
+          # heredoc 出去就不是原来那串了。不追这个差异了，直接改成纯 ASCII：
+          # printf 一行出 JSON，没有 heredoc、没有多字节字符、没有跨引号续行。
+          BODY="Unsigned ipa for commit $SHORT. Re-sign it on Windows (Sideloadly / i4Tools, free Apple ID) and install. Simulator screenshots and console capture are in the ios-artifacts package of this run."
+          printf '{"tag_name":"%s","name":"iOS build %s","target_commitish":"%s","prerelease":true,"body":"%s"}' \
+            "$TAG" "$SHORT" "${{ github.sha }}" "$BODY" > rel_body.json
+          # 自证：非 ASCII 字节必须为 0，且这串必须能被 JSON 解析器读过去
+          echo "payload 字节: $(wc -c < rel_body.json)"
+          LC_ALL=C grep -q '[^ -~]' rel_body.json && echo "里面有非 ASCII 字节（不该发生）" || echo "纯 ASCII：过"
+          python3 -c "import json;json.load(open('rel_body.json'));print('JSON 解析：过')" || echo "JSON 解析：没过（继续往下走，让 HTTP 码说话）"
+          code=$(curl -sS -o rel.json -w '%{http_code}' -X POST "$API/releases" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-binary "@rel_body.json")
+          echo "建 Release: HTTP $code"
+          if [ "$code" = "422" ]; then
+            # 同一发重跑过（tag 已在）：改拿那份的上传地址，别把整条流水线判死
+            code=$(curl -sS -o rel.json -w '%{http_code}' "$API/releases/tags/$TAG" \
+              -H "Authorization: Bearer $GH_TOKEN")
+            echo "改取已有 Release: HTTP $code"
+          fi
+          UP=$(tr -d ' \n' < rel.json | grep -o '"upload_url":"[^"]*"' | head -1 | sed 's/.*"upload_url":"//;s/{.*//')
+          if [ -z "$UP" ]; then
+            echo "拿不到 upload_url，回话前 300 字节："
+            head -c 300 rel.json; echo
+            exit 1
+          fi
+          up=$(curl -sS -o up.json -w '%{http_code}' -X POST "$UP?name=$IPA" \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" \
+            --data-binary "@$IPA")
+          echo "传 ipa: HTTP $up"
+          if [ "$up" != "201" ]; then
+            head -c 300 up.json; echo
+            exit 1
+          fi
+          echo "Release 页：$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"

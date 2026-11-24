@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -19,7 +18,6 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ljyh.mei.source.shared.OnlineComment as FComment
 import io.github.neoruaa.glasmio.core.IosTypography
-import io.github.neoruaa.glasmio.core.LocalGlassColors
 import com.ljyh.mei.ui.screen.comment.CommentLikeState
 
 @Composable
@@ -42,11 +40,7 @@ fun FloorCommentItem(
         Column(Modifier.weight(1f)) {
             CommentIdentity(comment.user.nickname, comment.timeStr)
             Spacer(Modifier.height(5.dp))
-            Text(
-                comment.content,
-                style = IosTypography.subheadline.copy(fontSize = 14.sp, lineHeight = 21.sp),
-                color = LocalGlassColors.current.content,
-            )
+            CommentBody(comment, IosTypography.subheadline.copy(fontSize = 14.sp, lineHeight = 21.sp))
             CommentActions(likeState, isLikePending, onReply, onLike)
         }
     }

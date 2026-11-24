@@ -1,5 +1,6 @@
 package com.ljyh.mei.recognition
 
+import android.os.Build
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Notification
@@ -133,8 +134,10 @@ class SongRecognitionNotification(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     private fun post(id: Int, notification: Notification) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED || !manager.areNotificationsEnabled()
+        if (!manager.areNotificationsEnabled()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
         ) return
         try {
             manager.notify(id, notification)

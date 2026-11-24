@@ -2,6 +2,8 @@ package com.andaxin.feature.aiclass
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -155,7 +157,7 @@ private fun CourseLine(
                 lineHeight = Type.bodyLine,
                 fontWeight = FontWeight.Medium,
                 color = ink.strong,
-                maxLines = if (compact) 2 else 1,
+                maxLines = if (compact) 2 else Int.MAX_VALUE,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             if (!compact && (c.teacher.isNotBlank() || c.schoolName.isNotBlank())) {
@@ -167,10 +169,10 @@ private fun CourseLine(
                     color = ink.muted,
                 )
             }
-        }
-        if (!compact) {
-            // 真值里 `signCount` 是整数（热门那条 3553、测试课 0），所以直接当"多少人报过"
-            Text("${c.signCount} 人", fontSize = Type.meta, color = ink.faint)
+            if (!compact) {
+                Spacer(Modifier.height(Gap.xs))
+                Text("${c.signCount} 人", fontSize = Type.meta, color = ink.muted)
+            }
         }
     }
 }
@@ -184,6 +186,7 @@ private fun CourseLine(
  * ② 章节树两层都给 `targetNumber`/`studiedNumber`，进度按服务端那两个数算，
  *    `currentRate` 实测是 null —— 不拿它当百分比。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
     val graph = LocalAppGraph.current
@@ -235,7 +238,7 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
         val p = progress
         if (p != null && p.target > 0) {
             Sheet {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Gap.lg), verticalArrangement = Arrangement.spacedBy(Gap.sm)) {
                     Text("学到哪儿了", fontSize = Type.body, color = ink.body)
                     Text(
                         text = "${p.studied} / ${p.target} 个点位",
@@ -273,9 +276,9 @@ fun OpenCourseDetailScreen(uid: String, onBack: () -> Unit) {
             )
             Sheet {
                 chapters.forEach { c ->
-                    Row(
+                    Column(
                         Modifier.fillMaxWidth().padding(vertical = Gap.md),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalArrangement = Arrangement.spacedBy(Gap.xs),
                     ) {
                         // 章名服务端已经带了「第1章 / 1.1」这种前缀，我们只按 level 缩进，不再自己编号。
                         // 字号两档都走表里的 `Type.body`：原来章名写 15.sp 是**没在字号表里的一个数**，

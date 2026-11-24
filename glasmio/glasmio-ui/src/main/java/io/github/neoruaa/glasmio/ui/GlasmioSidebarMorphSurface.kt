@@ -98,7 +98,7 @@ fun GlasmioSidebarMorphSurface(
         val frame = bounds()
         val width = frame.width.coerceAtLeast(0f).roundToInt()
         val height = frame.height.coerceAtLeast(0f).roundToInt()
-        val layers = measurables.map { it.measure(Constraints.fixed(width, height)) }
+        val layer = measurables[0].measure(Constraints.fixed(width, height))
         val viewportWidth = if (constraints.hasBoundedWidth) constraints.maxWidth
             else constraints.constrainWidth(ceil(frame.right.coerceAtLeast(0f)).toInt())
         val viewportHeight = if (constraints.hasBoundedHeight) constraints.maxHeight
@@ -106,7 +106,7 @@ fun GlasmioSidebarMorphSurface(
         layout(viewportWidth, viewportHeight) {
             val x = frame.left.roundToInt()
             val y = frame.top.roundToInt()
-            layers.forEach { it.place(x, y) }
+            layer.place(x, y)
         }
     }
 }

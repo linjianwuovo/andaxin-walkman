@@ -98,7 +98,7 @@ fun PlaySetting(
     val (restorePlaybackPosition, onRestorePlaybackPositionChange) = rememberPreference(RestorePlaybackPositionKey, true)
     val (notificationLeftAction, onNotificationLeftActionChange) = rememberEnumPreference(NotificationLeftActionKey, NotificationAction.PlayMode)
     val (notificationRightAction, onNotificationRightActionChange) = rememberEnumPreference(NotificationRightActionKey, NotificationAction.Like)
-    val (noAudioSource, onNoAudioSourceChange) = rememberPreference(NoAudioSourceKey, false)
+    val (noAudioSource, onNoAudioSourceChange) = rememberPreference(NoAudioSourceKey, true)
     val (autoMixEnabled, onAutoMixEnabledChange) = rememberPreference(AutoMixEnabledKey, false)
     val (autoMixMode, onAutoMixModeChange) = rememberEnumPreference(AutoMixModeKey, AutoMixMode.Smart)
     val (storedAutoMixDuration, onAutoMixDurationChange) = rememberPreference(AutoMixDurationKey, 8f)

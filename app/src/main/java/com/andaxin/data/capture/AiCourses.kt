@@ -1,5 +1,9 @@
 package com.andaxin.data.capture
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+
 /*
  * AI 课堂"有哪几门课"。
  *
@@ -16,23 +20,47 @@ class AiCourseFeed(
     private val api: FifApi,
 ) {
 
-    private var cached: List<AiCourse>? = null
+    private data class Cached(val owner: String, val courses: List<AiCourse>)
+
+    @Volatile private var cached: Cached? = null
 
     suspend fun courses(force: Boolean = false): Result<List<AiCourse>> {
-        val hit = cached
-        if (!force && hit != null) return Result.success(hit)
-        return fif.ensure().mapCatching {
+        currentCoroutineContext().ensureActive()
+        return try {
+            val owner = fif.owner() ?: throw Exception("校内还没登录")
+            val hit = fif.withOwner(owner) { cached?.takeIf { it.owner == owner } }
+            if (!force && hit != null) return Result.success(hit.courses)
+            fif.ensure().getOrThrow()
+            fif.withOwner(owner) { }
             val terms = api.terms()
+            fif.withOwner(owner) { }
+            currentCoroutineContext().ensureActive()
             val term = terms.firstOrNull { it.selected } ?: terms.firstOrNull()
-                ?: throw Exception("学期列表是空的（那条接口回了数据但一条学期都没有）")
-            api.courses(term.year, term.num).also { cached = it }
+                ?: throw Exception("没能取得 AI 课堂学期，请重试。")
+            val courses = api.courses(term.year, term.num)
+            currentCoroutineContext().ensureActive()
+            fif.withOwner(owner) {
+                cached = Cached(owner, courses)
+                Result.success(courses)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            currentCoroutineContext().ensureActive()
+            Result.failure(error)
         }
     }
 
     suspend fun find(id: String): AiCourse? = courses().getOrNull()?.firstOrNull { it.id == id }
 
     /** 当前学期。直录播那发要它的 `id` 当 `termId`。 */
-    suspend fun currentTerm(): AiTerm? = fif.ensure().getOrNull()?.let { api.terms().selected() }
+    suspend fun currentTerm(): AiTerm? {
+        val owner = fif.owner() ?: return null
+        fif.ensure().getOrNull() ?: return null
+        fif.withOwner(owner) { }
+        val terms = api.terms()
+        return fif.withOwner(owner) { terms.selected() }
+    }
 
     private fun List<AiTerm>.selected(): AiTerm? = firstOrNull { it.selected } ?: firstOrNull()
 

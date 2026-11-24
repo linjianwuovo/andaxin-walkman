@@ -141,7 +141,6 @@ import com.ljyh.mei.constants.AccentColorKey
 import com.ljyh.mei.constants.AppAppearance
 import com.ljyh.mei.constants.AppAppearanceKey
 import com.ljyh.mei.constants.AppBarHeight
-import com.ljyh.mei.constants.BetaUpdatesEnabledKey
 import com.ljyh.mei.constants.BottomBarHorizontalPadding
 import com.ljyh.mei.constants.BottomFloatingContentExtraSpacingKey
 import com.ljyh.mei.constants.CloudMusicEnabledKey
@@ -176,11 +175,17 @@ import com.ljyh.mei.constants.RecognizeClipboardLinksKey
 import com.ljyh.mei.constants.ReduceTransparencyKey
 import com.ljyh.mei.data.model.UserData
 import com.ljyh.mei.data.model.api.GetSongDetails
+import com.ljyh.mei.data.model.metadata
 import com.ljyh.mei.data.model.toMediaItem
 import com.ljyh.mei.data.model.toMediaMetadata
 import com.ljyh.mei.di.AppDatabase
 import com.ljyh.mei.di.repository.ColorRepository
 import com.ljyh.mei.playback.DISABLE_FLOATING_LYRICS
+import com.ljyh.mei.widget.MusicWidgets
+import com.ljyh.mei.ui.model.availableFor
+import com.ljyh.mei.ui.screen.source.navigateSourceContent
+import com.ljyh.mei.widget.decodeWidgetContent
+import com.ljyh.mei.ui.component.player.LocalPlayerLyricsRequest
 import com.ljyh.mei.playback.ENABLE_FLOATING_LYRICS
 import com.ljyh.mei.playback.MusicService
 import com.ljyh.mei.playback.PlayerConnection
@@ -191,7 +196,6 @@ import com.ljyh.mei.source.core.SourceRouter
 import com.ljyh.mei.source.platform.SourcePlatformEffects
 import com.ljyh.mei.ui.component.ClipboardLinkPrompt
 import com.ljyh.mei.ui.component.IconButton
-import com.ljyh.mei.ui.component.VersionUpdateAlert
 import com.ljyh.mei.ui.component.player.BottomSheetPlayer
 import com.ljyh.mei.ui.component.player.FloatingLyricsPipBackdrop
 import com.ljyh.mei.ui.component.player.FloatingLyricsPipScreen
@@ -225,8 +229,6 @@ import com.ljyh.mei.ui.screen.navigationEntry
 import com.ljyh.mei.ui.screen.search.SearchScreen
 import com.ljyh.mei.ui.theme.LocalAccentSeedColor
 import com.ljyh.mei.ui.theme.MusicTheme
-import com.ljyh.mei.utils.VersionUpdateChecker
-import com.ljyh.mei.utils.VersionUpdateResult
 import com.ljyh.mei.utils.cache.preloadImage
 import com.ljyh.mei.utils.dataStore
 import com.ljyh.mei.utils.get
@@ -423,32 +425,17 @@ fun MusicScreen(
         ?: Index.DefaultOrder.joinToString(",", transform = Index::name)
     var playerConnection by remember { mutableStateOf<PlayerConnection?>(null) }
     var playerVisibilitySynchronized by remember { mutableStateOf(false) }
+    val playerLyricsRequest = remember { mutableStateOf(false) }
+    var widgetDestination by remember { mutableStateOf<Pair<String, String?>?>(null) }
     var clipboardLink by remember { mutableStateOf<com.ljyh.mei.source.core.OwnedSourceLink?>(null) }
     var clipboardInspected by rememberSaveable { mutableStateOf(false) }
-    var startupUpdateResult by remember { mutableStateOf<VersionUpdateResult?>(null) }
-
+    var isMeasured by remember { mutableStateOf(false) }
+    // 小组件深链：壳 Activity 读进 WidgetDeepLink.pending，这里取走（上游是同类直接读字段）。
     LaunchedEffect(Unit) {
-        try {
-            val betaUpdatesEnabled = context.dataStore.data.first()[BetaUpdatesEnabledKey] ?: false
-            val result = VersionUpdateChecker.check(
-                BuildConfig.VERSION_NAME,
-                betaUpdatesEnabled = betaUpdatesEnabled,
-            )
-            val currentBetaUpdatesEnabled = context.dataStore.data.first()[BetaUpdatesEnabledKey] ?: false
-            if (result is VersionUpdateResult.UpdateAvailable &&
-                result.comparisonKnown &&
-                currentBetaUpdatesEnabled == betaUpdatesEnabled
-            ) {
-                startupUpdateResult = result
-            }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Exception) {
-            return@LaunchedEffect
+        WidgetDeepLink.pending.collect { request ->
+            if (request != null) widgetDestination = request
         }
     }
-
-    var isMeasured by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
         val intent = Intent(context, MusicService::class.java)
 
@@ -1021,6 +1008,70 @@ fun MusicScreen(
                 }
             }
             val selectionToolbar = remember { com.ljyh.mei.ui.local.SelectionToolbarState() }
+            LaunchedEffect(widgetDestination, playerConnection, playerVisibilitySynchronized) {
+                val request = widgetDestination ?: return@LaunchedEffect
+                val (action, mediaId) = request
+                when (action) {
+                    MusicWidgets.ACTION_OPEN_PLAYER,
+                    MusicWidgets.ACTION_OPEN_LYRICS,
+                    MusicWidgets.ACTION_OPEN_COMMENTS,
+                    -> {
+                        val connection = playerConnection ?: return@LaunchedEffect
+                        if (!playerVisibilitySynchronized) return@LaunchedEffect
+                        connection.service.awaitPlaybackRestore()
+                        val item = connection.player.currentMediaItem
+                        if (item != null) {
+                            if (action == MusicWidgets.ACTION_OPEN_COMMENTS) {
+                                val track = item.metadata
+                                val ref = track?.trackRef
+                                val provider = ref?.let { sourceRouter.registry.provider(it.providerId) }
+                                if ((mediaId == null || mediaId == item.mediaId) && ref != null &&
+                                    com.ljyh.mei.ui.model.MoreAction.COMMENT.availableFor(track, provider)
+                                ) {
+                                    playerBottomSheetState.collapseSoft()
+                                    Screen.Comment.navigate(navController) {
+                                        addPath(android.net.Uri.encode(ref.trackId))
+                                        addQuery("providerId", android.net.Uri.encode(ref.providerId))
+                                    }
+                                }
+                            } else {
+                                selectionToolbar.content.value = null
+                                playerLyricsRequest.value = action == MusicWidgets.ACTION_OPEN_LYRICS
+                                if (!playerBottomSheetState.isExpanded) playerBottomSheetState.expandSoft()
+                            }
+                        }
+                    }
+                    else -> {
+                        playerLyricsRequest.value = false
+                        if (playerBottomSheetState.isContentVisible) playerBottomSheetState.collapseSoft()
+                        when (action) {
+                            MusicWidgets.ACTION_OPEN_HISTORY -> Screen.History.navigate(navController)
+                            MusicWidgets.ACTION_OPEN_DAILY -> Screen.EveryDay.navigate(navController)
+                            MusicWidgets.ACTION_OPEN_FAVORITES -> Screen.LibraryCategory.navigate(navController) {
+                                addPath(LibraryPage.Songs.name)
+                            }
+                            MusicWidgets.ACTION_OPEN_STATS -> Screen.ListeningStats.navigate(navController)
+                            MusicWidgets.ACTION_OPEN_SEARCH -> {
+                                focusSearchOnEntry = true
+                                Screen.Search.navigate(navController)
+                            }
+                            MusicWidgets.ACTION_OPEN_CHARTS -> Screen.PlaylistCategory.navigate(navController) {
+                                addPath(android.net.Uri.encode("排行榜"))
+                                addPath(android.net.Uri.encode(context.getString(R.string.search_category_rankings)))
+                            }
+                            MusicWidgets.ACTION_OPEN_LIBRARY -> Screen.Library.navigate(navController)
+                            MusicWidgets.ACTION_OPEN_PLAYLISTS -> Screen.FindMusic.navigate(navController)
+                            MusicWidgets.ACTION_OPEN_CONTENT -> mediaId?.let(::decodeWidgetContent)?.let {
+                                navigateSourceContent(navController, it)
+                            }
+                        }
+                    }
+                }
+                if (widgetDestination === request) {
+                    widgetDestination = null
+                    WidgetDeepLink.pending.value = null
+                }
+            }
             val pageVisible = remember(playerBottomSheetState, playerBackgroundReady) {
                 derivedStateOf {
                     !playerBottomSheetState.isExpanded || !playerBackgroundReady.value
@@ -1063,6 +1114,7 @@ fun MusicScreen(
                 backdrop = bottomControlsBackdrop,
                 pageDarkAppearance = pageDarkAppearance,
                 onBackgroundReadyChanged = onPlayerBackgroundReadyChanged,
+                lyricsRequest = playerLyricsRequest,
             )
         }
     } else
@@ -1138,6 +1190,7 @@ fun MusicScreen(
                         backdrop = bottomControlsBackdrop,
                         pageDarkAppearance = pageDarkAppearance,
                         onBackgroundReadyChanged = onPlayerBackgroundReadyChanged,
+                        lyricsRequest = playerLyricsRequest,
                     )
                 },
             ) {
@@ -1601,10 +1654,6 @@ fun MusicScreen(
                     },
                 )
                 if (!pictureInPictureMode) com.ljyh.mei.ui.screen.source.SourcePlatformEffectHost(sourceEffects)
-                VersionUpdateAlert(
-                    result = startupUpdateResult,
-                    onDismiss = { startupUpdateResult = null },
-                )
                 }
             }
             }
@@ -1634,6 +1683,7 @@ private fun BoxScope.AnimatedMiniPlayerLayer(
     backdrop: Backdrop,
     pageDarkAppearance: Boolean?,
     onBackgroundReadyChanged: (Boolean) -> Unit,
+    lyricsRequest: androidx.compose.runtime.MutableState<Boolean>,
 ) {
     val miniPlayerVerticalOffset = remember(motion, centerTravel, searchVerticalOffset) {
         {
@@ -1654,13 +1704,15 @@ private fun BoxScope.AnimatedMiniPlayerLayer(
             LocalMiniPlayerChromeMotion provides motion,
             LocalMiniPlayerChromeHint provides hint,
         ) {
-            BottomSheetPlayer(
-                state = state,
-                modifier = Modifier.fillMaxSize(),
-                compactMiniPlayerProgress = motion.contentProgress,
-                miniPlayerVerticalOffset = miniPlayerVerticalOffset,
-                onBackgroundReadyChanged = onBackgroundReadyChanged,
-            )
+            CompositionLocalProvider(LocalPlayerLyricsRequest provides lyricsRequest) {
+                BottomSheetPlayer(
+                    state = state,
+                    modifier = Modifier.fillMaxSize(),
+                    compactMiniPlayerProgress = motion.contentProgress,
+                    miniPlayerVerticalOffset = miniPlayerVerticalOffset,
+                    onBackgroundReadyChanged = onBackgroundReadyChanged,
+                )
+            }
         }
     }
 }

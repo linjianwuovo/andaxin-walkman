@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.screen.podcast
 
+import com.ljyh.mei.ui.component.home.homeArtworkBorder
 import com.ljyh.mei.ui.component.item.FixedCardCaption
 import io.github.neoruaa.glasmio.core.swipeBackExcluded
 import com.ljyh.mei.ui.component.utils.rememberAlertContent
@@ -76,16 +77,20 @@ import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.core.IosTypography
 import io.github.neoruaa.glasmio.core.LocalGlassColors
+import io.github.neoruaa.glasmio.glass.rememberGlasmioMenuAnchorState
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.ui.local.LocalNavController
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalContentPadding
+import io.github.neoruaa.glasmio.scaffold.glasmioHorizontalEdgeToEdge
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 import com.ljyh.mei.ui.screen.Screen
 import com.ljyh.mei.ui.screen.main.library.component.groupedLazyItems
 import com.ljyh.mei.ui.screen.playlist.component.PlaylistHeader
 import com.ljyh.mei.ui.screen.playlist.component.PlaylistShimmer
 import com.ljyh.mei.ui.screen.playlist.component.PlaylistSurface
+import com.ljyh.mei.ui.screen.playlist.component.formatCompactCount
 import com.ljyh.mei.utils.rememberPreference
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -265,8 +270,8 @@ private fun PodcastCategorySelector(
     onCategorySelected: (String?) -> Unit,
 ) {
     LazyRow(
-        modifier = Modifier.fillMaxWidth().swipeBackExcluded(),
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        modifier = Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded(),
+        contentPadding = glasmioHorizontalContentPadding(PaddingValues(horizontal = 16.dp)),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "podcast-category-recommended") {
@@ -327,8 +332,8 @@ private fun PodcastSection(
             modifier = Modifier.padding(horizontal = 16.dp),
         )
         LazyRow(
-            modifier = Modifier.swipeBackExcluded(),
-            contentPadding = PaddingValues(horizontal = HomeRowHorizontalPadding),
+            modifier = Modifier.fillMaxWidth().glasmioHorizontalEdgeToEdge().swipeBackExcluded(),
+            contentPadding = glasmioHorizontalContentPadding(PaddingValues(horizontal = HomeRowHorizontalPadding)),
             horizontalArrangement = Arrangement.spacedBy(homeCardSpacing(isLandscape)),
         ) {
             items(podcasts, key = { it.id }) { podcast ->
@@ -344,6 +349,7 @@ private fun PodcastRecommendationCard(
     cardSize: Dp,
     onClick: (Podcast) -> Unit,
 ) {
+    val coverShape = ContinuousRoundedRectangle(8.dp)
     Column(
         modifier = Modifier.width(cardSize).clickable { onClick(podcast) },
     ) {
@@ -354,7 +360,7 @@ private fun PodcastRecommendationCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(ContinuousRoundedRectangle(8.dp)),
+                .clip(coverShape).homeArtworkBorder(coverShape),
         )
         val subtitle = podcast.recommendation?.takeIf(String::isNotBlank)
             ?: podcast.host?.nickname?.takeIf(String::isNotBlank)
@@ -378,6 +384,7 @@ fun PodcastDetailScreen(
     val scope = rememberCoroutineScope()
     val sourceViewModel: com.ljyh.mei.ui.screen.source.SourceContentViewModel = hiltViewModel()
     var trackMenu by remember(id) { mutableStateOf<Pair<com.ljyh.mei.source.api.Track, androidx.compose.ui.geometry.Rect>?>(null) }
+    val trackMenuAnchor = rememberGlasmioMenuAnchorState()
     val selection = rememberDetailSelection(id)
     val listState = rememberLazyListState()
     var restoredListIndex by remember(id, listState) { androidx.compose.runtime.mutableIntStateOf(listState.firstVisibleItemIndex) }
@@ -523,7 +530,7 @@ fun PodcastDetailScreen(
         hasLoadedContent = detail != null,
         listState = listState,
         headerMetadata = listOf(stringResource(R.string.podcast_program_count, count),
-            stringResource(R.string.song_wiki_play_count, (detail?.podcast?.playCount ?: 0).toString())).joinToString(" · "),
+            stringResource(R.string.song_wiki_play_count, formatCompactCount(detail?.podcast?.playCount ?: 0))).joinToString(" · "),
         onPlayAll = { play() }, onShufflePlay = { play(shuffle = true) },
         headerActionIcon = Icons.Default.Add,
         headerActionLabel = stringResource(if (detail?.podcast?.isSubscribed == true) R.string.detail_podcast_unsubscribe else R.string.podcast_subscribe),
@@ -542,7 +549,12 @@ fun PodcastDetailScreen(
             val index = tracks.indexOfFirst { it === track }
             if (displayedPrograms.getOrNull(index)?.mainTrackRef != null) trackMenu = track.toSourceTrack() to anchor
         },
-        overlayContent = { com.ljyh.mei.ui.screen.source.SourceTrackActions(trackMenu, { trackMenu = null }, sourceViewModel) },
+        trackMenuAnchorState = trackMenuAnchor,
+        overlayContent = {
+            com.ljyh.mei.ui.screen.source.SourceTrackActions(
+                trackMenu, { trackMenu = null }, sourceViewModel, menuAnchorState = trackMenuAnchor,
+            )
+        },
         detailMenu = menu, detailMenuTitle = stringResource(R.string.detail_podcast_menu),
         selectionMode = selection.active, selectedTrackIds = selection.ids, onSelectionDone = selection::finish,
         playlistSearchQuery = query, isPlaylistSearchActive = searchActive,

@@ -1,6 +1,5 @@
 package com.ljyh.mei.playback
 
-import android.util.Log
 import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.media3.common.C
@@ -58,6 +57,7 @@ class PlaybackQueueManager(
     private val serverShuffleAllowed: () -> Boolean = { true },
     private val radioItemFactory: (Track) -> MediaItem = { it.toMediaMetadata().toMediaItem() },
     private val shuffleRandom: Random = Random.Default,
+    private val elapsedRealtimeMs: () -> Long = ::defaultElapsedRealtimeMs,
 ) : Player.Listener {
 
     private val TAG = "QueueManager"
@@ -249,7 +249,7 @@ class PlaybackQueueManager(
     }
 
     private fun requestServerShuffle() {
-        val startedAt = SystemClock.elapsedRealtime()
+        val startedAt = elapsedRealtimeMs()
         if (sourceContentQueue == null && pendingSourceContentContext != null) return
         val source = playlistSource ?: return
         if (source.providerId != null && sourceContentQueue == null) return
@@ -267,7 +267,7 @@ class PlaybackQueueManager(
         val contentQueue = sourceContentQueue
         var orderBeforeRequest = currentShuffleOrderEntries()
         var prefixBeforeRequest = protectedPlaybackEntries(orderBeforeRequest)
-        Timber.tag("SourceShuffle").d("stage=request elapsedMs=%d count=%d", SystemClock.elapsedRealtime() - startedAt, player.mediaItemCount)
+        Timber.tag("SourceShuffle").d("stage=request elapsedMs=%d count=%d", elapsedRealtimeMs() - startedAt, player.mediaItemCount)
         serverShuffleJob = scope.launch(Dispatchers.Main) {
             var localPrepared = false
             var uniformPrepared = false
@@ -285,7 +285,7 @@ class PlaybackQueueManager(
                         null
                     }
                 }
-                Timber.tag("SourceShuffle").d("stage=identities elapsedMs=%d count=%d", SystemClock.elapsedRealtime() - startedAt, refs?.size ?: 0)
+                Timber.tag("SourceShuffle").d("stage=identities elapsedMs=%d count=%d", elapsedRealtimeMs() - startedAt, refs?.size ?: 0)
                 currentCoroutineContext().ensureActive()
                 if (generation != serverShuffleGeneration || playlistSource != source || sourceContentQueue !== contentQueue ||
                     cloudShuffleEnabled != true || !player.shuffleModeEnabled && !_isShuffleModeEnabled.value ||
@@ -311,7 +311,7 @@ class PlaybackQueueManager(
                     if (localPrepared) {
                         orderBeforeRequest = currentShuffleOrderEntries()
                         prefixBeforeRequest = protectedPlaybackEntries(orderBeforeRequest)
-                        Timber.tag("SourceShuffle").d("stage=local elapsedMs=%d count=%d", SystemClock.elapsedRealtime() - startedAt, player.mediaItemCount)
+                        Timber.tag("SourceShuffle").d("stage=local elapsedMs=%d count=%d", elapsedRealtimeMs() - startedAt, player.mediaItemCount)
                         checkAndLoadMetadata()
                     }
                 }
@@ -321,7 +321,7 @@ class PlaybackQueueManager(
                 if (playing.providerId != providerId) return@launch
                 val data = owner.shuffle(source.playlistIdentity.orEmpty(), playing.trackId,
                     source.alg, source.libraryCollection, refs)
-                Timber.tag("SourceShuffle").d("stage=source elapsedMs=%d count=%d", SystemClock.elapsedRealtime() - startedAt, data.order.size)
+                Timber.tag("SourceShuffle").d("stage=source elapsedMs=%d count=%d", elapsedRealtimeMs() - startedAt, data.order.size)
                 if (contentQueue != null && !contentQueue.isSourceCurrent()) return@launch
                 owner.ensureCurrent()
                 currentCoroutineContext().ensureActive()
@@ -334,7 +334,7 @@ class PlaybackQueueManager(
                 currentCoroutineContext().ensureActive()
                 if (generation != serverShuffleGeneration || playlistSource != source || sourceContentQueue !== contentQueue) return@launch
                 if (uniformPrepared && data.usesUniformFallback) {
-                    Timber.tag("SourceShuffle").d("stage=retained-uniform elapsedMs=%d count=%d", SystemClock.elapsedRealtime() - startedAt, player.mediaItemCount)
+                    Timber.tag("SourceShuffle").d("stage=retained-uniform elapsedMs=%d count=%d", elapsedRealtimeMs() - startedAt, player.mediaItemCount)
                     checkAndLoadMetadata()
                     return@launch
                 }
@@ -355,7 +355,7 @@ class PlaybackQueueManager(
                         validate()
                         sourceShuffleOrder(plan, orderBeforeRequest, prefixBeforeRequest)
                     }
-                    Timber.tag("SourceShuffle").d("stage=metadata elapsedMs=%d count=%d", SystemClock.elapsedRealtime() - startedAt, plan.metadata.size)
+                    Timber.tag("SourceShuffle").d("stage=metadata elapsedMs=%d count=%d", elapsedRealtimeMs() - startedAt, plan.metadata.size)
                     stablePlayer.withInternalQueueUpdate {
                         applied = applyServerShuffle(stablePlayer, plan, finalOrder)
                     }
@@ -365,7 +365,7 @@ class PlaybackQueueManager(
                     sourceContentPageJob?.cancel()
                     sourceContentPageJob = null
                     contentQueue?.freezePagination()
-                    Timber.tag("SourceShuffle").d("stage=applied elapsedMs=%d count=%d", SystemClock.elapsedRealtime() - startedAt, player.mediaItemCount)
+                    Timber.tag("SourceShuffle").d("stage=applied elapsedMs=%d count=%d", elapsedRealtimeMs() - startedAt, player.mediaItemCount)
                     Timber.tag(TAG).d("Applied source shuffle with %d tracks", data.order.size)
                 } else if (!localPrepared) requestLocalShuffle(orderBeforeRequest, prefixBeforeRequest)
                 checkAndLoadMetadata()
@@ -575,10 +575,10 @@ class PlaybackQueueManager(
         }
     }
 
-    fun startFmModeById(seedId: String?, providerId: String? = null) {
+    fun startFmModeById(seedId: String?, providerId: String? = null): Job {
         cancelActiveQueueBuild()
         val generation = queueBuildGeneration
-        activeQueueBuildJob = scope.launch(Dispatchers.Main) {
+        val build = scope.launch(Dispatchers.Main) {
             try {
                 if (generation != queueBuildGeneration) return@launch
                 if (seedId == null) {
@@ -598,6 +598,8 @@ class PlaybackQueueManager(
                 }
             }
         }
+        activeQueueBuildJob = build
+        return build
     }
 
     fun setPrivateFmMode(mode: PrivateFmMode, scene: PrivateFmScene? = null, refreshActiveSession: Boolean = true) {
@@ -620,8 +622,10 @@ class PlaybackQueueManager(
         scope.launch { fetchAndAppendFmRecommendations(player.currentMediaItem?.mediaId) }
     }
 
-    suspend fun loadPrivateFmScenes(): List<PrivateFmScene> = withContext(Dispatchers.IO) {
-        (fmSource ?: sources.open(fmProviderId ?: currentSourceProviderId())).scenes()
+    suspend fun loadPrivateFmScenes(providerId: String? = null): List<PrivateFmScene> = withContext(Dispatchers.IO) {
+        val source = if (providerId == null) fmSource ?: sources.open(fmProviderId ?: currentSourceProviderId())
+            else sources.open(providerId)
+        source.scenes()
     }
 
     private fun currentSourceProviderId(): String? = player.currentMediaItem?.let { item ->
@@ -846,10 +850,21 @@ class PlaybackQueueManager(
                         }
                         if (request == null) additions.forEach { rememberPersonalFmSong(it.mediaId) }
                         val firstAdditionIndex = player.mediaItemCount
-                        if (!replacing) player.addMediaItems(additions)
-                        if (!replacing && firstAdditionIndex == 0) {
-                            player.prepare()
-                            player.play()
+                        if (!replacing) {
+                            val resumeAfterEnd = firstAdditionIndex > 0 &&
+                                player.playbackState == Player.STATE_ENDED && player.playWhenReady
+                            player.addMediaItems(additions)
+                            if (firstAdditionIndex == 0) {
+                                player.prepare()
+                                player.play()
+                            } else if (resumeAfterEnd) {
+                                val nextIndex = if (player.shuffleModeEnabled) {
+                                    player.playbackOrderIndices().firstOrNull { it >= firstAdditionIndex }
+                                        ?: firstAdditionIndex
+                                } else firstAdditionIndex
+                                player.seekToDefaultPosition(nextIndex)
+                                player.prepare()
+                            }
                         }
                         if (_queueAutoplayEnabled.value && _queueAutoplayStartEntryId.value == null) {
                             restoreQueueAutoplayStartIndex(firstAdditionIndex)
@@ -911,7 +926,7 @@ class PlaybackQueueManager(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Trash failed", e)
+                Timber.tag(TAG).e(e, "Trash failed")
             }
         }
     }
@@ -923,16 +938,17 @@ class PlaybackQueueManager(
         playWhenReady: Boolean = true,
         repeatMode: Int = Player.REPEAT_MODE_ALL,
         randomStart: Boolean = false,
-    ) {
+        onQueueReady: () -> Unit = {},
+    ): Job {
         cancelServerShuffle()
         queueSelectionJob?.cancel()
         activeQueueBuildJob?.cancel()
         pendingSimilarGeneration = null
         val generation = ++queueBuildGeneration
-        activeQueueBuildJob = scope.launch(Dispatchers.Main) {
+        val build = scope.launch(Dispatchers.Main) {
+            val previousState = _queueState.value
             try {
                 if (generation != queueBuildGeneration) return@launch
-                val previousState = _queueState.value
                 _queueState.value = QueueState.Loading(queue.title ?: "加载中")
 
                 var status = queue.getInitialStatus()
@@ -1004,7 +1020,7 @@ class PlaybackQueueManager(
                 val selectedItem = if (prefilled != null) prefilled[startIndex].takeIf(::isPlayableMediaItem)
                     else hydrateQueueItem(allIds[startIndex])
                 if (selectedItem == null) {
-                    Log.e(TAG, "Unable to hydrate selected item ${allIds[startIndex].first}")
+                    Timber.tag(TAG).e("Unable to hydrate selected item %s", allIds[startIndex].first)
                     if (generation == queueBuildGeneration) {
                         _queueState.value = QueueState.Error("当前歌曲加载失败")
                     }
@@ -1027,6 +1043,7 @@ class PlaybackQueueManager(
                 }
                 val mediaStartIndex = startIndex - sourceWindow.first
 
+                onQueueReady()
                 // 2. 停止并重置
                 cancelSourceContentQueue()
                 isFmMode = false
@@ -1076,10 +1093,13 @@ class PlaybackQueueManager(
                 loadSourceContentPageIfNeeded()
 
             } catch (e: CancellationException) {
+                if (generation == queueBuildGeneration) {
+                    _queueState.value = previousState
+                }
                 throw e
             } catch (e: Exception) {
                 if (generation != queueBuildGeneration) return@launch
-                Log.e(TAG, "playQueue Error", e)
+                Timber.tag(TAG).e(e, "playQueue Error")
                 _isShuffleModeEnabled.value = player.shuffleModeEnabled
                 _queueState.value = QueueState.Error(e.message ?: "播放错误")
             } finally {
@@ -1093,6 +1113,8 @@ class PlaybackQueueManager(
                 }
             }
         }
+        activeQueueBuildJob = build
+        return build
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -1136,14 +1158,14 @@ class PlaybackQueueManager(
     }
 
     fun setShuffleModeEnabled(enabled: Boolean) {
-        val startedAt = SystemClock.elapsedRealtime()
+        val startedAt = elapsedRealtimeMs()
         if (enabled) Timber.tag("SourceShuffle").d("stage=toggle elapsedMs=0 count=%d", player.mediaItemCount)
         if (isFmMode && !_queueAutoplayEnabled.value && enabled) {
-            Log.w(TAG, "Shuffle is not allowed in FM mode")
+            Timber.tag(TAG).w("Shuffle is not allowed in FM mode")
             return
         }
         scope.launch(Dispatchers.Main) {
-            if (enabled) Timber.tag("SourceShuffle").d("stage=dispatch elapsedMs=%d count=%d", SystemClock.elapsedRealtime() - startedAt, player.mediaItemCount)
+            if (enabled) Timber.tag("SourceShuffle").d("stage=dispatch elapsedMs=%d count=%d", elapsedRealtimeMs() - startedAt, player.mediaItemCount)
             if (!enabled) {
                 cancelServerShuffle()
                 _isShuffleModeEnabled.value = false
@@ -1313,17 +1335,28 @@ class PlaybackQueueManager(
                 currentCoroutineContext().ensureActive()
                 if (generation != queueBuildGeneration || sourceContentQueue !== queue || isFmMode || additions.isEmpty()) return@launch
                 val firstAddition = player.mediaItemCount
+                val orderBeforeAppend = player.playbackOrderIndices()
+                val currentPlaybackPosition = orderBeforeAppend.indexOf(player.currentMediaItemIndex)
                 val resumeAtAddition = player.playbackState == Player.STATE_ENDED &&
-                    player.currentMediaItemIndex == firstAddition - 1 && player.playWhenReady
+                    currentPlaybackPosition >= 0 && currentPlaybackPosition == orderBeforeAppend.lastIndex &&
+                    player.playWhenReady
+                val stablePlayer = player as? StableDeckPlayer
                 val append = {
                     player.addMediaItems(additions)
                     sourceContentWindowEnd = firstSourceIndex + additions.size
                     if (resumeAtAddition) {
-                        player.seekToDefaultPosition(firstAddition)
+                        val orderAfterAppend = player.playbackOrderIndices()
+                        val appendedOrder = orderAfterAppend.filter { it >= firstAddition }
+                        if (stablePlayer != null && player.shuffleModeEnabled && appendedOrder.isNotEmpty()) {
+                            // Keep consumed entries ahead of the newly appended shuffled suffix.
+                            stablePlayer.setPlaybackOrder(orderBeforeAppend + appendedOrder)
+                        }
+                        val nextIndex = player.playbackOrderIndices()
+                            .firstOrNull { it >= firstAddition } ?: firstAddition
+                        player.seekToDefaultPosition(nextIndex)
                         player.prepare()
                     }
                 }
-                val stablePlayer = player as? StableDeckPlayer
                 if (stablePlayer != null) stablePlayer.withInternalQueueUpdate(append) else append()
                 _queueState.value = QueueState.Playing(queue.title ?: "播放列表", player.mediaItemCount)
                 appended = true
@@ -1478,6 +1511,10 @@ class PlaybackQueueManager(
 
             val currentIndex = player.currentMediaItemIndex
             if (currentIndex !in 0 until player.mediaItemCount) return@launch
+            // Manual next/previous ignores repeat-one, so hydrate those neighbors too.
+            val navigationRepeatMode = if (player.repeatMode == Player.REPEAT_MODE_ONE) {
+                Player.REPEAT_MODE_OFF
+            } else player.repeatMode
             val indicesToCheck = mutableSetOf<Int>()
             indicesToCheck.add(currentIndex)
 
@@ -1490,8 +1527,9 @@ class PlaybackQueueManager(
                 if (next == C.INDEX_UNSET) break
 
                 next =
-                    timeline.getNextWindowIndex(next, player.repeatMode, player.shuffleModeEnabled)
+                    timeline.getNextWindowIndex(next, navigationRepeatMode, player.shuffleModeEnabled)
                 if (next != C.INDEX_UNSET) {
+                    if (next == currentIndex) break
                     indicesToCheck.add(next)
                 }
             }
@@ -1504,10 +1542,11 @@ class PlaybackQueueManager(
 
                 prev = timeline.getPreviousWindowIndex(
                     prev,
-                    player.repeatMode,
+                    navigationRepeatMode,
                     player.shuffleModeEnabled
                 )
                 if (prev != C.INDEX_UNSET) {
+                    if (prev == currentIndex) break
                     indicesToCheck.add(prev)
                 }
             }
@@ -1653,7 +1692,7 @@ class PlaybackQueueManager(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to load song details", e)
+                Timber.tag(TAG).e(e, "Failed to load song details")
                 emptyList()
             }
         }
@@ -1759,3 +1798,9 @@ internal fun repairQueueArtworkMetadata(existing: MediaMetadata, refreshed: Medi
     if (existing.isLocal || existing.isPodcast || existing.trackRef != refreshed.trackRef ||
         refreshed.coverUrl.isBlank() || existing.coverUrl == refreshed.coverUrl) existing
     else existing.copy(coverUrl = refreshed.coverUrl)
+
+private fun defaultElapsedRealtimeMs(): Long = try {
+    SystemClock.elapsedRealtime()
+} catch (_: RuntimeException) {
+    System.nanoTime() / 1_000_000L
+}

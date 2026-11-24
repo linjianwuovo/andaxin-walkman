@@ -1,5 +1,6 @@
 package com.ljyh.mei.ui.component.player.component.applemusic
 
+import android.graphics.Paint
 import android.view.KeyEvent
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -35,8 +36,11 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.LayerOutsets
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -60,6 +64,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ljyh.mei.source.api.TrackRefCodec
 import com.ljyh.mei.ui.component.player.component.PlayerQualityDropdown
+import com.ljyh.mei.ui.component.player.component.playerRailClock
+import com.ljyh.mei.ui.component.player.component.rememberAutoMixRailGlow
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 import com.ljyh.mei.ui.theme.LocalInterfaceLetterSpacing
 import com.ljyh.mei.utils.TimeUtils.makeTimeString
@@ -68,6 +74,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlin.math.abs
 import kotlin.math.roundToLong
+
+private val autoMixGlowRadius = 4.dp
+private val autoMixGlowOutsets = (autoMixGlowRadius * 2).let {
+    LayerOutsets(left = it, top = it, right = it, bottom = it)
+}
 
 @Composable
 internal fun AppleMusicProgressSlider(
@@ -81,23 +92,25 @@ internal fun AppleMusicProgressSlider(
 ) {
     val playerConnection = LocalPlayerConnection.current
     val mediaMetadata = playerConnection?.mediaMetadata?.collectAsStateWithLifecycle()?.value
-    val mediaId = mediaMetadata?.id
     val qualityMediaId = mediaMetadata?.trackRef?.let(TrackRefCodec::mediaId)
     val musicQuality = playerConnection?.currentMusicQuality?.collectAsStateWithLifecycle()?.value
     val availableQualities = playerConnection?.availableMusicQualities?.collectAsStateWithLifecycle()?.value.orEmpty()
     val isLoadingQualities = playerConnection?.isLoadingMusicQualities?.collectAsStateWithLifecycle()?.value ?: false
     val localPlaybackInfo = playerConnection?.localPlaybackInfo?.collectAsStateWithLifecycle()?.value
     val isPlayingLocalSource = playerConnection?.isPlayingLocalSource?.collectAsStateWithLifecycle()?.value ?: false
-    val drag = remember(mediaId) { AppleMusicSeekGesture() }
+    val rail = playerRailClock(position, duration, qualityMediaId)
+    val drag = remember(rail.seekSession) { AppleMusicSeekGesture() }
     val previewFraction = drag.fraction
-    var pointerPressed by remember(mediaId) { mutableStateOf(false) }
-    var pendingSeek by remember(mediaId) { mutableStateOf<Long?>(null) }
-    val durationValid = duration > 0L
+    var pointerPressed by remember(rail.seekSession) { mutableStateOf(false) }
+    var pendingSeek by remember(rail.seekSession) { mutableStateOf<Long?>(null) }
+    val displayDuration = rail.durationMs
+    val durationValid = displayDuration > 0L
     val onSeek by rememberUpdatedState(onPositionChange)
     val layoutDirection = LocalLayoutDirection.current
     val isRtl = layoutDirection == LayoutDirection.Rtl
+    val railGlow = rememberAutoMixRailGlow()
     val haptics = LocalHapticFeedback.current
-    val pressed = durationValid && pointerPressed
+    val pressed = rail.seekEnabled && pointerPressed
     // Flamingo animates each property separately, with its native completion threshold.
     val scale = animateFloatAsState(
         if (pressed) 1.05f else 1f,
@@ -116,6 +129,12 @@ internal fun AppleMusicProgressSlider(
         spring(dampingRatio = 0.6f, stiffness = 200f), label = "AppleMusicProgressThickness",
     )
     val density = LocalDensity.current
+    val glowPaint = remember(density) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            setShadowLayer(with(density) { autoMixGlowRadius.toPx() }, 0f, 0f, android.graphics.Color.WHITE)
+        }
+    }
     var trackCenterInRoot by remember { mutableStateOf<Float?>(null) }
     val trackTopListener by rememberUpdatedState(onTrackTopChanged)
     if (onTrackTopChanged != null) LaunchedEffect(density) {
@@ -132,20 +151,21 @@ internal fun AppleMusicProgressSlider(
             pendingSeek = null
         }
     }
-    val waitingFraction = pendingSeek?.takeIf { abs(position - it) > 1000L }
-        ?.let { if (durationValid) it.toFloat() / duration else null }
+    val waitingFraction = pendingSeek?.takeIf { abs(rail.positionMs - it) > 1000L }
+        ?.let { if (durationValid) it.toFloat() / displayDuration else null }
     val fraction = if (durationValid) {
-        previewFraction ?: waitingFraction ?: (position.toDouble() / duration).toFloat().coerceIn(0f, 1f)
+        previewFraction ?: waitingFraction ?: (rail.positionMs.toDouble() / displayDuration).toFloat().coerceIn(0f, 1f)
     } else 0f
     val displayPosition = if (durationValid) {
-        ((previewFraction ?: waitingFraction)?.let { (it * duration.toDouble()).roundToLong() }
-            ?: position).coerceIn(0L, duration)
-    } else 0L
-    fun seekToFraction(value: Float) {
-        if (!durationValid) return
-        val target = (value.coerceIn(0f, 1f) * duration.toDouble()).roundToLong().coerceIn(0L, duration)
+        ((previewFraction ?: waitingFraction)?.let { (it * displayDuration.toDouble()).roundToLong() }
+            ?: rail.positionMs).coerceIn(0L, displayDuration)
+    } else if (rail.showingIncoming) rail.positionMs else 0L
+    fun seekToFraction(value: Float): Boolean {
+        if (!rail.canCommitSeek()) return false
+        val target = (value.coerceIn(0f, 1f) * displayDuration.toDouble()).roundToLong().coerceIn(0L, displayDuration)
         pendingSeek = target
         onSeek(target)
+        return true
     }
 
     Column(modifier) {
@@ -153,16 +173,11 @@ internal fun AppleMusicProgressSlider(
             modifier = Modifier.fillMaxWidth().height(20.dp)
                 .semantics {
                     progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
-                    if (!durationValid) disabled()
-                    setProgress { value ->
-                        if (!durationValid) false else {
-                            seekToFraction(value)
-                            true
-                        }
-                    }
+                    if (rail.seekEnabled) setProgress { value -> seekToFraction(value) }
+                    else disabled()
                 }
                 .onKeyEvent { event ->
-                    if (!durationValid || event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) false
+                    if (!rail.seekEnabled || event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) false
                     else {
                         val direction = if (isRtl) -1f else 1f
                         val target = when (event.nativeKeyEvent.keyCode) {
@@ -173,12 +188,11 @@ internal fun AppleMusicProgressSlider(
                             else -> return@onKeyEvent false
                         }
                         seekToFraction(target)
-                        true
                     }
                 }
-                .focusable(enabled = durationValid)
-                .pointerInput(mediaId, duration) {
-                    if (!durationValid) return@pointerInput
+                .focusable(enabled = rail.seekEnabled)
+                .pointerInput(rail.seekSession, displayDuration) {
+                    if (!rail.seekEnabled) return@pointerInput
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                         pointerPressed = true
@@ -191,8 +205,8 @@ internal fun AppleMusicProgressSlider(
                         }
                     }
                 }
-                .pointerInput(mediaId, duration, isRtl) {
-                    if (!durationValid) return@pointerInput
+                .pointerInput(rail.seekSession, displayDuration, isRtl) {
+                    if (!rail.seekEnabled) return@pointerInput
                     detectHorizontalDragGestures(
                         onDragStart = { start ->
                             pendingSeek = null
@@ -204,8 +218,7 @@ internal fun AppleMusicProgressSlider(
                         },
                         onDragEnd = {
                             drag.finish()?.let {
-                                seekToFraction(it)
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (seekToFraction(it)) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             }
                         },
                         onDragCancel = drag::cancel,
@@ -220,22 +233,37 @@ internal fun AppleMusicProgressSlider(
                     trackCenterInRoot = it.localToRoot(Offset(0f, it.size.height / 2f)).y
                 }
                 .graphicsLayer {
-                scaleX = scale.value
-                scaleY = scale.value
-                alpha = trackOpacity.value.coerceIn(0f, 1f)
-            }) {
+                    scaleX = scale.value
+                    scaleY = scale.value
+                    alpha = trackOpacity.value.coerceIn(0f, 1f)
+                    // Preserve the group's opacity without clipping the shadow at the rail edges.
+                    outsets = if (railGlow.value > 0f) autoMixGlowOutsets else LayerOutsets.Zero
+                },
+            ) {
                 val trackHeight = thickness.value.toPx().coerceIn(0f, size.height)
                 val top = (size.height - trackHeight) / 2f
+                val radius = trackHeight / 2f
+                val activeWidth = size.width * fraction.coerceIn(0f, 1f)
+                val activeLeft = if (isRtl) size.width - activeWidth else 0f
+                val glow = railGlow.value
+                if (glow > 0f && activeWidth > 0f) {
+                    glowPaint.alpha = (glow * 0.45f * 255).toInt()
+                    drawIntoCanvas { canvas ->
+                        canvas.nativeCanvas.drawRoundRect(
+                            activeLeft, top, activeLeft + activeWidth, top + trackHeight,
+                            radius, radius, glowPaint,
+                        )
+                    }
+                }
                 val outline = Path().apply {
-                    addRoundRect(RoundRect(Rect(0f, top, size.width, top + trackHeight), CornerRadius(trackHeight / 2f)))
+                    addRoundRect(RoundRect(Rect(0f, top, size.width, top + trackHeight), CornerRadius(radius)))
                 }
                 // Clip once: the active segment ends flat, even near either round outer edge.
                 clipPath(outline) {
                     drawRect(Color.White.copy(alpha = 0.5f), Offset(0f, top), Size(size.width, trackHeight))
-                    val activeWidth = size.width * fraction.coerceIn(0f, 1f)
                     if (activeWidth > 0f) drawRect(
                         Color.White,
-                        Offset(if (isRtl) size.width - activeWidth else 0f, top),
+                        Offset(activeLeft, top),
                         Size(activeWidth, trackHeight),
                     )
                 }
@@ -271,7 +299,7 @@ internal fun AppleMusicProgressSlider(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = if (durationValid) "-${makeTimeString(duration - displayPosition)}" else "-:--",
+                    text = if (durationValid) "-${makeTimeString(displayDuration - displayPosition)}" else "-:--",
                     style = timeTextStyle,
                     color = Color.White,
                     maxLines = 1,

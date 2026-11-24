@@ -1,6 +1,7 @@
 package com.ljyh.mei.source.core
 
 import android.content.Context
+import android.net.ConnectivityManager
 import com.google.gson.*
 import com.ljyh.mei.source.api.*
 import com.ljyh.mei.source.script.ScriptContentParser
@@ -20,6 +21,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
@@ -28,8 +30,11 @@ import kotlinx.coroutines.withContext
 
 /** No raw account/configuration value appears in cache paths or records. */
 data class SourceHomeCacheOwner(val providerId: String, val instanceId: ProviderInstanceId, val version: String, val accountRevision: String?) {
-    internal val key: String get() {
-        val identity = JsonArray().apply { add(providerId); add(instanceId.value); add(version); add(accountRevision) }.toString()
+    internal fun cacheKey(snapshot: String? = null): String {
+        val identity = JsonArray().apply {
+            add(providerId); add(instanceId.value); add(version); add(accountRevision)
+            snapshot?.let { add(it) }
+        }.toString()
         return MessageDigest.getInstance("SHA-256").digest(identity.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }
     override fun toString() = "SourceHomeCacheOwner(<redacted>)"
@@ -40,56 +45,87 @@ data class SourceHomeCacheOwner(val providerId: String, val instanceId: Provider
 class SourceHomeFeedCache internal constructor(
     private val directory: File,
     private val artworkRoots: List<File>,
+    private val hasNetwork: () -> Boolean = { true },
     private val now: () -> Long = System::currentTimeMillis,
 ) {
-    @Inject constructor(@ApplicationContext context: Context) : this(File(context.filesDir, "source-home-cache"), listOf(context.cacheDir))
+    @Inject constructor(@ApplicationContext context: Context) : this(
+        File(context.filesDir, "source-home-cache"),
+        listOf(context.cacheDir),
+        hasNetwork = { context.getSystemService(ConnectivityManager::class.java)?.let { it.activeNetwork != null } ?: true },
+    )
     private val mutex = Mutex()
     private val gson = GsonBuilder().disableHtmlEscaping().serializeNulls().create()
 
-    suspend fun read(owner: SourceHomeCacheOwner, provider: MusicProvider, ensureCurrent: suspend () -> Unit = {}): SourceFeedPage? = withContext(Dispatchers.IO) {
+    internal suspend fun isOffline(): Boolean = withContext(Dispatchers.IO) { !hasNetwork() }
+
+    suspend fun read(
+        owner: SourceHomeCacheOwner,
+        provider: MusicProvider,
+        ensureCurrent: suspend () -> Unit = {},
+    ): SourceFeedPage? = readSnapshot(owner, provider, allowStale = false, ensureCurrent = ensureCurrent)
+
+    internal suspend fun readSnapshot(owner: SourceHomeCacheOwner, provider: MusicProvider, allowStale: Boolean,
+        snapshot: String? = null, ensureCurrent: suspend () -> Unit = {}): SourceFeedPage? = withContext(Dispatchers.IO) {
         mutex.withLock {
             ensureCurrent()
             currentCoroutineContext().ensureActive()
             try {
-                val file = file(owner)
-                if (!file.isFile || file.length() !in 1..MAX_BYTES.toLong()) return@withLock null
-                val text = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(file.readBytes())).toString()
-                checkJsonDepth(text)
-                val root = JsonParser.parseString(text).asJsonObject
-                if (root.get("version")?.asInt != 1 || root.get("owner")?.asString != owner.key ||
-                    !isFresh(root.get("fetchedAt")?.asLong ?: return@withLock null, now())) return@withLock null
+                val target = file(owner, snapshot)
+                val root = readRecord(target) ?: return@withLock null
+                val fetchedAt = root.get("fetchedAt")?.asLong ?: return@withLock null
+                val currentTime = now()
+                if (root.get("version")?.asInt != 1 || root.get("owner")?.asString != owner.cacheKey(snapshot) ||
+                    fetchedAt !in 0..currentTime || !allowStale && !isFresh(fetchedAt, currentTime)) return@withLock null
                 if (provider.id != owner.providerId || provider.instanceId != owner.instanceId || provider.version != owner.version) return@withLock null
                 val page = decode(root.getAsJsonObject("feed"), owner, provider)
                 ensureCurrent()
                 currentCoroutineContext().ensureActive()
-                file.setLastModified(now())
+                target.setLastModified(currentTime)
                 page
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { null }
         }
     }
 
-    suspend fun write(owner: SourceHomeCacheOwner, page: SourceFeedPage, ensureCurrent: suspend () -> Unit = {}): Boolean = withContext(Dispatchers.IO) {
+    suspend fun write(owner: SourceHomeCacheOwner, page: SourceFeedPage, ensureCurrent: suspend () -> Unit = {}): Boolean =
+        writeSnapshot(owner, page, ensureCurrent = ensureCurrent)
+
+    internal suspend fun invalidate(owner: SourceHomeCacheOwner, snapshot: String?) {
+        withContext(NonCancellable + Dispatchers.IO) {
+            mutex.withLock { file(owner, snapshot).delete() }
+        }
+    }
+
+    internal suspend fun writeSnapshot(owner: SourceHomeCacheOwner, page: SourceFeedPage, snapshot: String? = null,
+        keepLarger: Boolean = false, ensureCurrent: suspend () -> Unit = {}): Boolean = withContext(Dispatchers.IO) {
         mutex.withLock {
             ensureCurrent()
             currentCoroutineContext().ensureActive()
             if (page.hasMore) return@withLock false
             var temporary: File? = null
             try {
+                val target = file(owner, snapshot)
+                val itemCount = page.sections.sumOf { it.items.size }
+                if (keepLarger) {
+                    val oldCount = runCatching { readRecord(target)?.get("itemCount")?.asInt }.getOrNull()
+                    if (oldCount != null && oldCount > itemCount) return@withLock false
+                }
+                val key = owner.cacheKey(snapshot)
                 val root = JsonObject().apply {
-                    addProperty("version", 1); addProperty("owner", owner.key); addProperty("fetchedAt", now())
+                    addProperty("version", 1); addProperty("owner", key); addProperty("fetchedAt", now())
+                    if (snapshot != null) addProperty("itemCount", itemCount)
                     add("feed", encode(page, owner.providerId))
                 }
                 val bytes = gson.toJson(root).toByteArray(Charsets.UTF_8)
                 if (bytes.size > MAX_BYTES) return@withLock false
-                check(directory.isDirectory || directory.mkdirs())
-                temporary = File(directory, ".${owner.key}-${UUID.randomUUID()}.tmp")
+                val parent = checkNotNull(target.parentFile)
+                check(parent.isDirectory || parent.mkdirs())
+                temporary = File(parent, ".$key-${UUID.randomUUID()}.tmp")
                 temporary.outputStream().use { output -> output.write(bytes); output.fd.sync() }
                 ensureCurrent()
                 currentCoroutineContext().ensureActive()
-                Files.move(temporary.toPath(), file(owner).toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-                prune(owner)
+                Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                prune(parent, target)
                 true
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { false }
@@ -101,27 +137,38 @@ class SourceHomeFeedCache internal constructor(
     suspend fun cachedArtwork(owner: SourceHomeCacheOwner, provider: MusicProvider, ref: ContentRef,
         ensureCurrent: suspend () -> Unit = {}): String? {
         if (ref.providerId != owner.providerId) return null
-        val page = read(owner, provider, ensureCurrent) ?: return null
+        val page = readSnapshot(owner, provider, allowStale = true, ensureCurrent = ensureCurrent) ?: return null
         return page.sections.firstNotNullOfOrNull { section ->
             section.items.firstOrNull { it.ref == ref }?.artworkUrl?.takeIf(String::isNotBlank)
                 ?: section.cards.firstOrNull { (it.target as? SourceFeedTarget.Content)?.ref == ref }?.artworkUrl?.takeIf(String::isNotBlank)
         }
     }
 
-    internal fun file(owner: SourceHomeCacheOwner) = File(directory, "${owner.key}.json")
+    internal fun file(owner: SourceHomeCacheOwner, snapshot: String? = null): File {
+        val root = if (snapshot == null) directory else File(directory, "library")
+        return File(root, "${owner.cacheKey(snapshot)}.json")
+    }
 
-    private fun prune(owner: SourceHomeCacheOwner) {
-        val records = directory.listFiles().orEmpty().filter { it.name.matches(Regex("[a-f0-9]{64}\\.json")) }
+    private fun readRecord(file: File): JsonObject? {
+        if (!file.isFile || file.length() !in 1..MAX_BYTES.toLong()) return null
+        val text = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(file.readBytes())).toString()
+        checkJsonDepth(text)
+        return JsonParser.parseString(text).asJsonObject
+    }
+
+    private fun prune(root: File, current: File) {
+        val records = root.listFiles().orEmpty().filter { it.name.matches(Regex("[a-f0-9]{64}\\.json")) }
             .sortedBy { it.lastModified() }
         var bytes = records.sumOf { it.length() }
         var count = records.size
-        records.filter { it != file(owner) }.forEach {
+        records.filter { it != current }.forEach {
             if (bytes > MAX_BYTES * 4L || count > 16) {
                 val size = it.length()
                 if (it.delete()) { bytes -= size; count-- }
             }
         }
-        directory.listFiles().orEmpty().filter { it.name.startsWith('.') && it.name.endsWith(".tmp") &&
+        root.listFiles().orEmpty().filter { it.name.startsWith('.') && it.name.endsWith(".tmp") &&
             now() - it.lastModified() > 3_600_000 }.forEach { it.delete() }
     }
 

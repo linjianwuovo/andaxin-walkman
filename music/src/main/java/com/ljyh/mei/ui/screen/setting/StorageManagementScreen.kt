@@ -35,7 +35,10 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
-import coil3.imageLoader
+import com.ljyh.mei.AppContext
+import com.ljyh.mei.clearImageCache
+import com.ljyh.mei.utils.deleteDownloadedArtwork
+import com.ljyh.mei.utils.withoutDownload
 import com.ljyh.mei.R
 import com.ljyh.mei.constants.DefaultImageCacheLimitMb
 import com.ljyh.mei.constants.DefaultMusicCacheLimitMb
@@ -148,7 +151,8 @@ class StorageManagementViewModel @Inject constructor(
 
     private suspend fun measureUsage(): ManagedStorageUsage = withContext(Dispatchers.IO) {
         val downloads = database.songDao().getSongsBySource(SourceType.DOWNLOAD).first()
-            .sumOf { song -> song.path?.let(::storedContentSize) ?: 0L }
+            .sumOf { song -> song.path?.let(::storedContentSize) ?: 0L } +
+            File(context.filesDir, "download-artwork").treeSize()
         val network = listOf("media", "image_cache", "coil3_disk_cache")
             .sumOf { File(context.cacheDir, it).treeSize() }
         val temporary = listOf("download", "data")
@@ -166,11 +170,9 @@ class StorageManagementViewModel @Inject constructor(
         )
     }
 
-    private fun clearNetworkCache() {
+    private suspend fun clearNetworkCache() {
         CacheManager.clear()
-        context.imageLoader.memoryCache?.clear()
-        context.imageLoader.diskCache?.clear()
-        File(context.cacheDir, "image_cache").deleteContents()
+        AppContext.instance.clearImageCache()
     }
 
     private suspend fun clearTemporaryFiles() {
@@ -190,7 +192,10 @@ class StorageManagementViewModel @Inject constructor(
             val song = database.songDao().getSong(task.songId).first()
             if (song?.path == null || !storedContentExists(song.path)) {
                 database.downloadDao().delete(task.songId)
-                database.songDao().updatePath(task.songId, null)
+                song?.let {
+                    database.songDao().updateSong(it.withoutDownload(context, task.songCover))
+                    deleteDownloadedArtwork(context, it.path)
+                }
             }
         }
     }
@@ -198,13 +203,17 @@ class StorageManagementViewModel @Inject constructor(
     private suspend fun deleteAllDownloads() {
         WorkManager.getInstance(context).cancelAllWorkByTag("download")
         database.downloadDao().getAll().first().forEach { task ->
-            database.songDao().getSong(task.songId).first()?.path?.let { path ->
+            val song = database.songDao().getSong(task.songId).first()
+            song?.path?.let { path ->
                 runCatching {
                     if (path.startsWith("content://")) context.contentResolver.delete(Uri.parse(path), null, null)
                     else File(path).delete()
                 }
             }
-            database.songDao().updatePath(task.songId, null)
+            song?.let {
+                database.songDao().updateSong(it.withoutDownload(context, task.songCover))
+                deleteDownloadedArtwork(context, it.path)
+            }
         }
         database.downloadDao().deleteAll()
         database.downloadDao().clearPlaybackCounts()
