@@ -623,10 +623,23 @@ class Simulator:
         runtime, item = matches[0]
         return {"udid": self.udid, "model": item["name"], "runtime": runtime}
 
+    def uninstall_if_present(self):
+        result = subprocess.run(
+            ["xcrun", "simctl", "uninstall", self.udid, BUNDLE],
+            cwd=self.cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        if result.returncode == 0:
+            return
+        # simctl returns 117 when the bundle is not installed; tolerate only that case.
+        output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+        if result.returncode == 117 and re.search(r"(not installed|no such app|application .* not found)", output, re.IGNORECASE):
+            return
+        raise SmokeError(f"xcrun simctl uninstall failed (exit {result.returncode})")
+
     def prepare(self, app):
         self.sim("bootstatus", "-b", timeout=120)
         # Clear any app data from the generic smoke on precisely this simulator.
-        self.sim("uninstall", BUNDLE)
+        self.uninstall_if_present()
         self.sim("install", str(app))
         self.sim("ui", "appearance", "light")
         self.sim("status_bar", "override", "--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active",
@@ -649,7 +662,7 @@ class Simulator:
         try:
             self.sim("status_bar", "clear")
         finally:
-            self.sim("uninstall", BUNDLE)
+            self.uninstall_if_present()
 
 
 def capture(sim, case, work, artifacts, timeout=READY_SECONDS):
