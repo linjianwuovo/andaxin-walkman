@@ -141,7 +141,6 @@ import com.ljyh.mei.constants.AccentColorKey
 import com.ljyh.mei.constants.AppAppearance
 import com.ljyh.mei.constants.AppAppearanceKey
 import com.ljyh.mei.constants.AppBarHeight
-import com.ljyh.mei.constants.BetaUpdatesEnabledKey
 import com.ljyh.mei.constants.BottomBarHorizontalPadding
 import com.ljyh.mei.constants.BottomFloatingContentExtraSpacingKey
 import com.ljyh.mei.constants.CloudMusicEnabledKey
@@ -191,7 +190,6 @@ import com.ljyh.mei.source.core.SourceRouter
 import com.ljyh.mei.source.platform.SourcePlatformEffects
 import com.ljyh.mei.ui.component.ClipboardLinkPrompt
 import com.ljyh.mei.ui.component.IconButton
-import com.ljyh.mei.ui.component.VersionUpdateAlert
 import com.ljyh.mei.ui.component.player.BottomSheetPlayer
 import com.ljyh.mei.ui.component.player.FloatingLyricsPipBackdrop
 import com.ljyh.mei.ui.component.player.FloatingLyricsPipScreen
@@ -225,8 +223,6 @@ import com.ljyh.mei.ui.screen.navigationEntry
 import com.ljyh.mei.ui.screen.search.SearchScreen
 import com.ljyh.mei.ui.theme.LocalAccentSeedColor
 import com.ljyh.mei.ui.theme.MusicTheme
-import com.ljyh.mei.utils.VersionUpdateChecker
-import com.ljyh.mei.utils.VersionUpdateResult
 import com.ljyh.mei.utils.cache.preloadImage
 import com.ljyh.mei.utils.dataStore
 import com.ljyh.mei.utils.get
@@ -425,29 +421,6 @@ fun MusicScreen(
     var playerVisibilitySynchronized by remember { mutableStateOf(false) }
     var clipboardLink by remember { mutableStateOf<com.ljyh.mei.source.core.OwnedSourceLink?>(null) }
     var clipboardInspected by rememberSaveable { mutableStateOf(false) }
-    var startupUpdateResult by remember { mutableStateOf<VersionUpdateResult?>(null) }
-
-    LaunchedEffect(Unit) {
-        try {
-            val betaUpdatesEnabled = context.dataStore.data.first()[BetaUpdatesEnabledKey] ?: false
-            val result = VersionUpdateChecker.check(
-                BuildConfig.VERSION_NAME,
-                betaUpdatesEnabled = betaUpdatesEnabled,
-            )
-            val currentBetaUpdatesEnabled = context.dataStore.data.first()[BetaUpdatesEnabledKey] ?: false
-            if (result is VersionUpdateResult.UpdateAvailable &&
-                result.comparisonKnown &&
-                currentBetaUpdatesEnabled == betaUpdatesEnabled
-            ) {
-                startupUpdateResult = result
-            }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Exception) {
-            return@LaunchedEffect
-        }
-    }
-
     var isMeasured by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
         val intent = Intent(context, MusicService::class.java)
@@ -1601,10 +1574,6 @@ fun MusicScreen(
                     },
                 )
                 if (!pictureInPictureMode) com.ljyh.mei.ui.screen.source.SourcePlatformEffectHost(sourceEffects)
-                VersionUpdateAlert(
-                    result = startupUpdateResult,
-                    onDismiss = { startupUpdateResult = null },
-                )
                 }
             }
             }

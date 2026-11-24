@@ -154,7 +154,7 @@ val NavigationTabOrderKey = stringPreferencesKey("navigation.tabOrder")
 val AppAppearanceKey = stringPreferencesKey("application.appearance")
 val LastSelectedTabKey = stringPreferencesKey("navigation.lastSelectedTab")
 val RecognizeClipboardLinksKey = booleanPreferencesKey("application.recognizeClipboardLinks")
-val BetaUpdatesEnabledKey = booleanPreferencesKey("application.betaUpdatesEnabled")
+// BetaUpdatesEnabledKey 已删除：检测更新归宿主关于页，音乐模块不再有自己的更新通道与 beta 开关。
 val QqTimeoutKey = stringPreferencesKey("qq_timeout")
 
 enum class QqTimeout(val seconds: Int, val label: String) {
