@@ -117,13 +117,6 @@ fun AboutScreen(
         BriefEnv.aboutExtra?.invoke(open)
 
         Spacer(Modifier.height(Gap.lg))
-        Text(
-            text = "边界：不代你提交申请、不代你付款、不后台刷任何进度 —— 写操作一律停在最后一步，由你按下去。",
-            fontSize = Type.meta,
-            lineHeight = Type.metaLine,
-            color = ink.muted,
-        )
-        Spacer(Modifier.height(Gap.xs))
         // 包名从名片里挪到这儿：它是查问题时要念给我听的那一个，不是每天要看的东西
         Text("包名 ${BriefEnv.applicationId}", fontSize = Type.micro, color = ink.faint)
         Spacer(Modifier.height(Gap.xl))
