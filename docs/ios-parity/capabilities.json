@@ -2809,6 +2809,54 @@
         "iosApp/UITests/MusicParityTests.swift"
       ],
       "note": "Visibility controls retained with explicit tags; native execution pending."
+    },
+    {
+      "id": "notify.reminder.schedule",
+      "kind": "behavior",
+      "title": "上课提醒：两周课表排成每分钟一档的倒计时链（iOS 走系统通知）",
+      "android": "app/src/main/java/com/andaxin/core/schedule/ClassReminder.kt",
+      "ios": [
+        "shared/src/logicMain/kotlin/com/andaxin/core/schedule/ClassReminderPlan.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/notify/IosClassReminder.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/notify/IosReminderHost.kt",
+        "shared/src/logicMain/kotlin/com/andaxin/feature/notify/NotifyScreen.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/shared/IosAppGraph.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/core/schedule/ClassReminderPlanTest.kt",
+        ".github/scripts/ios_parity_smoke.py"
+      ],
+      "note": "排程口径一份两端共用；catchUp 优先、两周窗口、startPeriod<1 跳过、每分钟一档到 0 全部有 JVM 钉子。真机上通知能否按分钟落、权限被拒的表现要物理 iPhone 验收，暂不计 accepted。"
+    },
+    {
+      "id": "notify.settings.screen",
+      "kind": "behavior",
+      "title": "通知设置屏：开关/提前量档位/授权状态/排程结果上屏",
+      "android": "app/src/main/java/com/andaxin/feature/notify/NotifyScreen.kt",
+      "ios": [
+        "shared/src/logicMain/kotlin/com/andaxin/feature/notify/NotifyScreen.kt",
+        "shared/src/logicMain/kotlin/com/andaxin/feature/brief/ReminderHost.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/shared/IosScreens.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        ".github/scripts/ios_parity_smoke.py"
+      ],
+      "note": "共享屏两端同一份；落点没插时不摆哑开关。实况更新那两行是 Android 16 物，iOS 无对应 API，账本单列 blocked。"
+    },
+    {
+      "id": "notify.liveupdates",
+      "kind": "behavior",
+      "title": "实况更新（Android 16 LiveUpdates）",
+      "android": "app/src/main/java/com/andaxin/core/notification/LiveUpdates.kt",
+      "ios": [],
+      "status": "blocked_platform",
+      "accepted": false,
+      "evidence": [],
+      "note": "这套 API 是 Android 16 独有；iOS 无等价物（锁屏实时活动需要动态岛/Extension，不在 v0.9.41 用户可见功能对齐范围）。不装成已对齐。"
     }
   ]
 }

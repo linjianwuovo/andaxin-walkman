@@ -29,5 +29,15 @@
     "correction": "Covered by the 5fbc5a6 fix above; romanization cases rerun there.",
     "corrected_run": "pending",
     "acceptance": "not accepted"
+  },
+  {
+    "workflow_run": 45593011492,
+    "tested_commit": "503358ace57fa11d7280bd45d48fc757147dce70",
+    "result": "failure",
+    "observed_failure": "10 of 11 native music UI cases passed: the queueSeed escape fix, typed NSNumber/NSString reads and Switch toggles all held. Only testMusicPageReorderControlsPersistAcrossRelaunch failed: music-tab-order-up-播客 reported frame {{285,669},{40,40}} with isHittable=false — the 40pt arrow's center sat under the mini player/tab-bar zone.",
+    "diagnosis": "Scroll helper only waited for exists, and openSettingsTab scrolled the ROW into view, not the small arrow button itself; the floating tab bar plus mini player cover roughly the bottom 170pt on this device size.",
+    "correction": "scrollTo now proves hittableCenter (frame center inside screen and above a 170pt bottom reserve) with 8 swipes; the reorder case scrolls to the up-arrow element itself before tapping. Committed together with the class-reminder batch; rerun pending.",
+    "corrected_run": "pending",
+    "acceptance": "10/11 evidence captured, not accepted until full green + physical-device notice delivery check"
   }
 ]

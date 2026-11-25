@@ -26,7 +26,9 @@ cases = [('ai-light', 'aiclass', 'light', 'large', None),
          ('music-podcast', 'music', 'light', 'large', '播客'),
          ('music-library-large', 'music', 'dark', 'accessibility-extra-extra-extra-large', '音乐库'),
          ('music-downloads', 'music', 'light', 'large', '下载'),
-         ('music-cloud-login', 'music', 'light', 'large', '云盘')]
+         ('music-cloud-login', 'music', 'light', 'large', '云盘'),
+         ('notify', 'notify', 'light', 'large', None),
+         ('notify-large-dark', 'notify', 'dark', 'accessibility-extra-extra-extra-large', None)]
 results = []
 try:
     for label, route, appearance, size, tab in cases:

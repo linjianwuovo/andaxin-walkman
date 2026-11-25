@@ -128,6 +128,9 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         val info = platform.Foundation.NSBundle.mainBundle.infoDictionary
         it.versionName = (info?.get("CFBundleShortVersionString") as? String).orEmpty()
         it.applicationId = (info?.get("CFBundleIdentifier") as? String).orEmpty()
+        // 「上课提醒」这一端的落点（系统日历触发器，见 IosClassReminder）：链由共享层的
+        // planClassReminder 算，这里只给"把链交给系统"这台机器。
+        it.reminder = com.andaxin.feature.notify.IosReminderHost
     }
 
     // PhotoHost 那三根插槽，iOS 只插第一根：正文附图交 IosImages（NSURLSession 取、Skia 解）。

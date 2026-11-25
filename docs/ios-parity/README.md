@@ -55,6 +55,15 @@ No item is accepted yet. Missing items include real DSP equalization, script-sou
 - JVM coverage includes timestamp boundary, non-reuse, malformed-safe behavior, independent visibility, YRC preservation and default-on ordering. Isolated lyrics fixtures add romanized-on/romanized-off render cases; XCUITest adds default/independence/persistence checks.
 - This batch is pending native compile/UI evidence. Broader lyric format capabilities and physical/live-service acceptance remain unaccepted.
 
+## 上课提醒批次（v0.9.41 对齐）— 待原生验证
+- 排程口径进 logicMain `ClassReminderPlan.kt`（一份两端共用）：catchUp 优先、两周窗口、startPeriod<1 跳过、
+  提前量 5..30 档、每分钟一档向上取整到"现在上课"，12 条 JVM 钉子全绿（103 tests 无失败）。
+- iOS 落点 `IosClassReminder`：整条离散链交 UNCalendarNotificationTrigger（每分钟一颗日历触发器），
+  同课一档共用 threadIdentifier、sound=nil（不响）、64 颗系统上限前清旧链；授权被拒那句人话上屏。
+- 通知设置共享屏接 ReminderHost 缝：开关/提前量 chips/排程状态/授权状态都带 testTag；
+  视觉捕获脚本新增 notify 两例（亮色 large、暗色 XXXXXL）。
+- 原生证据未取：真机上的通知落达（尤其后台/锁屏）必须物理 iPhone 验收，暂不计 accepted。
+
 ## 音乐页顺序与可见性批次 — 待原生验证
 - 新增纯 JVM `moveMusicTabOrder`：上下箭头按目标索引移动单个音乐页标签；越界钳到两端，重复/空白/不存在/原地移动返回 null 不改状态。
 - 设置页列出全部页面并提供每页独立 testTag 的上移/下移按钮；下载/云盘/历史可见性开关保留且与顺序分开持久化。

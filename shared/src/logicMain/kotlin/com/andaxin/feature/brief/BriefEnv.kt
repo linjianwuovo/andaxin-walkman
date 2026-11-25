@@ -93,6 +93,13 @@ object BriefEnv {
     var openSystemSettings: (() -> Unit)? = null
 
     /**
+     * 「上课提醒」这一端的落点（安卓 AlarmManager 链 / iOS 系统日历触发器）。
+     * 排程口径在 logicMain 的 planClassReminder，共享屏只管开关、提前量和状态行，
+     * 把链交给系统的活全在这台缝上。没插那一节不画开关，只写"这台排不了"。
+     */
+    var reminder: com.andaxin.feature.brief.ReminderHost? = null
+
+    /**
      * 「把这份文件交给系统」：写个临时文件 + 弹系统分享面板。回 true = 真交出去了。
      *
      * 安卓 = `cache/export` + FileProvider + `Intent.ACTION_SEND`（见 AndroidPhotoHost），

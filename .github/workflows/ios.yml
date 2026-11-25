@@ -57,7 +57,7 @@ jobs:
         run: python3 .github/scripts/ios_lyrics_smoke.py guard write "$RUNNER_TEMP/ios-production-source.json"
 
       - name: Test shared music protocols and metadata
-        run: ./gradlew :shared:jvmTest --tests 'com.andaxin.feature.music.*' --console=plain
+        run: ./gradlew :shared:jvmTest --tests 'com.andaxin.feature.music.*' --tests 'com.andaxin.core.schedule.*' --console=plain
 
       - name: 链真机 release framework（本机做不了的那步，在这出证据）
         run: |

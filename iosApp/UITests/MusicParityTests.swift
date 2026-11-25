@@ -69,12 +69,30 @@ final class MusicParityTests: XCTestCase {
     }
 
     private func scrollTo(_ control: XCUIElement) {
-        for _ in 0..<5 {
-            if control.exists && control.isHittable { return }
+        for _ in 0..<8 {
+            if hittableCenter(control) != nil { return }
             app.swipeUp()
         }
         waitFor(control)
-        XCTAssertTrue(control.isHittable)
+        XCTAssertTrue(control.isHittable, "Still not hittable after scrolling: \(control.debugDescription)")
+    }
+
+    /**
+     * 那颗控件的中心真的在屏幕上、没被底栏盖住时返回它的中点。
+     *
+     * 上一发 "Failed to not hittable: music-tab-order-up-播客 {{285,669}...}" 就是这么来的：
+     * row 自己露头了、isHittable 却是 false —— 40pt 的箭头整个压在悬浮底栏底下，
+     * 中心点落在屏幕外/栏后。所以"看得见"要按**中心点在可用区内**判，不能只看 exists。
+     */
+    private func hittableCenter(_ control: XCUIElement) -> CGPoint? {
+        guard control.exists else { return nil }
+        let frame = control.frame
+        guard frame.width > 0, frame.height > 0 else { return nil }
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        let screen = app.frame
+        // 底部预留 170pt：悬浮底栏约 83 + 迷你播放器约 76（带内边距），中心点必须整颗露在这两样之上。
+        guard screen.contains(center), center.y < screen.maxY - 170 else { return nil }
+        return control.isHittable ? center : nil
     }
 
     private func assertPaused(position: String, song: String = "Restore check B") {
@@ -289,7 +307,10 @@ final class MusicParityTests: XCTestCase {
         app.launch()
         musicTab()
         openSettingsTab()
-        element("music-tab-order-up-播客").tap()
+        // 箭头那颗要单独滚进视野再点：row 露出来了不代表 40pt 的按钮也没被底栏压住。
+        let upPodcast = element("music-tab-order-up-播客")
+        scrollTo(upPodcast)
+        upPodcast.tap()
         XCTAssertTrue(element("music-tab-order-row-0").label.contains("播客"))
         XCTAssertTrue(element("music-tab-order-row-1").label.contains("首页"))
         XCTAssertTrue(element("music-tab-order-row-2").label.contains("发现"))
