@@ -80,18 +80,41 @@ class SourceArtworkStore @Inject constructor(
         ScriptNetworkPolicy.artworkUri(file)
     }
 
-    suspend fun resolve(value: String): String = withContext(Dispatchers.IO) {
+    internal suspend fun resolve(value: String, trackRef: TrackRef? = null): String = withContext(Dispatchers.IO) {
         val (id, file) = location(value) ?: unavailable()
+        try {
+            resolveStored(id, file)
+        } catch (missing: MissingArtworkDescriptor) {
+            if (trackRef == null || trackRef.providerId != missing.source.id) throw missing
+            // Parsing a fresh track may register this same file, so refresh after releasing its lock.
+            singleFlight("repair:$id:${file.name}") {
+                missing.ensureCurrent()
+                val refreshed = missing.source.refreshTrackArtwork(trackRef, missing.identity, missing.revision) { cached ->
+                    location(cached)?.let { (cachedId, cachedFile) ->
+                        cachedId == id && (cachedFile.isFile || descriptor(cachedId, cachedFile)?.account == missing.identity)
+                    } == true
+                } ?: throw missing
+                val (refreshedId, refreshedFile) = location(refreshed) ?: denied()
+                if (refreshedId != id) denied()
+                resolveStored(refreshedId, refreshedFile, missing).also { missing.ensureCurrent() }
+            }
+        }
+    }
+
+    private suspend fun resolveStored(id: String, file: File, owner: MissingArtworkDescriptor? = null): String =
         singleFlight("$id:${file.name}") {
+            owner?.ensureCurrent()
             // Downloaded art belongs to retained host metadata, like existing queue and library covers.
             if (file.isFile) {
                 file.setLastModified(System.currentTimeMillis())
                 return@singleFlight ScriptNetworkPolicy.artworkUri(file)
             }
             registry.awaitInitialized()
-            val source = registry.instance(ProviderInstanceId("script:$id:default")) as? ScriptMusicProvider ?: unavailable()
+            val source = owner?.source
+                ?: registry.instance(ProviderInstanceId("script:$id:default")) as? ScriptMusicProvider
+                ?: unavailable()
             if (registry.provider(source.id) !== source) unavailable()
-            val descriptor = descriptor(id, file) ?: unavailable()
+            val descriptor = descriptor(id, file) ?: throw MissingArtworkDescriptor(source)
             source.ensureArtworkCurrent(descriptor.account)
             val revision = source.accountRevision.value
             coroutineScope {
@@ -111,6 +134,17 @@ class SourceArtworkStore @Inject constructor(
                     withContext(NonCancellable) { watcher.cancelAndJoin(); fetch.cancelAndJoin() }
                 }
             }
+        }
+
+    private inner class MissingArtworkDescriptor(val source: ScriptMusicProvider) : SourceException(SourceErrorCode.MISSING_PROVIDER) {
+        val identity = source.artworkAccountIdentity()
+        val revision = source.accountRevision.value
+
+        fun ensureCurrent() {
+            if (registry.provider(source.id) !== source || source.accountRevision.value != revision) {
+                throw CancellationException("Source artwork owner changed")
+            }
+            source.ensureArtworkCurrent(identity)
         }
     }
 

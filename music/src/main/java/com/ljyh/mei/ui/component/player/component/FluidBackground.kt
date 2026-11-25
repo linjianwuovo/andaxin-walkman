@@ -39,7 +39,9 @@ import com.ljyh.mei.constants.MeshStaticModeKey
 import com.ljyh.mei.constants.MeshSubdivisionKey
 import com.ljyh.mei.playback.PlaybackBeatMeter
 import com.ljyh.mei.playback.PlaybackSpectrum
-import com.ljyh.mei.ui.component.player.LocalAutoMixUpcomingArtworkUrl
+import com.ljyh.mei.source.api.TrackRef
+import com.ljyh.mei.source.script.sourceTrackArtwork
+import com.ljyh.mei.ui.component.player.LocalAutoMixUpcomingArtwork
 import com.ljyh.mei.ui.component.player.LocalAutoMixVisuals
 import com.ljyh.mei.ui.component.player.LocalPlayerBackgroundReadyChanged
 import com.ljyh.mei.ui.component.player.component.mesh.MeshAlbum
@@ -61,9 +63,10 @@ fun FluidBackground(
     alpha: Float = 1f,
     backdrop: LayerBackdrop,
     modifier: Modifier = Modifier,
+    trackRef: TrackRef? = null,
 ) {
     if (isRuntimeShaderSupported()) {
-        MeshBackground(imageUrl, beatMeter, isPlaying, alpha, backdrop, modifier)
+        MeshBackground(imageUrl, beatMeter, isPlaying, alpha, backdrop, modifier, trackRef)
         return
     }
     val sheet = LocalPlayerSheet.current
@@ -82,6 +85,7 @@ fun FluidBackground(
             imageUrl,
             Modifier.layerBackdrop(backdrop).trackBackdropPosition(backdrop),
             animated = false,
+            trackRef = trackRef,
         )
     }
 }
@@ -95,6 +99,7 @@ private fun MeshBackground(
     alpha: Float,
     backdrop: LayerBackdrop,
     modifier: Modifier,
+    trackRef: TrackRef?,
 ) {
     val sheet = LocalPlayerSheet.current
     val onBackgroundReadyChanged by rememberUpdatedState(LocalPlayerBackgroundReadyChanged.current)
@@ -106,7 +111,7 @@ private fun MeshBackground(
     }
     val backgroundActive = alpha > 0.01f && sheetVisible
     val autoMix = LocalAutoMixVisuals.current
-    val nextArtworkUrl = LocalAutoMixUpcomingArtworkUrl.current
+    val upcomingArtwork = autoMix?.incoming ?: LocalAutoMixUpcomingArtwork.current
     val latestAutoMix by rememberUpdatedState(autoMix)
     val (flowSpeed) = rememberPreference(MeshFlowSpeedKey, defaultValue = 0.25f)
     val (renderScale) = rememberPreference(MeshRenderScaleKey, defaultValue = 0.75f)
@@ -147,11 +152,12 @@ private fun MeshBackground(
 
     val outgoingUrl = imageUrl?.takeIf(String::isNotBlank)
     val incomingUrl = autoMix?.incoming?.coverUrl?.takeIf(String::isNotBlank)
-    val prewarmUrl = (if (autoMix == null) nextArtworkUrl else incomingUrl)
+    val prewarmUrl = upcomingArtwork?.coverUrl
         ?.takeIf { backgroundActive && it.isNotBlank() && it != outgoingUrl }
     // Keys retain the prepared incoming texture when it becomes the current cover.
     val loadedAlbums = listOfNotNull(outgoingUrl, prewarmUrl).associateWith { url ->
-        key(url) { rememberMeshAlbum(url, currentSubdivision) }
+        val artworkRef = if (url == outgoingUrl) trackRef else upcomingArtwork?.trackRef
+        key(url) { rememberMeshAlbum(url, currentSubdivision, artworkRef) }
     }
     val loadedAlbum = outgoingUrl?.let(loadedAlbums::get)
     val album = loadedAlbum?.album ?: placeholderAlbum.takeIf {
@@ -249,13 +255,14 @@ private class LoadedMeshAlbum(val album: MeshAlbum?)
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
-private fun rememberMeshAlbum(imageUrl: String, subdivision: Int): LoadedMeshAlbum? {
+private fun rememberMeshAlbum(imageUrl: String, subdivision: Int, trackRef: TrackRef?): LoadedMeshAlbum? {
     val context = LocalContext.current
     val currentSubdivision by rememberUpdatedState(subdivision)
     val loaded by produceState<LoadedMeshAlbum?>(null, imageUrl) {
         val result = context.imageLoader.execute(
             ImageRequest.Builder(context)
                 .data(imageUrl)
+                .sourceTrackArtwork(trackRef)
                 .size(256)
                 .allowHardware(false)
                 .build(),

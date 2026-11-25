@@ -1,9 +1,18 @@
 package com.ljyh.mei.source.script
 
+import coil3.Extras
 import coil3.intercept.Interceptor
+import coil3.request.ImageRequest
 import com.ljyh.mei.source.api.SourceErrorCode
 import com.ljyh.mei.source.api.SourceException
+import com.ljyh.mei.source.api.TrackRef
 import java.security.MessageDigest
+
+private val SourceArtworkTrackRef = Extras.Key<TrackRef?>(null)
+
+internal fun ImageRequest.Builder.sourceTrackArtwork(trackRef: TrackRef?): ImageRequest.Builder = apply {
+    if (trackRef != null) extras[SourceArtworkTrackRef] = trackRef
+}
 
 /** Advanced pages keep image loading lazy while every socket stays inside the source's policy. */
 object SourceArtworkRegistry {
@@ -28,8 +37,8 @@ object SourceArtworkRegistry {
         if (isLegacy(value)) return synchronized(entries) { value !in entries }
         return durable?.needsMetadataRefresh(value) == true
     }
-    internal suspend fun resolve(value: String): String {
-        if (!isLegacy(value)) return durable?.resolve(value) ?: throw SourceException(SourceErrorCode.MISSING_PROVIDER)
+    internal suspend fun resolve(value: String, trackRef: TrackRef? = null): String {
+        if (!isLegacy(value)) return durable?.resolve(value, trackRef) ?: throw SourceException(SourceErrorCode.MISSING_PROVIDER)
         val loader = synchronized(entries) { entries[value] } ?: throw SourceException(SourceErrorCode.MISSING_PROVIDER)
         return loader()
     }
@@ -37,7 +46,7 @@ object SourceArtworkRegistry {
     val interceptor = Interceptor { chain ->
         val data = chain.request.data.toString()
         if (owns(data)) {
-            val file = resolve(data)
+            val file = resolve(data, chain.request.extras[SourceArtworkTrackRef])
             chain.withRequest(chain.request.newBuilder().data(file).build()).proceed()
         } else chain.proceed()
     }

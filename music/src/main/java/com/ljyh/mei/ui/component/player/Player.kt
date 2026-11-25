@@ -60,6 +60,7 @@ import com.ljyh.mei.R
 import com.ljyh.mei.data.model.MediaMetadata
 import com.ljyh.mei.data.model.metadata
 import com.ljyh.mei.playback.PrivateFmMode
+import com.ljyh.mei.source.script.sourceTrackArtwork
 import com.ljyh.mei.utils.rememberEnumPreference
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberCombinedBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
@@ -92,7 +93,7 @@ internal class AutoMixVisuals(
 private val autoMixArtworkEasing = CubicBezierEasing(0.62f, 0f, 0.8f, 1f)
 private val autoMixBackgroundEasing = CubicBezierEasing(0f, 0f, 0.30f, 1f)
 internal val LocalAutoMixVisuals = compositionLocalOf<AutoMixVisuals?> { null }
-internal val LocalAutoMixUpcomingArtworkUrl = compositionLocalOf<String?> { null }
+internal val LocalAutoMixUpcomingArtwork = compositionLocalOf<MediaMetadata?> { null }
 
 internal val LocalPlayerRoamingModeLabel = staticCompositionLocalOf<String?> { null }
 
@@ -199,16 +200,21 @@ fun BottomSheetPlayer(
     val activeMix = displayedMix?.takeIf {
         !mixPromoted || (it.incoming.trackRef != currentMetadata?.trackRef && it.outgoing?.trackRef == currentMetadata?.trackRef)
     }
-    val upcomingArtworkUrl = (activeMix?.incoming ?: upcomingMixTrack)?.coverUrl?.takeIf { progressUpdatesEnabled }
-    val mixArtworkUrl = displayedMix?.incoming?.coverUrl?.takeIf {
-        it.isNotBlank() && (!mixPromoted || it == playingMetadata?.coverUrl)
+    val upcomingArtworkMetadata = (activeMix?.incoming ?: upcomingMixTrack)?.takeIf { progressUpdatesEnabled }
+    val mixArtworkMetadata = displayedMix?.incoming?.takeIf {
+        it.coverUrl.isNotBlank() && (!mixPromoted || it.coverUrl == playingMetadata?.coverUrl)
     }
+    val mixArtworkUrl = mixArtworkMetadata?.coverUrl
     // Keep painter identity as the prepared artwork moves into the current slot.
-    val artworks = listOfNotNull(currentUrl, mixArtworkUrl, upcomingArtworkUrl).distinct().associateWith { url ->
-        key(url) {
+    val coverTracks = listOfNotNull(currentMetadata, mixArtworkMetadata, upcomingArtworkMetadata)
+        .distinctBy { it.coverUrl }
+    val artworks = coverTracks.associate { track ->
+        val url = track.coverUrl
+        url to key(url) {
             rememberAsyncImagePainter(
                 ImageRequest.Builder(context)
                     .data(url)
+                    .sourceTrackArtwork(track.trackRef)
                     .size(1440)
                     .precision(Precision.INEXACT)
                     .build(),
@@ -252,7 +258,7 @@ fun BottomSheetPlayer(
         LocalPlayerArtwork provides artwork,
         LocalAutoMixVisuals provides mixVisuals,
         LocalAutoMixArtworkFrame provides mixArtwork,
-        LocalAutoMixUpcomingArtworkUrl provides upcomingArtworkUrl,
+        LocalAutoMixUpcomingArtwork provides upcomingArtworkMetadata,
         LocalPlayerRoamingModeLabel provides roamingModeLabel,
         LocalPlayerBackgroundReadyChanged provides onBackgroundReadyChanged,
         LocalGlassBackdrop provides playerBackdrop,

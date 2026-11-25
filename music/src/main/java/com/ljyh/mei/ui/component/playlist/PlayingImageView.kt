@@ -11,6 +11,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.ljyh.mei.source.api.TrackRef
+import com.ljyh.mei.source.script.sourceTrackArtwork
 import com.ljyh.mei.ui.screen.source.LibraryShareAsyncImage
 import com.ljyh.mei.ui.screen.source.LocalLibraryShareArtwork
 
@@ -18,11 +20,12 @@ import com.ljyh.mei.ui.screen.source.LocalLibraryShareArtwork
 fun PlayingImageView(
     imageUrl: String,
     isPlaying: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    trackRef: TrackRef? = null,
 ) {
     val context = LocalContext.current
-    val request = remember(context, imageUrl) {
-        ImageRequest.Builder(context).data(imageUrl).crossfade(true).build()
+    val request = remember(context, imageUrl, trackRef) {
+        ImageRequest.Builder(context).data(imageUrl).sourceTrackArtwork(trackRef).crossfade(true).build()
     }
     Box(
         modifier = modifier,

@@ -46,10 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -495,14 +492,12 @@ fun LyricScreen(
                                         else Modifier.clearAndSetSemantics { hideFromAccessibility() }
                                     )
                                     .onSizeChanged { lyricWidthPx = it.width }
-                                    .graphicsLayer {
+                                    .playerAdditiveLayer(opacity = {
                                         // The former nested layers applied this entry fade twice.
                                         val fraction = lyricAlpha.value
                                         val incomingAlpha = if (autoMix != null && incomingLyrics != null) autoMix.progress() else 0f
-                                        alpha = fraction * fraction * (1f - incomingAlpha)
-                                        blendMode = BlendMode.Plus
-                                        compositingStrategy = CompositingStrategy.Offscreen
-                                    },
+                                        fraction * fraction * (1f - incomingAlpha)
+                                    }),
                                 // Keep the second inset and its former buffer clip, without
                                 // another full-viewport additive offscreen layer.
                                 listModifier = Modifier
@@ -541,11 +536,7 @@ fun LyricScreen(
                             if (incomingDominant) Modifier
                             else Modifier.clearAndSetSemantics { hideFromAccessibility() },
                         )
-                        .graphicsLayer {
-                            alpha = autoMix.progress()
-                            blendMode = BlendMode.Plus
-                            compositingStrategy = CompositingStrategy.Offscreen
-                        },
+                        .playerAdditiveLayer(opacity = autoMix::progress),
                     contentModifier = lyricContentModifier,
                     normalTextStyle = mainTextStyle,
                     translationTextStyle = translationTextStyle,

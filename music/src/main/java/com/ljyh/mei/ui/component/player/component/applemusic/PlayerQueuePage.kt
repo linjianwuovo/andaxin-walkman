@@ -2,6 +2,8 @@ package com.ljyh.mei.ui.component.player.component.applemusic
 
 import com.ljyh.mei.ui.component.item.trackPressViewport
 import com.ljyh.mei.ui.component.item.trackRowPressIndication
+import com.ljyh.mei.ui.component.player.component.playerAdditiveLayer
+import com.ljyh.mei.ui.component.sheet.preservePlayerArtworkHdr
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import android.widget.Toast
@@ -114,6 +116,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import com.ljyh.mei.source.script.sourceTrackArtwork
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.kyant.shapes.Capsule
 import com.ljyh.mei.R
@@ -1794,6 +1798,13 @@ internal fun QueueSongRow(
     val title = metadata?.title ?: display.title?.toString().orEmpty()
     val artist = metadata?.artists?.joinToString(", ") { it.name } ?: display.artist?.toString().orEmpty()
     val cover = metadata?.coverUrl ?: display.artworkUri?.toString().orEmpty()
+    val context = LocalContext.current
+    val coverRequest = remember(context, cover, metadata?.trackRef) {
+        ImageRequest.Builder(context)
+            .data(cover.smallImage())
+            .sourceTrackArtwork(metadata?.trackRef)
+            .build()
+    }
     val coverSize = if (landscapeSongListStyle) songListCoverSize(true) else 46.dp
     val coverCorner = if (landscapeSongListStyle) songListCoverCornerRadius(true) else 5.dp
     val dividerColor = if (landscapeSongListStyle) songListDividerColor() else Color.Transparent
@@ -1829,10 +1840,13 @@ internal fun QueueSongRow(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AsyncImage(
-                    model = cover.smallImage(),
+                    model = coverRequest,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(coverSize).clip(ContinuousRoundedRectangle(coverCorner)).then(normalFade),
+                    modifier = Modifier.size(coverSize)
+                        .clip(ContinuousRoundedRectangle(coverCorner))
+                        .then(normalFade)
+                        .preservePlayerArtworkHdr(),
                 )
                 Column(Modifier.weight(1f)
                     .padding(start = 12.dp, end = if (landscapeSongListStyle) 0.dp else 12.dp)
@@ -1923,11 +1937,15 @@ internal fun Modifier.queueViewportFade(
 ): Modifier = composed {
     var contentCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var contentPositionInRoot by remember { mutableStateOf<Offset?>(null) }
-    graphicsLayer {
-        blendMode = if (additive) BlendMode.Plus else BlendMode.SrcOver
-        compositingStrategy = CompositingStrategy.Offscreen
-        outsets = layerOutsets
+    val viewportLayer = if (additive) {
+        Modifier.playerAdditiveLayer { layerOutsets }
+    } else {
+        Modifier.graphicsLayer {
+            compositingStrategy = CompositingStrategy.Offscreen
+            outsets = layerOutsets
+        }
     }
+    viewportLayer
         .onGloballyPositioned {
             contentCoordinates = it
             // LayoutCoordinates is reused while animateItem moves the row. Snapshot its

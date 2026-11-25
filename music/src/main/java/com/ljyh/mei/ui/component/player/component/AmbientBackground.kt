@@ -30,9 +30,11 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
-import com.ljyh.mei.ui.component.player.LocalAutoMixUpcomingArtworkUrl
+import com.ljyh.mei.ui.component.player.LocalAutoMixUpcomingArtwork
 import com.ljyh.mei.ui.component.player.LocalAutoMixVisuals
 import com.ljyh.mei.ui.component.sheet.LocalPlayerSheet
+import com.ljyh.mei.source.api.TrackRef
+import com.ljyh.mei.source.script.sourceTrackArtwork
 import com.skydoves.cloudy.cloudy
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +46,7 @@ fun AmbientBackground(
     imageUrl: String?,
     modifier: Modifier = Modifier,
     animated: Boolean = true,
+    trackRef: TrackRef? = null,
 ) {
     val isDark = LocalGlassColors.current.isDark
     val density = LocalDensity.current
@@ -58,17 +61,18 @@ fun AmbientBackground(
     }
 
     val autoMix = LocalAutoMixVisuals.current
-    val upcomingUrl = LocalAutoMixUpcomingArtworkUrl.current
+    val upcomingArtwork = autoMix?.incoming ?: LocalAutoMixUpcomingArtwork.current
     val sheet = LocalPlayerSheet.current
     val sheetVisible by remember(sheet) {
         derivedStateOf { sheet == null || sheet.state.isExpanded || sheet.isTransitioning }
     }
     val outgoingUrl = imageUrl?.takeIf(String::isNotBlank)
     val incomingUrl = autoMix?.incoming?.coverUrl?.takeIf(String::isNotBlank)
-    val prewarmUrl = (if (autoMix == null) upcomingUrl else incomingUrl)
+    val prewarmUrl = upcomingArtwork?.coverUrl
         ?.takeIf { sheetVisible && it.isNotBlank() && it != outgoingUrl }
     val loadedPalettes = listOfNotNull(outgoingUrl, prewarmUrl).associateWith { url ->
-        key(url, isDark) { rememberAmbientPalette(url, isDark) }
+        val artworkRef = if (url == outgoingUrl) trackRef else upcomingArtwork?.trackRef
+        key(url, isDark) { rememberAmbientPalette(url, isDark, artworkRef) }
     }
     val mixPalette = when {
         autoMix == null || incomingUrl == outgoingUrl -> null
@@ -180,12 +184,13 @@ fun AmbientBackground(
 }
 
 @Composable
-private fun rememberAmbientPalette(imageUrl: String, isDark: Boolean): List<Color>? {
+private fun rememberAmbientPalette(imageUrl: String, isDark: Boolean, trackRef: TrackRef?): List<Color>? {
     val context = LocalContext.current
     val colors by produceState<List<Color>?>(null, imageUrl, isDark) {
         val result = context.imageLoader.execute(
             ImageRequest.Builder(context)
                 .data(imageUrl)
+                .sourceTrackArtwork(trackRef)
                 .size(200)
                 .allowHardware(false)
                 .build(),

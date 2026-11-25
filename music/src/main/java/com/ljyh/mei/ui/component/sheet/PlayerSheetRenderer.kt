@@ -33,6 +33,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,6 +52,8 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.Path
@@ -70,8 +73,13 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.registerOnLayoutRectChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.node.DelegatableNode.RegistrationHandle
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.UnplacedAwareModifierNode
+import androidx.compose.ui.node.requireLayoutCoordinates
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -96,6 +104,7 @@ import io.github.neoruaa.glasmio.core.LocalGlassColors
 import com.ljyh.mei.ui.component.player.AutoMixIncomingArtwork
 import com.ljyh.mei.ui.component.player.LocalMiniPlayerAppearance
 import com.ljyh.mei.ui.component.player.LocalPlayerArtwork
+import com.ljyh.mei.ui.component.player.component.usesLegacyPlayerBlendClamp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -114,6 +123,7 @@ internal class PlayerSheetLayers(
     private val scope: CoroutineScope,
 ) {
     val trackSwipe = com.ljyh.mei.ui.component.player.PlayerTrackSwipeState(scope)
+    val hdrArtworkBounds = mutableStateMapOf<Modifier.Node, Rect>()
     private val motionPath = PlayerSheetMotionPath(state.isExpanded)
     var coverSwipeEnabled by mutableStateOf(false)
     var metadataSwipeActive by mutableStateOf(false)
@@ -271,6 +281,12 @@ internal class PlayerSheetLayers(
     val targetArtworkLayoutSize get() = targetArtworkGeometry.layoutSize
     val targetArtworkOpacity get() = targetArtworkGeometry.opacity
     val targetArtworkClipBounds get() = targetArtworkGeometry.clipBounds
+    val visibleArtworkBounds: Rect
+        get() {
+            val artwork = targetArtworkGeometry
+            if (artwork.opacity <= 0f) return Rect.Zero
+            return artwork.clipBounds?.let(artwork.bounds::intersect) ?: artwork.bounds
+        }
     // Ownership only changes when eligibility changes. Its geometry may read the
     // press-release progress, but endpoint display lists need no per-frame invalidation.
     private val artworkOwnership = derivedStateOf(structuralEqualityPolicy()) {
@@ -480,6 +496,51 @@ internal fun Modifier.playerArtwork(
             // Endpoint drawing never records a second copy for the shared artwork.
             if (!shared || !layers.sharesArtwork) drawContent()
         }
+}
+
+@Composable
+internal fun Modifier.preservePlayerArtworkHdr(): Modifier {
+    if (!usesLegacyPlayerBlendClamp()) return this
+    val layers = LocalPlayerSheet.current ?: return this
+    return this then PreservePlayerArtworkHdrElement(layers)
+}
+
+private data class PreservePlayerArtworkHdrElement(
+    val layers: PlayerSheetLayers,
+) : ModifierNodeElement<PreservePlayerArtworkHdrNode>() {
+    override fun create() = PreservePlayerArtworkHdrNode(layers)
+
+    override fun update(node: PreservePlayerArtworkHdrNode) {
+        node.updateSheet(layers)
+    }
+}
+
+private class PreservePlayerArtworkHdrNode(
+    private var layers: PlayerSheetLayers,
+) : Modifier.Node(), UnplacedAwareModifierNode {
+    private var registration: RegistrationHandle? = null
+
+    override fun onAttach() {
+        registration = registerOnLayoutRectChanged(throttleMillis = 0, debounceMillis = 0) {
+            layers.hdrArtworkBounds[this] = requireLayoutCoordinates().boundsInRoot()
+        }
+    }
+
+    override fun onUnplaced() {
+        layers.hdrArtworkBounds.remove(this)
+    }
+
+    override fun onDetach() {
+        registration?.unregister()
+        registration = null
+        onUnplaced()
+    }
+
+    fun updateSheet(sheet: PlayerSheetLayers) {
+        if (layers === sheet) return
+        layers.hdrArtworkBounds.remove(this)?.let { sheet.hdrArtworkBounds[this] = it }
+        layers = sheet
+    }
 }
 
 @Composable
@@ -738,7 +799,32 @@ fun BottomSheet(
     BackHandler(enabled = active || (!collapsed && !dismissed), onBack = layers::collapse)
 
     val hostDensity = LocalDensity.current.density
-    Box(modifier.fillMaxSize().onGloballyPositioned { layers.updateHost(it.boundsInRoot(), hostDensity) }) {
+    val brightnessLimit = if (usesLegacyPlayerBlendClamp()) {
+        Modifier.drawWithContent {
+            drawContent()
+            // Once the glass hands off to the opaque player, clamp the completed Plus result in place.
+            if (!expanded) return@drawWithContent
+            val origin = layers.hostBounds.topLeft
+            val canvas = drawContext.canvas
+            canvas.save()
+            try {
+                val visibleArtwork = layers.visibleArtworkBounds
+                if (visibleArtwork.isUsable()) {
+                    canvas.clipRect(visibleArtwork.translate(-origin), ClipOp.Difference)
+                }
+                for (bounds in layers.hdrArtworkBounds.values) {
+                    canvas.clipRect(bounds.translate(-origin), ClipOp.Difference)
+                }
+                drawRect(Color.White, blendMode = BlendMode.Darken)
+            } finally {
+                canvas.restore()
+            }
+        }
+    } else Modifier
+    Box(modifier.fillMaxSize()
+        .onGloballyPositioned { layers.updateHost(it.boundsInRoot(), hostDensity) }
+        .then(brightnessLimit)
+    ) {
         if (!dismissed || onDismiss == null) {
             Box(
                 Modifier.align(Alignment.TopCenter)

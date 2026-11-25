@@ -615,13 +615,32 @@ internal class ScriptMusicProvider(
     override suspend fun getTrack(ref: TrackRef): Track? = validated {
         requireRef(ref)
         catalogRead { read ->
-            catalog.tracks(read.owner, listOf(ref)) { ensureCatalog(read) }[ref]?.let { return@catalogRead it }
-            val result = invoke("catalog.track", JsonObject().apply { addProperty("trackId", ref.trackId) })
-            if (result.isJsonNull) return@catalogRead null
-            parseCatalogTrack(result.asJsonObject).also {
-                if (it.ref != ref) invalid()
-                catalog.putTracks(read.owner, listOf(it)) { ensureCatalog(read) }
-            }
+            catalog.tracks(read.owner, listOf(ref)) { ensureCatalog(read) }[ref] ?: fetchTrack(ref, read)
+        }
+    }
+
+    internal suspend fun refreshTrackArtwork(
+        ref: TrackRef,
+        identity: String,
+        revision: String?,
+        isAvailable: (String) -> Boolean,
+    ): String? = validated {
+        requireRef(ref)
+        if ("catalog.track" !in manifest.capabilities) return@validated null
+        catalogRead { read ->
+            if (read.owner.account != revision) throw CancellationException("Source artwork owner changed")
+            ensureArtworkCurrent(identity)
+            val cached = catalog.tracks(read.owner, listOf(ref)) { ensureCatalog(read) }[ref]?.artworkUrl
+            cached?.takeIf(isAvailable) ?: fetchTrack(ref, read)?.artworkUrl?.takeIf(String::isNotBlank)
+        }
+    }
+
+    private suspend fun fetchTrack(ref: TrackRef, read: CatalogRead): Track? {
+        val result = invoke("catalog.track", JsonObject().apply { addProperty("trackId", ref.trackId) })
+        if (result.isJsonNull) return null
+        return parseCatalogTrack(result.asJsonObject).also {
+            if (it.ref != ref) invalid()
+            catalog.putTracks(read.owner, listOf(it)) { ensureCatalog(read) }
         }
     }
 

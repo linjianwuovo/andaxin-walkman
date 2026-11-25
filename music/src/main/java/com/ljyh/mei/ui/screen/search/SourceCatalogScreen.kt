@@ -27,11 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.util.UnstableApi
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.ljyh.mei.data.model.MediaMetadata
 import com.ljyh.mei.data.model.toMediaItem
@@ -42,6 +44,7 @@ import com.ljyh.mei.source.api.ProviderIds
 import com.ljyh.mei.source.api.SourceErrorCode
 import com.ljyh.mei.source.api.Track
 import com.ljyh.mei.source.api.TrackRefCodec
+import com.ljyh.mei.source.script.sourceTrackArtwork
 import com.ljyh.mei.ui.local.LocalPlayerAwareWindowInsets
 import com.ljyh.mei.ui.local.LocalPlayerConnection
 import com.ljyh.mei.ui.navigation.MeiloXPinnedListPage
@@ -172,7 +175,14 @@ fun LazyListScope.SourceTrackResults(
             subtitle = track.artists.joinToString(" / ") { it.name }.takeIf(String::isNotBlank),
             showTopSeparator = index > 0,
             leading = {
-                AsyncImage(track.artworkUrl.smallImage(), null, contentScale = ContentScale.Crop,
+                val context = LocalContext.current
+                val request = remember(context, track.ref, track.artworkUrl) {
+                    ImageRequest.Builder(context)
+                        .data(track.artworkUrl.smallImage())
+                        .sourceTrackArtwork(track.ref)
+                        .build()
+                }
+                AsyncImage(request, null, contentScale = ContentScale.Crop,
                     modifier = Modifier.size(44.dp).clip(ContinuousRoundedRectangle(10.dp)))
             },
             trailing = {

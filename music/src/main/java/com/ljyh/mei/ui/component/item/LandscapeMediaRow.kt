@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.CircleShape
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.ljyh.mei.R
+import com.ljyh.mei.source.api.TrackRef
 import com.ljyh.mei.ui.component.playlist.FavoriteTrackStar
 import com.ljyh.mei.ui.component.playlist.PlayingImageView
 import com.ljyh.mei.ui.component.utils.rememberDeviceInfo
@@ -65,6 +66,7 @@ internal fun LandscapeMediaRow(
     showPressIndication: Boolean = false,
     fullWidthTrackPress: Boolean = false,
     menuAnchorState: GlasmioMenuAnchorState? = null,
+    trackRef: TrackRef? = null,
 ) {
     val colors = LocalGlassColors.current
     if (!landscape) {
@@ -87,6 +89,7 @@ internal fun LandscapeMediaRow(
             showPressIndication = showPressIndication,
             fullWidthTrackPress = fullWidthTrackPress,
             menuAnchorState = menuAnchorState,
+            trackRef = trackRef,
         )
         return
     }
@@ -111,7 +114,7 @@ internal fun LandscapeMediaRow(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PlayingImageView(imageUrl = image, isPlaying = false,
+                    PlayingImageView(imageUrl = image, isPlaying = false, trackRef = trackRef,
                         modifier = Modifier.size(songListCoverSize(true)).clip(ContinuousRoundedRectangle(songListCoverCornerRadius(true))))
                     Text(title, Modifier.weight(if (showAlbum) 1f else 1.25f),
                         fontSize = 16.sp, fontWeight = FontWeight.Normal,
@@ -161,6 +164,7 @@ internal fun PortraitMediaRow(
     showPressIndication: Boolean = false,
     fullWidthTrackPress: Boolean = false,
     menuAnchorState: GlasmioMenuAnchorState? = null,
+    trackRef: TrackRef? = null,
 ) {
     val colors = LocalGlassColors.current
     Box(modifier.fillMaxWidth()) {
@@ -186,6 +190,7 @@ internal fun PortraitMediaRow(
                     PlayingImageView(
                         imageUrl = image,
                         isPlaying = false,
+                        trackRef = trackRef,
                         modifier = Modifier.size(songListCoverSize(false)).clip(ContinuousRoundedRectangle(songListCoverCornerRadius(false))),
                     )
                     Column(Modifier.weight(1f)) {

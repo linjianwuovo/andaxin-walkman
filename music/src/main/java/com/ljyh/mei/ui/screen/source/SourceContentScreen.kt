@@ -902,7 +902,7 @@ fun SourceArtistCatalogScreen(ref: ArtistRef, albums: Boolean, viewModel: Source
                     modifier = Modifier.padding(horizontal = if (landscape) 32.dp else 20.dp),
                     album = track.album.title, favorite = track.toMediaMetadata().mediaId in favoriteIds,
                     showDivider = indexed != visibleTracks.lastOrNull(), fullWidthTrackPress = true,
-                    onMore = { menu = track to it }, menuAnchorState = trackMenuAnchor)
+                    onMore = { menu = track to it }, menuAnchorState = trackMenuAnchor, trackRef = track.ref)
             }
             sourceDetailPagingStatus(state, viewModel::refresh, {
                 if (query.text.isBlank()) viewModel.loadMore() else viewModel.continueArtistCatalogSearch()

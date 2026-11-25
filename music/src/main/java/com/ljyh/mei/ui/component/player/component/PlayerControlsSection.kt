@@ -14,10 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.LayerOutsets
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -143,12 +140,10 @@ internal fun PlayerProgressSection(
     } else PlayerHorizontalPadding + 8.dp
     val modifier = Modifier
         .fillMaxWidth()
-        .graphicsLayer {
-            blendMode = BlendMode.Plus
-            compositingStrategy = CompositingStrategy.Offscreen
+        .playerAdditiveLayer { size ->
             // Keep the portrait blend while allowing the pressed rail and labels to grow.
             val horizontalOutset = (size.width * 0.05f).toDp()
-            outsets = LayerOutsets(
+            LayerOutsets(
                 left = horizontalOutset, right = horizontalOutset,
                 top = 8.dp, bottom = 8.dp,
             )

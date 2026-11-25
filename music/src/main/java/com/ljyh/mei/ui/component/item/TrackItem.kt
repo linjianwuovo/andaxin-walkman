@@ -104,6 +104,7 @@ fun Track(
             PlayingImageView(
                 imageUrl = track.coverUrl.smallImage(),
                 isPlaying = isPlaying,
+                trackRef = track.trackRef,
                 modifier = Modifier
                     .size(if (isTablet) 40.dp else 48.dp)
                     .clip(ContinuousRoundedRectangle(CommonImageRadius))

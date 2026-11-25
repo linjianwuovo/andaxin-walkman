@@ -1014,7 +1014,7 @@ fun SourceLibraryScreen(
                                         isCurrentTrack = item.ref == playingLikedTrack, fullWidthTrackPress = true,
                                         favorite = true, showDivider = item.ref != lastFilteredRef,
                                         onClick = onTrackClick,
-                                        onMore = onTrackMore, menuAnchorState = trackMenuAnchor)
+                                        onMore = onTrackMore, menuAnchorState = trackMenuAnchor, trackRef = item.ref)
                                 }
                             }
                             is SourceItem.PlaylistItem -> {

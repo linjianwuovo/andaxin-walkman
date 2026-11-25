@@ -58,6 +58,8 @@ import com.ljyh.mei.constants.OriginalCoverKey
 import com.ljyh.mei.constants.PlayerStyle
 import com.ljyh.mei.constants.PlayerStyleKey
 import com.ljyh.mei.data.model.MediaMetadata
+import com.ljyh.mei.source.api.TrackRef
+import com.ljyh.mei.source.script.sourceTrackArtwork
 import com.ljyh.mei.ui.component.player.PlayerArtworkTransition
 import com.ljyh.mei.ui.component.player.component.applemusic.rememberAppleMusicPlaybackScale
 import com.ljyh.mei.playback.PlayerConnection
@@ -154,10 +156,12 @@ fun Cover(
                 transitionSpec = { fadeIn(tween(500)) togetherWith fadeOut(tween(500)) },
             ) { coverUrl ->
                 val url = coverUrl.orEmpty()
+                val trackRef = mediaMetadata.trackRef.takeIf { coverUrl == mediaMetadata.coverUrl }
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .placeholderMemoryCacheKey(url.smallImage())
                         .data(if (originalCover) url else url.size1600())
+                        .sourceTrackArtwork(trackRef)
                         .crossfade(false)
                         .build(),
                     contentScale = ContentScale.Crop,
@@ -170,6 +174,7 @@ fun Cover(
         if (showFullImage) {
             FullScreenImageViewer(
                 imageUrl = mediaMetadata.coverUrl,
+                trackRef = mediaMetadata.trackRef,
                 onDismiss = { showFullImage = false }
             )
         }
@@ -185,7 +190,8 @@ fun Cover(
 @Composable
 fun FullScreenImageViewer(
     imageUrl: String,
-    onDismiss: () -> Unit
+    trackRef: TrackRef? = null,
+    onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -210,7 +216,7 @@ fun FullScreenImageViewer(
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(imageUrl)
-
+                    .sourceTrackArtwork(trackRef)
                     .crossfade(true)
                     .build(),
                 contentDescription = "Full Screen Image",

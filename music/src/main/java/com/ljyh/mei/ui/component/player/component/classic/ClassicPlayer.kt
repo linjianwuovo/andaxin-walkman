@@ -144,6 +144,7 @@ fun ClassicPlayer(
         backgroundContent = {
             FluidBackground(
                 imageUrl = mediaMetadata?.coverUrl,
+                trackRef = mediaMetadata?.trackRef,
                 beatMeter = stateContainer.playerConnection.service.beatMeter,
                 isPlaying = isPlaying,
                 alpha = 1f,

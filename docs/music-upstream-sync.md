@@ -6,10 +6,10 @@
 
 | 项目 | 仓库 | 本次固定提交 |
 | --- | --- | --- |
-| MeiloX | `https://github.com/MeiloX/MeiloX` | `a64b25e70e34e12ce04ce340897ad0898a8d2a80` |
+| MeiloX | `https://github.com/MeiloX/MeiloX` | `23f2cc7d818294df25f90a55fa1b99c500b5d026` |
 | Glasmio | `https://github.com/NEORUAA/Glasmio` | `530faa08fb2a7723b71f1a16c16c5e3a62e3cce5` |
 
-MeiloX 提交时间为 2026-11-25 07:15:05 UTC；Glasmio 提交时间为 2026-11-25 09:00:04 UTC。同步期间再次查询 MeiloX `main`，结果仍为上述提交。这里的“最新”指本次查询时的 `main` 源码，不是较早发布的 1.55.1 Release。
+MeiloX 最终固定提交时间为 2026-11-25 14:20:36 UTC；Glasmio 提交时间为 2026-11-25 09:00:04 UTC。初轮同步固定在 `a64b25e70e34e12ce04ce340897ad0898a8d2a80`，收尾复核时发现 `main` 已推进，追加同步了两笔修复。这里的“最新”指本次查询时的 `main` 源码，不是较早发布的 1.55.1 Release。
 
 ### 同步范围
 
@@ -56,3 +56,18 @@ MeiloX 提交时间为 2026-11-25 07:15:05 UTC；Glasmio 提交时间为 2026-11
 ### iOS 原生失败记录
 
 旧运行 `45627514269`（提交 `eefd3dcac5263b2dce2e3457a8d5870d8c35d767`）在音乐 UI 检查失败，已追加到 `docs/ios-parity/native-test-history.json`。修正滚动方向与可用区域检查、单次上移的预期顺序，并改为比较实际均衡器滑杆增益是否在重启后保留；等待新的 macOS 原生运行验证。未将测试源码修正计作通过。
+
+### 收尾追加同步到 `23f2cc7d`
+
+- 补入 `fc6896631`（失效封面引用恢复）与 `23f2cc7d8`（限制 HDR 加色亮度）。本轮比较包含 24 个上游文件；22 个生产文件映射到音乐库，另 1 个 `MainActivity.kt` 改动移植到宿主 `MusicScreen.kt`。
+- 保留音量条及其底部高度预留、胶囊坐标适配、数据源未登录探测保护和标题两行显示。22 个直接映射的生产文件中，17 个与本轮上游完全一致，5 个保留已复核的本地适配。
+- 上游独立应用的 `ScriptPluginInstrumentedTest.kt` 变更保存在证据目录。本地嵌入库没有该仪器测试工程及其 Gradle 依赖，未伪装成已导入或已运行的测试。
+- 第三轮改用 Windows 原生进程启动模拟器，随后同样失联；音量条位置、手势、硬件键同步仍未完成运行验收。保留安装成功及三轮故障证据，不以构建替代实测。
+
+### 最终源码构建验证
+
+- `:app:assembleStableDebug :app:testStableDebugUnitTest --rerun :shared:jvmTest --rerun :shared:compileKotlinIosSimulatorArm64` 通过，耗时 2 分 23 秒。宿主 6 项、共享逻辑 134 项测试，失败／错误／跳过均为 0。iOS 编译任务复用已有结果，不计作原生执行。
+- 调试构建 APK（不作为覆盖安装交付包）：`AndaXin-music-volume-20261125-debug.apk`，101,799,646 字节，SHA-256 `85bf84c5ddc729e537c40b28544dc38b54cd4f5725ed7d04ff78959f4d83b3f4`。这是 Android 调试测试包；音量交互和实际声音仍待设备检查。
+- iOS 对齐账本仍为 279 项、0 项已验收。测试包上传采用 Release 草稿，不发布正式版；iOS 流水线继续使用 `publish=false`。
+
+调试证书 SHA-256 与发布的 v0.9.41 不同，不能覆盖现有安装；已核对原发布密钥库证书与 v0.9.41 一致，另行构建相同发布签名的测试包。密钥与口令不进入仓库。

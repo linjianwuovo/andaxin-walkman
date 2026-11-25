@@ -73,7 +73,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.LayerOutsets
 import androidx.compose.ui.graphics.RectangleShape
@@ -111,6 +110,7 @@ import com.ljyh.mei.ui.component.player.MiniPlayer
 import com.ljyh.mei.ui.component.player.component.FluidBackground
 import com.ljyh.mei.ui.component.player.component.LyricScreen
 import com.ljyh.mei.ui.component.player.component.PlayerControlsSection
+import com.ljyh.mei.ui.component.player.component.playerAdditiveLayer
 import com.ljyh.mei.ui.component.player.overlay.PlayerOverlayHandler
 import com.ljyh.mei.ui.component.player.state.PlayerStateContainer
 import com.ljyh.mei.ui.component.sheet.BottomSheet
@@ -427,6 +427,7 @@ fun AppleMusicPlayer(
             backgroundContent = {
                 FluidBackground(
                     imageUrl = coverUrl,
+                    trackRef = mediaMetadata?.trackRef,
                     beatMeter = stateContainer.playerConnection.service.beatMeter,
                     isPlaying = isPlaying,
                     alpha = 1f,
@@ -1065,14 +1066,12 @@ internal fun Modifier.playerArtworkMotion(
 
 internal fun Modifier.playerContentFade(alpha: State<Float>): Modifier = graphicsLayer {
     this.alpha = alpha.value
-    // Keep descendant Plus blending connected to the background during the fade.
+    // Keep descendant blending connected to the background during the fade.
     compositingStrategy = CompositingStrategy.ModulateAlpha
 }
 
-internal fun Modifier.playerAdditiveBlend(): Modifier = graphicsLayer {
-    blendMode = BlendMode.Plus
-    compositingStrategy = CompositingStrategy.Offscreen
-}
+@Composable
+internal fun Modifier.playerAdditiveBlend(): Modifier = playerAdditiveLayer()
 
 /** Unplace hidden endpoints without changing their measured geometry. */
 private fun Modifier.playerInfoVisibility(visible: Boolean): Modifier =
@@ -1083,6 +1082,7 @@ private fun Modifier.playerInfoVisibility(visible: Boolean): Modifier =
         }
     }.then(if (visible) Modifier else Modifier.clearAndSetSemantics { })
 
+@Composable
 internal fun Modifier.playerInfoMotion(
     opacity: State<Float>,
     progress: State<Float>,
@@ -1091,19 +1091,16 @@ internal fun Modifier.playerInfoMotion(
     fromAlbum: Boolean,
     layerOutsets: LayerOutsets = LayerOutsets.Zero,
     placementOrigin: (() -> Offset)? = null,
-): Modifier = graphicsLayer {
-    val album = albumOrigin()
-    val header = headerOrigin()
-    val offset = appleMusicInfoOffset(
-        album, header, progress.value, fromAlbum,
-        placementOrigin = placementOrigin?.invoke() ?: if (fromAlbum) album else header,
-    )
-    translationX = offset.x
-    translationY = offset.y
-    alpha = opacity.value
-    clip = false
-    // Keep the leading marquee fade inside the additive layer's offscreen buffer.
-    outsets = layerOutsets
-    blendMode = BlendMode.Plus
-    compositingStrategy = CompositingStrategy.Offscreen
-}
+): Modifier = playerAdditiveLayer(
+    opacity = { opacity.value },
+    translation = {
+        val album = albumOrigin()
+        val header = headerOrigin()
+        appleMusicInfoOffset(
+            album, header, progress.value, fromAlbum,
+            placementOrigin = placementOrigin?.invoke() ?: if (fromAlbum) album else header,
+        )
+    },
+    // Include the leading marquee fade in the offscreen buffer.
+    layerOutsets = { layerOutsets },
+)

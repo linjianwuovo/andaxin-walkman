@@ -95,6 +95,7 @@ internal fun DetailTrackRow(
             isCurrentTrack = highlightTitle,
             fullWidthTrackPress = true,
             menuAnchorState = menuAnchorState,
+            trackRef = track.trackRef,
         )
         return
     }
@@ -141,6 +142,7 @@ internal fun DetailTrackRow(
                 PlayingImageView(
                     imageUrl = track.coverUrl.smallImage(),
                     isPlaying = false,
+                    trackRef = track.trackRef,
                     modifier = Modifier
                         .size(artworkSize)
                         .clip(ContinuousRoundedRectangle(songListCoverCornerRadius(compactRows))),
