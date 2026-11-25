@@ -515,16 +515,29 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
             FilterChip(selected = !lyricsVisible, onClick = { controller.setLyricsVisible(false) }, label = { Text("关") })
         }
         SectionTitle("页面与切换")
-        SettingRow("页面顺序") {
-            TextButton(onClick = { controller.setTabOrder(controller.tabOrder.reversed()) }) { Text("反转顺序") }
+        SectionTitle("页面顺序")
+        controller.tabOrder.forEachIndexed { index, label ->
+            Row(
+                Modifier.fillMaxWidth().testTag("music-tab-order-row-$index"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(label, modifier = Modifier.weight(1f))
+                val upEnabled = index > 0
+                val downEnabled = index < controller.tabOrder.size - 1
+                IconButton(onClick = { controller.moveTabOrder(label, index - 1) }, enabled = upEnabled, modifier = Modifier.testTag("music-tab-order-up-$label")) { Text("↑") }
+                IconButton(onClick = { controller.moveTabOrder(label, index + 1) }, enabled = downEnabled, modifier = Modifier.testTag("music-tab-order-down-$label")) { Text("↓") }
+            }
         }
-        Text("下载 / 云盘 / 历史", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("上下箭头调整音乐页顺序，顺序与可见状态分开保存。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SectionTitle("页面可见性")
         listOf("下载", "云盘", "历史").forEach { label ->
-            FilterChip(
-                selected = controller.tabVisibility[label] == true,
-                onClick = { controller.setTabVisible(label, controller.tabVisibility[label] != true) },
-                label = { Text(label) },
-            )
+            SettingRow(label) {
+                Switch(
+                    checked = controller.tabVisibility[label] == true,
+                    onCheckedChange = { controller.setTabVisible(label, it) },
+                    modifier = Modifier.testTag("music-tab-visible-$label"),
+                )
+            }
         }
         SectionTitle("定时关闭")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -551,10 +564,10 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
             }
         }
         SettingRow("翻译歌词") {
-            FilterChip(selected = controller.translateLyrics, onClick = { controller.setTranslateLyrics(!controller.translateLyrics) }, modifier = Modifier.testTag("music-translate-lyrics"), label = { Text(if (controller.translateLyrics) "开" else "关") })
+            Switch(checked = controller.translateLyrics, onCheckedChange = controller::setTranslateLyrics, modifier = Modifier.testTag("music-translate-lyrics"))
         }
         SettingRow("音译 / 罗马音") {
-            FilterChip(selected = controller.romanizeLyrics, onClick = { controller.setRomanizeLyrics(!controller.romanizeLyrics) }, modifier = Modifier.testTag("music-romanize-lyrics"), label = { Text(if (controller.romanizeLyrics) "开" else "关") })
+            Switch(checked = controller.romanizeLyrics, onCheckedChange = controller::setRomanizeLyrics, modifier = Modifier.testTag("music-romanize-lyrics"))
         }
         Text("译文和音译分别显示接口提供的文本；接口未返回时不自动生成。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SectionTitle("均衡器")

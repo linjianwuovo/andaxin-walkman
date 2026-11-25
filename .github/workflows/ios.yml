@@ -313,6 +313,8 @@ jobs:
             testQueueRemovalBeforeCurrentPreservesPausedPosition
             testQueueCurrentRemovalSelectsNeighbourAndKeepsLastSong
             testRepeatAndShuffleControlsRemainIndependent
+            testMusicPageReorderControlsPersistAcrossRelaunch
+            testMusicPageVisibilityControlsToggle
             testPlaybackPreferencesPersistAndTranslationDefaultsEnabled
             testRomanizationIsEnabledByDefaultAndIndependentFromTranslation
           )

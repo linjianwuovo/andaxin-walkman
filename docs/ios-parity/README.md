@@ -54,3 +54,8 @@ No item is accepted yet. Missing items include real DSP equalization, script-sou
 - The iOS default is romanization on, stored independently of translation and exposed through a dedicated seekable text row above the translation.
 - JVM coverage includes timestamp boundary, non-reuse, malformed-safe behavior, independent visibility, YRC preservation and default-on ordering. Isolated lyrics fixtures add romanized-on/romanized-off render cases; XCUITest adds default/independence/persistence checks.
 - This batch is pending native compile/UI evidence. Broader lyric format capabilities and physical/live-service acceptance remain unaccepted.
+
+## 音乐页顺序与可见性批次 — 待原生验证
+- 新增纯 JVM `moveMusicTabOrder`：上下箭头按目标索引移动单个音乐页标签；越界钳到两端，重复/空白/不存在/原地移动返回 null 不改状态。
+- 设置页列出全部页面并提供每页独立 testTag 的上移/下移按钮；下载/云盘/历史可见性开关保留且与顺序分开持久化。
+- JVM 测试覆盖上移、下移、越界、无效输入与连续移动组合；XCUITest 覆盖“移动后重启仍生效”和可见性开关往返。原生执行尚未开始，本批不计入已验收。

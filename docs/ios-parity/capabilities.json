@@ -2773,6 +2773,42 @@
         ".github/scripts/ios_lyrics_smoke.py"
       ],
       "note": "romalrc parsed independently; global nearest 1:1 pairing within 1000 ms preserves original timing, word times and translation. Phonetic appears above translation and has separate seek/hide behavior. Broader TTML/ruby/offset/credits remain unverified gaps."
+    },
+    {
+      "id": "music.pages.reorder",
+      "kind": "behavior",
+      "title": "音乐页顺序可用上下箭头调整并持久化",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/setting/ContentsSetting.kt (页面顺序/可见性)",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicTabOrder.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicTabOrderTest.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "Pure helper preserves current/order semantics; native reorder and persistence tests pending."
+    },
+    {
+      "id": "music.pages.visibility",
+      "kind": "behavior",
+      "title": "音乐下载/云盘/历史页可见性独立于顺序",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/setting/ContentsSetting.kt",
+      "ios": [
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicStore.ios.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "Visibility controls retained with explicit tags; native execution pending."
     }
   ]
 }

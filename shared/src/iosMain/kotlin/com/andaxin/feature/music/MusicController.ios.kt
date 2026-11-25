@@ -323,6 +323,12 @@ class MusicController(
         MusicStore.saveTabOrder(tabOrder)
     }
 
+    fun moveTabOrder(label: String, toIndex: Int) {
+        val next = moveMusicTabOrder(tabOrder, label, toIndex) ?: return
+        tabOrder = next
+        MusicStore.saveTabOrder(tabOrder)
+    }
+
     fun setTabVisible(label: String, visible: Boolean) {
         tabVisibility = tabVisibility + (label to visible)
         MusicStore.saveTabVisibility(tabVisibility)

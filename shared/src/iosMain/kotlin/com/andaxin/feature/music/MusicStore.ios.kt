@@ -10,8 +10,37 @@ internal object MusicStore {
 
     private val defaults: NSUserDefaults get() = NSUserDefaults.standardUserDefaults
 
+    /**
+     * 整数读数同时接 NSNumber 和 NSString：正常用户手上只会是 NSNumber，
+     * 但 UI 测试是拿启动参数喂 argument domain 的，那儿存进来的永远是字符串。
+     * integerForKey/doubleForKey 对字符串的转换在不同 iOS 版本上不一致（18.5 上
+     * integerForKey 拿到 "1" 回的是 0），所以自己判类型，别再赌系统替我们转。
+     */
+    private fun longDefault(key: String): Long = when (val value = defaults.objectForKey(key)) {
+        is NSNumber -> value.longLongValue
+        is Any -> value.toString().trim().toLongOrNull() ?: 0L
+        else -> 0L
+    }
+
+    private fun doubleDefault(key: String): Double = when (val value = defaults.objectForKey(key)) {
+        is NSNumber -> value.doubleValue
+        is Any -> value.toString().trim().toDoubleOrNull() ?: 0.0
+        else -> 0.0
+    }
+
+    private fun boolDefault(key: String): Boolean? = when (val value = defaults.objectForKey(key)) {
+        is NSNumber -> value.boolValue
+        is Any -> when (value.toString().trim().lowercase()) {
+            "1", "true", "yes" -> true
+            "0", "false", "no" -> false
+            else -> null
+        }
+        else -> null
+    }
+
     private const val KEY_MUSIC_U = "music.musicU"
     private const val KEY_QUEUE = "music.queue"
+    private const val KEY_QUEUE_SEED = "music.queueSeed"
     private const val KEY_INDEX = "music.index"
     private const val KEY_POSITION = "music.position"
     private const val KEY_RESTORE_POSITION = "music.restorePosition"
@@ -47,23 +76,35 @@ internal object MusicStore {
         }
     }
 
-    fun loadQueue(): List<MusicSong> = decodeQueue(defaults.stringForKey(KEY_QUEUE).orEmpty())
+    /**
+     * UI 测试是拿启动参数喂 argument domain 的，而 argv 里塞裸制表符/换行在
+     * 传输链上不可靠（18.5 那两发恢复的全都只解出一首歌）。测试专用键
+     * music.queueSeed 传一行"反斜杠转义"文本，这里自己解回 	/
+ 再走同一套解码；
+     * 真实用户走的是 saveQueue 写进去的原生格式，两个键互不影响。
+     */
+    fun loadQueue(): List<MusicSong> {
+        val seed = defaults.stringForKey(KEY_QUEUE_SEED).orEmpty()
+        val raw = if (seed.isNotEmpty()) unescapeQueueSeed(seed) else defaults.stringForKey(KEY_QUEUE).orEmpty()
+        return decodeQueue(raw)
+    }
 
     fun saveQueue(queue: List<MusicSong>, index: Int) {
         defaults.setObject(encodeQueue(queue), forKey = KEY_QUEUE)
         defaults.setInteger(index.toLong(), forKey = KEY_INDEX)
     }
 
-    fun loadIndex(): Int = defaults.integerForKey(KEY_INDEX).toInt()
 
-    fun loadPosition(): Double = validMusicPosition(defaults.doubleForKey(KEY_POSITION))
+    fun loadIndex(): Int = longDefault(KEY_INDEX).toInt()
+
+    fun loadPosition(): Double = validMusicPosition(doubleDefault(KEY_POSITION))
 
     fun savePosition(seconds: Double) {
         defaults.setDouble(validMusicPosition(seconds), forKey = KEY_POSITION)
     }
 
     fun loadRestorePlaybackPosition(): Boolean =
-        (defaults.objectForKey(KEY_RESTORE_POSITION) as? NSNumber)?.boolValue ?: true
+        boolDefault(KEY_RESTORE_POSITION) ?: true
 
     fun saveRestorePlaybackPosition(value: Boolean) {
         defaults.setBool(value, forKey = KEY_RESTORE_POSITION)
@@ -120,14 +161,14 @@ internal object MusicStore {
     }
 
     fun loadLoopPlayback(): Boolean =
-        (defaults.objectForKey(KEY_LOOP_PLAYBACK) as? NSNumber)?.boolValue ?: true
+        boolDefault(KEY_LOOP_PLAYBACK) ?: true
 
     fun saveLoopPlayback(value: Boolean) {
         defaults.setBool(value, forKey = KEY_LOOP_PLAYBACK)
     }
 
     fun loadAlwaysPrevious(): Boolean =
-        (defaults.objectForKey(KEY_ALWAYS_PREVIOUS) as? NSNumber)?.boolValue ?: true
+        boolDefault(KEY_ALWAYS_PREVIOUS) ?: true
 
     fun saveAlwaysPrevious(value: Boolean) {
         defaults.setBool(value, forKey = KEY_ALWAYS_PREVIOUS)
@@ -142,19 +183,14 @@ internal object MusicStore {
         defaults.setObject(items.take(20).map { it as Any }, forKey = KEY_SEARCH_HISTORY)
     }
 
-    fun loadBitrate(): Int {
-        val value = defaults.integerForKey(KEY_BITRATE).toInt()
-        return if (value == 320000) 320000 else 128000
-    }
+    fun loadBitrate(): Int =
+        if (longDefault(KEY_BITRATE) == 320000L) 320000 else 128000
 
     fun saveBitrate(value: Int) {
         defaults.setInteger(value.toLong(), forKey = KEY_BITRATE)
     }
 
-    fun loadLyricsVisible(): Boolean {
-        val value = defaults.objectForKey(KEY_LYRICS_VISIBLE) ?: return true
-        return (value as? NSNumber)?.boolValue ?: true
-    }
+    fun loadLyricsVisible(): Boolean = boolDefault(KEY_LYRICS_VISIBLE) ?: true
 
     fun saveLyricsVisible(value: Boolean) {
         defaults.setBool(value, forKey = KEY_LYRICS_VISIBLE)
@@ -189,14 +225,14 @@ internal object MusicStore {
         defaults.setObject(label, forKey = KEY_TAB_SELECTED)
     }
 
-    fun loadSleepMinutes(): Int = defaults.integerForKey(KEY_SLEEP_MINUTES).toInt().coerceIn(0, 240)
+    fun loadSleepMinutes(): Int = longDefault(KEY_SLEEP_MINUTES).coerceIn(0, 240).toInt()
 
     fun saveSleepMinutes(value: Int) {
         defaults.setInteger(value.coerceIn(0, 240).toLong(), forKey = KEY_SLEEP_MINUTES)
     }
 
     fun loadLyricFontSize(): Int {
-        val value = defaults.integerForKey(KEY_LYRIC_FONT).toInt()
+        val value = longDefault(KEY_LYRIC_FONT).toInt()
         return if (value in 14..32) value else 20
     }
 
@@ -211,14 +247,14 @@ internal object MusicStore {
     }
 
     fun loadTranslateLyrics(): Boolean =
-        (defaults.objectForKey(KEY_TRANSLATE_LYRICS) as? NSNumber)?.boolValue ?: true
+        boolDefault(KEY_TRANSLATE_LYRICS) ?: true
 
     fun saveTranslateLyrics(value: Boolean) {
         defaults.setBool(value, forKey = KEY_TRANSLATE_LYRICS)
     }
 
     fun loadRomanizeLyrics(): Boolean =
-        (defaults.objectForKey(KEY_ROMANIZE_LYRICS) as? NSNumber)?.boolValue ?: true
+        boolDefault(KEY_ROMANIZE_LYRICS) ?: true
 
     fun saveRomanizeLyrics(value: Boolean) {
         defaults.setBool(value, forKey = KEY_ROMANIZE_LYRICS)

@@ -35,6 +35,33 @@ fun decodeQueue(text: String): List<MusicSong> {
     }
 }
 
+/**
+ * UI 测试的队列种子只能走启动参数，而 argv 里裸 \t/\n 在传输链上不可靠，
+ * 所以测试专用键 music.queueSeed 传转义文本（\t \n \r 双写反斜杠），
+ * 这里解回原生队列格式后走上面同一套 decodeQueue。真实用户写的键不受影响。
+ */
+fun unescapeQueueSeed(text: String): String {
+    val out = StringBuilder(text.length)
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        if (c == '\\' && i + 1 < text.length) {
+            when (text[i + 1]) {
+                't' -> out.append(FIELD)
+                'n' -> out.append(RECORD)
+                'r' -> out.append('\r')
+                '\\' -> out.append('\\')
+                else -> out.append(text[i + 1])
+            }
+            i += 2
+        } else {
+            out.append(c)
+            i += 1
+        }
+    }
+    return out.toString()
+}
+
 private fun escapeField(value: String): String {
     if (value.none { it == '\\' || it == FIELD || it == RECORD }) return value
     val out = StringBuilder(value.length + 8)

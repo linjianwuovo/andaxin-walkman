@@ -35,6 +35,16 @@ class MusicQueueCodecTest {
     }
 
     @Test
+    fun 队列种子_转义文本解回原生格式再解码() {
+        // 种子写法：分隔符是两字符转义；字段里的真制表符要双写反斜杠
+        assertEquals("1\tA\tB\tC", unescapeQueueSeed("1\\tA\\tB\\tC"))
+        val songs = decodeQueue(unescapeQueueSeed("1\\tA\\\\tB\\tArt\\tAlb"))
+        assertEquals(1, songs.size)
+        assertEquals("A\tB", songs.single().name)
+        assertTrue(decodeQueue(unescapeQueueSeed("")).isEmpty())
+    }
+
+    @Test
     fun 队列_空串和垃圾串都当没有() {
         assertTrue(decodeQueue("").isEmpty())
         assertTrue(decodeQueue("这不是队列").isEmpty())

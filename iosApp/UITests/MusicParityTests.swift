@@ -8,7 +8,7 @@ final class MusicParityTests: XCTestCase {
         app = XCUIApplication(bundleIdentifier: "com.andaxin.ios")
         app.launchArguments = [
             "-AndaXinGuest",
-            "-music.queue", "1\tRestore check A\tTest artist\tTest album\t\n2\tRestore check B\tTest artist\tTest album\t",
+            "-music.queueSeed", "1\\tRestore check A\\tTest artist\\tTest album\\t\\n2\\tRestore check B\\tTest artist\\tTest album\\t",
             "-music.index", "1",
             "-music.position", "42.5",
             "-music.playing", "YES",
@@ -33,6 +33,11 @@ final class MusicParityTests: XCTestCase {
 
     private func waitFor(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.waitForExistence(timeout: 25), "Missing UI element: \(element)", file: file, line: line)
+    }
+
+    private func openSettingsTab() {
+        // setUp 启动参数已把音乐页选中在“设置”，这里只需把顺序区滚进视野。
+        scrollTo(element("music-tab-order-row-0"))
     }
 
     private func musicTab() {
@@ -75,7 +80,7 @@ final class MusicParityTests: XCTestCase {
     private func assertPaused(position: String, song: String = "Restore check B") {
         let player = element("music-mini-player")
         waitFor(player)
-        XCTAssertTrue(player.label.contains(song), "Restored the wrong song: \(player.label)")
+        XCTAssertTrue(player.label.contains(song), "Restored the wrong song: \(player.label) | tree: \(app.descendants(matching: .any).matching(identifier: "music-mini-player").count) mini players")
         XCTAssertTrue(player.label.contains(position + " / "), "Unexpected playback position: \(player.label)")
         let play = element("music-mini-toggle")
         waitFor(play)
@@ -153,8 +158,8 @@ final class MusicParityTests: XCTestCase {
     }
 
     private func launchQueueEditor() {
-        let queueArgument = app.launchArguments.firstIndex(of: "-music.queue")!
-        app.launchArguments[queueArgument + 1] += "\n3\tRestore check C\tTest artist\tTest album\t"
+        let seedArgument = app.launchArguments.firstIndex(of: "-music.queueSeed")!
+        app.launchArguments[seedArgument + 1] += "\\n3\\tRestore check C\\tTest artist\\tTest album\\t"
         app.launchArguments += ["-music.restorePosition", "YES"]
         app.launch()
         musicTab()
@@ -211,7 +216,7 @@ final class MusicParityTests: XCTestCase {
         closeQueueEditor()
         assertPaused(position: "0:42")
         app.terminate()
-        for key in ["-music.queue", "-music.index"] {
+        for key in ["-music.queueSeed", "-music.index"] {
             let index = app.launchArguments.firstIndex(of: key)!
             app.launchArguments.removeSubrange(index...(index + 1))
         }
@@ -278,6 +283,37 @@ final class MusicParityTests: XCTestCase {
         XCTAssertTrue(element("music-repeat-mode-label").label.contains("全部循环"))
         XCTAssertTrue(element("music-shuffle-mode-label").label.contains("随机开启"))
         capture("repeat-and-shuffle-independent")
+    }
+
+    func testMusicPageReorderControlsPersistAcrossRelaunch() {
+        app.launch()
+        musicTab()
+        openSettingsTab()
+        element("music-tab-order-up-播客").tap()
+        XCTAssertTrue(element("music-tab-order-row-0").label.contains("播客"))
+        XCTAssertTrue(element("music-tab-order-row-1").label.contains("首页"))
+        XCTAssertTrue(element("music-tab-order-row-2").label.contains("发现"))
+        app.terminate()
+        app.launch()
+        musicTab()
+        openSettingsTab()
+        XCTAssertTrue(element("music-tab-order-row-0").label.contains("播客"))
+        XCTAssertTrue(element("music-tab-order-row-1").label.contains("首页"))
+        capture("music-page-order-persisted")
+    }
+
+    func testMusicPageVisibilityControlsToggle() {
+        app.launch()
+        musicTab()
+        openSettingsTab()
+        let historyChip = element("music-tab-visible-历史")
+        scrollTo(historyChip)
+        assertSelected(historyChip, false)
+        historyChip.tap()
+        assertSelected(historyChip, true)
+        historyChip.tap()
+        assertSelected(historyChip, false)
+        capture("music-page-visibility-toggle")
     }
 
     func testRomanizationIsEnabledByDefaultAndIndependentFromTranslation() {
