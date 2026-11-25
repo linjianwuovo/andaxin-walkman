@@ -15,6 +15,11 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import io.github.neoruaa.glasmio.glass.clipGlassShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -71,6 +76,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.LayerOutsets
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -882,13 +889,60 @@ fun AppleMusicPlayer(
 internal fun Modifier.playerArtworkAppearance(
     frame: () -> AppleMusicArtworkFrame,
     opacity: () -> Float,
-): Modifier = graphicsLayer {
-    val current = frame()
-    val scale = (current.bounds.width / size.width.coerceAtLeast(1f)).coerceAtLeast(0.001f)
-    alpha = opacity()
-    shadowElevation = current.shadowElevation / scale
-    shape = ContinuousRoundedRectangle(current.cornerRadius / scale)
-    clip = true
+): Modifier {
+    var cachedShadowHalfPx = Int.MIN_VALUE
+    var cachedShadowShape: Shape = RectangleShape
+    val clipPath = Path()
+    var cachedClipHalfPx = Int.MIN_VALUE
+    var cachedClipSize = Size.Unspecified
+    var cachedClipDirection: LayoutDirection? = null
+    var cachedClipShape: ContinuousRoundedRectangle? = null
+    return graphicsLayer {
+        val current = frame()
+        val scale = (current.bounds.width / size.width.coerceAtLeast(1f)).coerceAtLeast(0.001f)
+        alpha = opacity()
+        shadowElevation = current.shadowElevation / scale
+        val cornerPx = (current.cornerRadius / scale).coerceAtLeast(0f)
+        val halfPx = (cornerPx * 2f).roundToInt()
+        if (halfPx != cachedShadowHalfPx) {
+            cachedShadowHalfPx = halfPx
+            // Analytic hardware outline avoids per-frame 1172x1511 SW shadow path uploads.
+            cachedShadowShape = RoundedCornerShape(halfPx * 0.5f)
+        }
+        shape = cachedShadowShape
+        clip = false
+    }.drawWithContent {
+        val current = frame()
+        val scale = (current.bounds.width / size.width.coerceAtLeast(1f)).coerceAtLeast(0.001f)
+        val cornerPx = (current.cornerRadius / scale).coerceAtLeast(0f)
+        val halfPx = (cornerPx * 2f).roundToInt()
+        val radius = halfPx * 0.5f
+        val shape = if (cachedClipShape != null &&
+            cachedClipHalfPx == halfPx &&
+            cachedClipSize == size &&
+            cachedClipDirection == layoutDirection
+        ) {
+            cachedClipShape!!
+        } else {
+            val next = ContinuousRoundedRectangle(radius)
+            clipPath.rewind()
+            when (val outline = next.createOutline(size, layoutDirection, this)) {
+                is Outline.Rectangle -> clipPath.addRect(outline.rect)
+                is Outline.Rounded -> clipPath.addRoundRect(outline.roundRect)
+                is Outline.Generic -> clipPath.addPath(outline.path)
+            }
+            cachedClipHalfPx = halfPx
+            cachedClipSize = size
+            cachedClipDirection = layoutDirection
+            cachedClipShape = next
+            next
+        }
+        // Keep exact G2 continuous squircle corners bounded to corner tiles without
+        // uploading 1056x1056 SW path masks on every animated fluid-background frame.
+        clipGlassShape(Rect(Offset.Zero, size), radius, shape, clipPath) {
+            this@drawWithContent.drawContent()
+        }
+    }
 }
 
 /** Keep expensive page state alive; only the selected page owns input and clocks. */

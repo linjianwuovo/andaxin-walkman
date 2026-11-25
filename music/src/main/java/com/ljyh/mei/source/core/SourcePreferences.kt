@@ -31,8 +31,17 @@ class SourcePreferences internal constructor(private val store: DataStore<Prefer
     @Inject constructor(@ApplicationContext context: Context) : this(context.dataStore)
     private val gson = Gson()
     private val key = stringPreferencesKey("source_settings_v1")
-    val settings: Flow<SourceSettings> = store.data.map { prefs ->
+    @Volatile
+    var latest: SourceSettings? = null
+        private set
+
+    fun seed(prefs: Preferences): SourceSettings = decode(prefs).also { latest = it }
+
+    private fun decode(prefs: Preferences): SourceSettings =
         prefs[key]?.let { runCatching { gson.fromJson(it, SourceSettings::class.java) }.getOrNull() } ?: SourceSettings()
+
+    val settings: Flow<SourceSettings> = store.data.map { prefs ->
+        decode(prefs).also { latest = it }
     }
     suspend fun snapshot(): SourceSettings = settings.first()
     suspend fun update(transform: (SourceSettings) -> SourceSettings) {

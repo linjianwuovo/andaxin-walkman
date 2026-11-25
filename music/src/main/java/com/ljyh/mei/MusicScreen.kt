@@ -72,6 +72,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -203,6 +204,12 @@ import com.ljyh.mei.ui.component.player.LocalMiniPlayerAppearance
 import com.ljyh.mei.ui.component.player.floatingLyricsPipParams
 import com.ljyh.mei.ui.component.sheet.LocalMiniPlayerChromeHint
 import com.ljyh.mei.ui.component.sheet.LocalMiniPlayerChromeMotion
+import com.ljyh.mei.ui.component.sheet.LocalMiniPlayerSearchBounds
+import com.ljyh.mei.ui.component.sheet.LocalMiniPlayerVerticalOffset
+import com.ljyh.mei.ui.screen.playlist.component.LocalPlaylistLocateHost
+import com.ljyh.mei.ui.screen.playlist.component.LocalPlaylistLocateOwner
+import com.ljyh.mei.ui.screen.playlist.component.PlaylistLocateHostState
+import com.ljyh.mei.ui.screen.playlist.component.PlaylistLocateChromeLayer
 import com.ljyh.mei.ui.component.sheet.MiniPlayerChromeHint
 import com.ljyh.mei.ui.component.sheet.MiniPlayerChromeMotion
 import com.ljyh.mei.ui.component.sheet.rememberMiniPlayerChromeMotion
@@ -272,6 +279,7 @@ import io.github.neoruaa.glasmio.scaffold.dismissedAnchor
 import io.github.neoruaa.glasmio.scaffold.glasmioAdaptiveContent
 import io.github.neoruaa.glasmio.scaffold.glasmioNavigationScrollHint
 import io.github.neoruaa.glasmio.scaffold.navigation.GlasmioNavDisplay
+import io.github.neoruaa.glasmio.scaffold.GlasmioNavigationPhase
 import io.github.neoruaa.glasmio.scaffold.navigation.GlasmioNavHeaderMotion
 import io.github.neoruaa.glasmio.scaffold.navigation.IosNavigationTransitionEffects
 import io.github.neoruaa.glasmio.scaffold.navigation.iosPopTransitionSpec
@@ -312,6 +320,7 @@ interface MusicScreenEntryPoint {
     fun colorRepository(): ColorRepository
     fun sourceLinks(): SourceLinkRouter
     fun sourceRouter(): SourceRouter
+    fun sourcePreferences(): com.ljyh.mei.source.core.SourcePreferences
     fun sourceEffects(): SourcePlatformEffects
 }
 
@@ -348,6 +357,7 @@ fun MusicScreen(
     val colorRepository = entryPoint.colorRepository()
     val sourceLinks = entryPoint.sourceLinks()
     val sourceRouter = entryPoint.sourceRouter()
+    val sourcePreferences = entryPoint.sourcePreferences()
     val sourceEffects = entryPoint.sourceEffects()
     val window = activity.window
     val userData = UserData.VISITOR
@@ -362,15 +372,17 @@ fun MusicScreen(
         activity.addOnPictureInPictureModeChangedListener(listener)
         onDispose { activity.removeOnPictureInPictureModeChangedListener(listener) }
     }
-    // MusicScreen 不是 Activity，没有 onCreate 里预读的那份 Preferences；
-    // 首帧传 null，各开关用自己的默认值，DataStore 首次发射后接上真值。
-    val initialPreferences: Preferences? = null
+    val initialPreferences by produceState<Preferences?>(null, activity, sourcePreferences) {
+        value = activity.dataStore.data.first().also(sourcePreferences::seed)
+    }
+    if (initialPreferences == null) return
     val currentCoverBack = rememberUpdatedState(onCoverBack)
     val context = activity
     val lifecycleOwner = LocalLifecycleOwner.current
     val backStack = rememberNavBackStack(MeiRoute(Screen.Home.route))
     val pageHeaders = remember { MeiloXPageHeaders() }
     val adaptiveNavigation = rememberGlasmioAdaptiveNavigationState()
+    val playlistLocateHost = remember { PlaylistLocateHostState() }
     var sidebarQuery by rememberSaveable { mutableStateOf("") }
     var sidebarLibraryExpanded by rememberSaveable { mutableStateOf(true) }
     val navController = remember(backStack) {
@@ -535,11 +547,16 @@ fun MusicScreen(
     }
     val scrollPlayerSheet = remember { mutableStateOf<GlasmioBottomSheetState?>(null) }
     val navigationScrollAllowed = remember { mutableStateOf(false) }
-    val scrollSheet = scrollPlayerSheet.value
+    val scrollSheetAllowsNavigation by remember(scrollPlayerSheet) {
+        derivedStateOf {
+            val scrollSheet = scrollPlayerSheet.value
+            scrollSheet == null || scrollSheet.isCollapsed || scrollSheet.isDismissed
+        }
+    }
     val navigationScroll = rememberMeiloXNavigationScrollState(
         viewport = pageHeaders.entry(navController.currentRoute ?: Screen.Home.route).viewport,
         enabled = navigationScrollAllowed.value && !active && !keepBottomBarExpanded &&
-            (scrollSheet == null || scrollSheet.isCollapsed || scrollSheet.isDismissed),
+            scrollSheetAllowsNavigation,
     )
     val navigationBarExpanded = keepBottomBarExpanded || !navigationScroll.compactTarget
     LaunchedEffect(keepBottomBarExpanded) {
@@ -593,11 +610,17 @@ fun MusicScreen(
         // then sample [bottomBackdrop] without sampling themselves.
         val bottomBackdrop = rememberLayerBackdrop()
         val pageContentBackdrop = rememberLayerBackdrop()
+        val bottomControlsSource = if (pictureInPictureMode && playerConnection != null) {
+            bottomBackdrop
+        } else {
+            pageContentBackdrop
+        }
         // Popups are hosted in a separate Android window. Wrap the recorded page layer
         // before combining it so its sample coordinates use the popup's real screen
         // position rather than the popup-local overshoot origin.
-        val bottomControlsBackdrop = rememberSharedGlassBackdrop(glassBackdrop, bottomBackdrop)
+        val bottomControlsBackdrop = rememberSharedGlassBackdrop(glassBackdrop, bottomControlsSource)
         CompositionLocalProvider(
+            com.ljyh.mei.ui.local.LocalAppPreferences provides navigationPreferences,
             LocalGlassBackdrop provides glassBackdrop,
             LocalGlassColors provides glassColors,
             LocalGlassAppearance provides GlassAppearance(liquidGlassEnabled, reduceTransparency || nativeControlLensUnsupported),
@@ -1077,6 +1100,14 @@ fun MusicScreen(
                     !playerBottomSheetState.isExpanded || !playerBackgroundReady.value
                 }
             }
+            val locatorBottomPadding = remember(playerBottomSheetState) {
+                {
+                    val miniAnchor = if (playerBottomSheetState.progress == 0f &&
+                        !playerBottomSheetState.isDragging
+                    ) playerBottomSheetState.value else playerBottomSheetState.collapsedBound
+                    miniAnchor + NavigationBarBottomMargin
+                }
+            }
             val pageCacheActive = remember(playerBottomSheetState) {
                 derivedStateOf { playerBottomSheetState.isTransitioning }
             }
@@ -1110,6 +1141,11 @@ fun MusicScreen(
                 hint = miniPlayerHint,
                 centerTravel = miniPlayerCenterTravel,
                 searchVerticalOffset = searchMiniPlayerOffset,
+                searchBoundsState = adaptiveNavigation.tabBarBounds,
+                locatorBottomPadding = locatorBottomPadding,
+                playlistLocateHost = playlistLocateHost,
+                topBarMode = isLandscape,
+                pageVisible = pageVisible,
                 state = playerBottomSheetState,
                 backdrop = bottomControlsBackdrop,
                 pageDarkAppearance = pageDarkAppearance,
@@ -1186,6 +1222,11 @@ fun MusicScreen(
                         hint = miniPlayerHint,
                         centerTravel = miniPlayerCenterTravel,
                         searchVerticalOffset = searchMiniPlayerOffset,
+                        searchBoundsState = adaptiveNavigation.tabBarBounds,
+                        locatorBottomPadding = locatorBottomPadding,
+                        playlistLocateHost = playlistLocateHost,
+                        topBarMode = isLandscape,
+                        pageVisible = pageVisible,
                         state = playerBottomSheetState,
                         backdrop = bottomControlsBackdrop,
                         pageDarkAppearance = pageDarkAppearance,
@@ -1252,9 +1293,7 @@ fun MusicScreen(
                             }
                             // Match the opaque root behind transparent page content. Keep
                             // this outside the backdrop recording so glass samples are intact.
-                            .background(MaterialTheme.colorScheme.background)
-                            .layerBackdrop(bottomBackdrop)
-                            .trackBackdropPosition(bottomBackdrop),
+                            .background(MaterialTheme.colorScheme.background),
                     ) {
                         CompositionLocalProvider(
                             LocalGlassBackdrop provides glassBackdrop,
@@ -1262,12 +1301,28 @@ fun MusicScreen(
                             val entryViewModelOwners = remember {
                                 mutableMapOf<String, MeiNavEntryViewModelStoreOwner>()
                             }
+                            DisposableEffect(entryViewModelOwners) {
+                                onDispose {
+                                    entryViewModelOwners.values.forEach { it.clear() }
+                                    entryViewModelOwners.clear()
+                                }
+                            }
                             val headerMotion = remember {
                                 GlasmioNavHeaderMotion((backStack.last() as MeiRoute).route) { from, to, pop ->
                                     if (from in homeNavigationRoutes && to in homeNavigationRoutes
                                     ) GlasmioNavigationOperation.Tab
                                     else if (pop) GlasmioNavigationOperation.Pop
                                     else GlasmioNavigationOperation.Push
+                                }
+                            }
+                            LaunchedEffect(headerMotion, playlistLocateHost) {
+                                snapshotFlow {
+                                    val frame = headerMotion.frame.value
+                                    val idle = frame.phase == GlasmioNavigationPhase.Idle
+                                    idle to (if (idle) frame.toEntryKey else frame.fromEntryKey)
+                                }.collect { (idle, activeKey) ->
+                                    playlistLocateHost.navigationVisible = idle
+                                    playlistLocateHost.activeEntryKey = activeKey
                                 }
                             }
                             LaunchedEffect(pageHeaders, headerMotion, backStack) {
@@ -1279,7 +1334,10 @@ fun MusicScreen(
                             val viewModelEntryDecorator = remember(context) {
                                 NavEntryDecorator<NavKey>(
                                     onPop = { contentKey ->
-                                        entryViewModelOwners.remove(contentKey.toString())?.clear()
+                                        val key = contentKey.toString()
+                                        if (key !in homeNavigationRoutes) {
+                                            entryViewModelOwners.remove(key)?.clear()
+                                        }
                                     },
                                     decorate = { entry ->
                                         val route = entry.contentKey.toString()
@@ -1349,6 +1407,7 @@ fun MusicScreen(
                                             )
                                         }
                                         CompositionLocalProvider(
+                                            LocalPlaylistLocateOwner provides meiRoute.route,
                                             com.ljyh.mei.ui.navigation.LocalMeiloXSearchTopPadding provides
                                                 if (isLandscape && meiRoute.route == Screen.Search.route) 56.dp + com.ljyh.mei.constants.LandscapeSearchTopAdjustment else 0.dp,
                                             LocalPlayerAwareWindowInsets provides
@@ -1437,51 +1496,67 @@ fun MusicScreen(
                                     }
                                 }) else null,
                             ) {
-                                GlasmioNavDisplay(
-                                    sceneState = sceneState,
-                                    motion = headerMotion,
-                                    // NavDisplay retains this state in remembered gesture calculations.
-                                    navigationEventState = navigationEventState,
-                                    // The scene-state overload needs this callback for in-content swipe back.
-                                    onBack = { navController.popBackStack() },
-                                    swipeBackEnabled = !active && !playerContentVisible,
-                                    modifier = Modifier.fillMaxSize(),
-                                    transitionSpec = {
-                                        if (usesHomeAlphaTransition()) {
-                                            homeAlphaTransition()
-                                        } else {
-                                            iosTransitionSpec<NavKey>(navigationLayoutDirection, density.density).invoke(this)
-                                        }
-                                    },
-                                    popTransitionSpec = {
-                                        if (usesHomeAlphaTransition()) {
-                                            homeAlphaTransition()
-                                        } else {
-                                            iosPopTransitionSpec<NavKey>(navigationLayoutDirection, density.density).invoke(this)
-                                        }
-                                    },
-                                    predictivePopTransitionSpec = { swipeEdge ->
-                                        if (usesHomeAlphaTransition()) {
-                                            homeAlphaTransition()
-                                        } else {
-                                            iosPredictivePopTransitionSpec<NavKey>(navigationLayoutDirection, density.density)
-                                                .invoke(this, swipeEdge)
-                                        }
-                                    },
-                                    transitionEffects = remember(
-                                        navController.usesMiuixTransitionEffects,
-                                    ) {
-                                        if (navController.usesMiuixTransitionEffects) {
-                                            IosNavigationTransitionEffects
-                                        } else {
-                                            NavDisplayTransitionEffects(
-                                                enableCornerClip = false,
-                                                dimAmount = 0f,
-                                                blockInputDuringTransition = false,
-                                            )
-                                        }
-                                    },
-                                )
+                                val pageMiniPlayerVerticalOffset = remember(
+                                    miniPlayerChromeMotion, miniPlayerCenterTravel, searchMiniPlayerOffset,
+                                ) {
+                                    {
+                                        miniPlayerCenterTravel * miniPlayerChromeMotion.verticalProgress.value +
+                                            searchMiniPlayerOffset()
+                                    }
+                                }
+                                CompositionLocalProvider(
+                                    LocalMiniPlayerChromeMotion provides miniPlayerChromeMotion,
+                                    LocalMiniPlayerSearchBounds provides adaptiveNavigation.tabBarBounds,
+                                    LocalMiniPlayerVerticalOffset provides pageMiniPlayerVerticalOffset,
+                                    LocalPlaylistLocateHost provides playlistLocateHost,
+                                ) {
+                                    GlasmioNavDisplay(
+                                        sceneState = sceneState,
+                                        motion = headerMotion,
+                                        // NavDisplay retains this state in remembered gesture calculations.
+                                        navigationEventState = navigationEventState,
+                                        // The scene-state overload needs this callback for in-content swipe back.
+                                        onBack = { navController.popBackStack() },
+                                        swipeBackEnabled = !active && !playerContentVisible,
+                                        retainedTabKeys = homeNavigationRoutes,
+                                        modifier = Modifier.fillMaxSize(),
+                                        transitionSpec = {
+                                            if (usesHomeAlphaTransition()) {
+                                                homeAlphaTransition()
+                                            } else {
+                                                iosTransitionSpec<NavKey>(navigationLayoutDirection, density.density).invoke(this)
+                                            }
+                                        },
+                                        popTransitionSpec = {
+                                            if (usesHomeAlphaTransition()) {
+                                                homeAlphaTransition()
+                                            } else {
+                                                iosPopTransitionSpec<NavKey>(navigationLayoutDirection, density.density).invoke(this)
+                                            }
+                                        },
+                                        predictivePopTransitionSpec = { swipeEdge ->
+                                            if (usesHomeAlphaTransition()) {
+                                                homeAlphaTransition()
+                                            } else {
+                                                iosPredictivePopTransitionSpec<NavKey>(navigationLayoutDirection, density.density)
+                                                    .invoke(this, swipeEdge)
+                                            }
+                                        },
+                                        transitionEffects = remember(
+                                            navController.usesMiuixTransitionEffects,
+                                        ) {
+                                            if (navController.usesMiuixTransitionEffects) {
+                                                IosNavigationTransitionEffects
+                                            } else {
+                                                NavDisplayTransitionEffects(
+                                                    enableCornerClip = false,
+                                                    dimAmount = 0f,
+                                                    blockInputDuringTransition = false,
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
                                 AnimatedVisibility(
                                     visible = active,
                                     enter = fadeIn(),
@@ -1567,7 +1642,13 @@ fun MusicScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         // Keep expanded navigation and both compact controls below the mini-player.
-                        .zIndex(0.5f),
+                        .zIndex(0.5f)
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            layout(placeable.width, placeable.height) {
+                                if (pageVisible.value) placeable.place(0, 0)
+                            }
+                        },
                 ) {
                     AnimatedBottomNavigationRow(
                         compactProgress = compactNavigationProgress,
@@ -1595,6 +1676,7 @@ fun MusicScreen(
                         backdrop = bottomControlsBackdrop,
                         playerBottomSheetState = playerBottomSheetState,
                         bottomMargin = navigationBottomMargin,
+                        onSearchBoundsChanged = { adaptiveNavigation.tabBarBounds.value = it },
                     )
                 }
                 selectionToolbar.content.value?.let { toolbar ->
@@ -1679,8 +1761,13 @@ private fun BoxScope.AnimatedMiniPlayerLayer(
     hint: MiniPlayerChromeHint,
     centerTravel: Dp,
     searchVerticalOffset: () -> Dp,
+    searchBoundsState: State<androidx.compose.ui.geometry.Rect?>,
+    locatorBottomPadding: () -> Dp,
+    playlistLocateHost: PlaylistLocateHostState,
+    topBarMode: Boolean,
     state: GlasmioBottomSheetState,
     backdrop: Backdrop,
+    pageVisible: State<Boolean>,
     pageDarkAppearance: Boolean?,
     onBackgroundReadyChanged: (Boolean) -> Unit,
     lyricsRequest: androidx.compose.runtime.MutableState<Boolean>,
@@ -1689,6 +1776,27 @@ private fun BoxScope.AnimatedMiniPlayerLayer(
         {
             centerTravel * motion.verticalProgress.value +
                 searchVerticalOffset()
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(0.9f)
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) {
+                    if (pageVisible.value) {
+                        placeable.place(0, 0)
+                    }
+                }
+            },
+    ) {
+        CompositionLocalProvider(
+            LocalGlassBackdrop provides backdrop,
+            LocalMiniPlayerSearchBounds provides searchBoundsState,
+            LocalMiniPlayerVerticalOffset provides miniPlayerVerticalOffset,
+        ) {
+            PlaylistLocateChromeLayer(playlistLocateHost, locatorBottomPadding, topBarMode)
         }
     }
     Box(
@@ -1729,6 +1837,7 @@ private fun AnimatedBottomNavigationRow(
     backdrop: Backdrop,
     playerBottomSheetState: GlasmioBottomSheetState,
     bottomMargin: Dp,
+    onSearchBoundsChanged: (androidx.compose.ui.geometry.Rect) -> Unit = {},
 ) {
     GlasmioNavigationBarWithTrailingItem(
         items = items,
@@ -1738,6 +1847,7 @@ private fun AnimatedBottomNavigationRow(
         onSelected = { item -> if (item == Index.Search) onSearchClick() else onSelected(item) },
         compactProgress = compactProgress,
         backdrop = backdrop,
+        onItemBoundsChanged = { key, bounds -> if (key == Index.Search) onSearchBoundsChanged(bounds) },
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = bottomNavigationHorizontalMargin)

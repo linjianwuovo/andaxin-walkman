@@ -138,7 +138,7 @@ internal class MiniPlayerChromeMotion(compact: Boolean) {
 internal val LocalMiniPlayerChromeMotion = staticCompositionLocalOf<MiniPlayerChromeMotion?> { null }
 
 internal val LocalMiniPlayerVerticalOffset = staticCompositionLocalOf<() -> Dp> { { 0.dp } }
-internal val LocalMiniPlayerSearchBounds = staticCompositionLocalOf<Rect?> { null }
+internal val LocalMiniPlayerSearchBounds = staticCompositionLocalOf<State<Rect?>?> { null }
 
 internal data class MiniPlayerChromeHint(
     val progress: State<Float>,

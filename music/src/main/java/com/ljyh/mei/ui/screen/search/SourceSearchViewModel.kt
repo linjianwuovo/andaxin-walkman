@@ -100,11 +100,11 @@ class SourceSearchViewModel @Inject constructor(
     val libraryChoices = combine(providers, registry.revision) { providers, _ -> libraryProviders(providers) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val settings = preferences.settings.map<SourceSettings, SourceSettings?> { it }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, preferences.latest)
     private val browseMode = MutableStateFlow(false)
     val selectedProviderId = combine(settings, browseMode) { settings, browsing ->
         if (browsing) settings?.preferredBrowseProvider.orEmpty() else settings?.preferredSearchProvider.orEmpty()
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, preferences.latest?.preferredSearchProvider.orEmpty())
     private val mutableState = MutableStateFlow(SourceSearchState())
     val state = mutableState.asStateFlow()
     private var request: Job? = null

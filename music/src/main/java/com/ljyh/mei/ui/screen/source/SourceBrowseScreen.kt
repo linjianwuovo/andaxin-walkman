@@ -2,7 +2,10 @@ package com.ljyh.mei.ui.screen.source
 
 import com.ljyh.mei.ui.component.item.trackPressViewport
 import com.ljyh.mei.ui.component.home.homeArtworkBorder
+import android.graphics.RenderEffect as AndroidRenderEffect
+import android.graphics.Shader
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
@@ -87,7 +90,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -192,7 +195,8 @@ import io.github.neoruaa.glasmio.ui.GlasmioAlertDialog
 import io.github.neoruaa.glasmio.ui.GlasmioGroupedList
 import io.github.neoruaa.glasmio.ui.GlasmioListRow
 import io.github.neoruaa.glasmio.ui.GlasmioCard
-import io.github.neoruaa.glasmio.scaffold.rememberGlasmioHeaderCollapse
+import io.github.neoruaa.glasmio.scaffold.rememberGlasmioHeaderCollapseState
+import io.github.neoruaa.glasmio.scaffold.rememberGlasmioHeaderScrollEdgeState
 import com.ljyh.mei.ui.screen.main.home.HomeShimmer
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -269,14 +273,19 @@ fun SourceFeedScreen(
         val device = rememberDeviceInfo()
         val discoverColumns = if (device.isTablet) ((maxWidth - 20.dp) / 176.dp).toInt().coerceAtLeast(1) else 2
         val refreshing = state.providerId == selectedId && state.refreshing
-        val collapseProgress = if (device.isLandscape) 1f else rememberGlasmioHeaderCollapse(listState)
+        val collapseState = rememberGlasmioHeaderCollapseState(listState)
+        val scrollEdgeState = rememberGlasmioHeaderScrollEdgeState(listState)
+        val collapseProvider = remember(device.isLandscape, collapseState) {
+            if (device.isLandscape) ({ 1f }) else ({ collapseState.value })
+        }
+        val scrollEdgeProvider = remember(scrollEdgeState) { { scrollEdgeState.value } }
         registerMeiloXNavigationViewport(listState)
         MeiloXPinnedPage(
             title = title,
             onNavigateBack = if (isNavigationTab) null else ({ nav.navigateUp() }),
             bottomPadding = bottom,
-            collapseProgress = collapseProgress,
-            topBarBlurProgress = rememberGlasmioHeaderScrollEdge(listState),
+            collapseProgressProvider = collapseProvider,
+            topBarBlurProgressProvider = scrollEdgeProvider,
             backgroundColor = if (glassColors.isDark) glassColors.groupedBackground else Color.White,
             actions = {
                 listOfNotNull(
@@ -311,11 +320,20 @@ fun SourceFeedScreen(
                     if (!device.isLandscape) item("source-feed-title") {
                         Text(title, style = IosTypography.largeTitle, color = glassColors.content,
                             modifier = if (kind == FeedKind.HOME) Modifier.graphicsLayer {
-                                alpha = 1f - collapseProgress
-                                scaleX = 1f - .04f * collapseProgress
+                                val collapse = collapseState.value.coerceIn(0f, 1f)
+                                alpha = 1f - collapse
+                                scaleX = 1f - .04f * collapse
                                 scaleY = scaleX
                                 transformOrigin = TransformOrigin(0f, .5f)
-                            }.blur(6.dp * collapseProgress).padding(horizontal = 16.dp)
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    val blurPx = 6.dp.toPx() * collapse
+                                    clip = blurPx >= 0.5f
+                                    renderEffect = if (blurPx >= 0.5f) {
+                                        AndroidRenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP)
+                                            .asComposeRenderEffect()
+                                    } else null
+                                }
+                            }.padding(horizontal = 16.dp)
                                 else Modifier.offset(y = (-10).dp).padding(horizontal = 16.dp, vertical = 6.dp))
                     }
                     if (kind == FeedKind.DISCOVER && categories.isNotEmpty()) item("source-feed-categories") {
@@ -591,7 +609,8 @@ fun SourceLibraryScreen(
     createdViewModel: SourceContentViewModel = hiltViewModel(key = "source-library-created:${category?.name ?: "main"}"),
 ) {
     val context = LocalContext.current
-    val preferences by context.dataStore.data.collectAsState(initial = null)
+    val localPreferences = com.ljyh.mei.ui.local.LocalAppPreferences.current
+    val preferences = localPreferences ?: context.dataStore.data.collectAsState(initial = null).value
     if (preferences == null) { MeiloXLoadingPage(stringResource(category?.titleRes ?: R.string.app_tab_library)); return }
     val style = preferences?.get(LibraryStyleKey).toEnum(LibraryStyle.Default)
     val state by viewModel.state.collectAsState()
@@ -610,10 +629,12 @@ fun SourceLibraryScreen(
     val hasListeningRank = "userPlayRecords" in sourceFeatures["stats"].orEmpty() &&
         "accountDetail" in sourceFeatures["account"].orEmpty()
     val player = LocalPlayerConnection.current
-    val overviewPages = LibraryPage.entries.filter { it in corePages ||
-        it == LibraryPage.Albums && style == LibraryStyle.Default && hasPodcasts ||
-        it == LibraryPage.Podcasts && hasPodcasts || it == LibraryPage.Cloud && hasCloud || it == LibraryPage.History && hasHistory }
-    val pages = overviewPages.filter { it != LibraryPage.Podcasts }
+    val overviewPages = remember(corePages, style, hasPodcasts, hasCloud, hasHistory) {
+        LibraryPage.entries.filter { it in corePages ||
+            it == LibraryPage.Albums && style == LibraryStyle.Default && hasPodcasts ||
+            it == LibraryPage.Podcasts && hasPodcasts || it == LibraryPage.Cloud && hasCloud || it == LibraryPage.History && hasHistory }
+    }
+    val pages = remember(overviewPages) { overviewPages.filter { it != LibraryPage.Podcasts } }
     val savedDefault = LibraryPage.entries.firstOrNull { it.name == preferences?.get(LibraryDefaultPageKey) }
     val defaultPage = if (style == LibraryStyle.Default && savedDefault == LibraryPage.Podcasts) LibraryPage.Albums else savedDefault
     val initialPage = category ?: when (initialCollection) {
@@ -639,7 +660,7 @@ fun SourceLibraryScreen(
         else Screen.LibraryCategory.navigate(nav) { addPath(value.name) }
     }
     val bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()
-    val choices = libraryProviders(providers)
+    val choices = remember(providers) { libraryProviders(providers) }
     val landscape = rememberDeviceInfo().isLandscape
     val colors = LocalGlassColors.current
     val tabPosition = remember { Animatable(pages.indexOf(page).coerceAtLeast(0).toFloat(), 0.001f) }
@@ -776,17 +797,30 @@ fun SourceLibraryScreen(
         player?.mediaMetadata?.collectAsState()?.value?.takeIf { it.supportsNeteaseSongActions }?.trackRef
     } else null
     val extra = createdState.takeIf { needsCreated && it.providerId == selectedId }
-    val displayed = if (page == LibraryPage.Playlists && !showArtists) when (playlistFilter) {
-        "created" -> if (collection == LibraryCollection.CREATED_PLAYLISTS) ownState.items else extra?.items.orEmpty()
-        "saved" -> if (collection == LibraryCollection.SAVED_PLAYLISTS) ownState.items else emptyList()
-        else -> (extra?.items.orEmpty() + ownState.items).distinctBy { it.ref }
-    } else ownState.items
-    val filtered = displayed.filter { item -> query.text.isBlank() || item.title.contains(query.text.trim(), true) || when (item) {
-        is SourceItem.TrackItem -> item.track.artists.any { it.name.contains(query.text.trim(), true) } || item.track.album.title.contains(query.text.trim(), true)
-        is SourceItem.PlaylistItem -> item.playlist.creatorName.contains(query.text.trim(), true)
-        is SourceItem.AlbumItem -> item.album.artists.any { it.name.contains(query.text.trim(), true) }
-        is SourceItem.ArtistItem -> item.artist.name.contains(query.text.trim(), true)
-    } }
+    val displayed = remember(page, showArtists, playlistFilter, collection, ownState.items, extra?.items) {
+        if (page == LibraryPage.Playlists && !showArtists) when (playlistFilter) {
+            "created" -> if (collection == LibraryCollection.CREATED_PLAYLISTS) ownState.items else extra?.items.orEmpty()
+            "saved" -> if (collection == LibraryCollection.SAVED_PLAYLISTS) ownState.items else emptyList()
+            else -> (extra?.items.orEmpty() + ownState.items).distinctBy { it.ref }
+        } else ownState.items
+    }
+    val filtered = remember(displayed, query.text) {
+        val needle = query.text.trim()
+        if (needle.isEmpty()) displayed
+        else displayed.filter { item -> item.title.contains(needle, true) || when (item) {
+            is SourceItem.TrackItem -> item.track.artists.any { it.name.contains(needle, true) } || item.track.album.title.contains(needle, true)
+            is SourceItem.PlaylistItem -> item.playlist.creatorName.contains(needle, true)
+            is SourceItem.AlbumItem -> item.album.artists.any { it.name.contains(needle, true) }
+            is SourceItem.ArtistItem -> item.artist.name.contains(needle, true)
+        } }
+    }
+    val filteredTracks = remember(filtered) {
+        filtered.mapNotNull { (it as? SourceItem.TrackItem)?.track }
+    }
+    val currentFilteredTracks = rememberUpdatedState(filteredTracks)
+    val currentPlayVisible = rememberUpdatedState<((List<Track>, Int, Boolean) -> Unit)>(::playVisible)
+    val rowPaddingModifier = remember(landscape) { Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp) }
+    val lastFilteredRef = filtered.lastOrNull()?.ref
     val combined = ownState.copy(items = displayed, loading = ownState.loading || extra?.loading == true,
         hasMore = ownState.hasMore || extra?.hasMore == true, error = ownState.error ?: extra?.error)
     fun refresh(fromPull: Boolean = false): Boolean {
@@ -825,7 +859,10 @@ fun SourceLibraryScreen(
         if (query.text.isNotBlank() && !combined.loading && combined.error == null && combined.hasMore) { delay(250); more() }
     }
     val collapseDistance = with(androidx.compose.ui.platform.LocalDensity.current) { 56.dp.toPx() }
-    val collapse by remember(listState, collapseDistance) { derivedStateOf { if (listState.firstVisibleItemIndex > 0) 1f else (listState.firstVisibleItemScrollOffset / collapseDistance).coerceIn(0f, 1f) } }
+    val collapseState = remember(listState, collapseDistance) { derivedStateOf { if (listState.firstVisibleItemIndex > 0) 1f else (listState.firstVisibleItemScrollOffset / collapseDistance).coerceIn(0f, 1f) } }
+    val scrollEdgeState = rememberGlasmioHeaderScrollEdgeState(listState)
+    val collapseProvider = remember(collapseState) { { collapseState.value } }
+    val scrollEdgeProvider = remember(scrollEdgeState) { { scrollEdgeState.value } }
     val collectionLoading = combined.loading || ownState.refreshing || extra?.refreshing == true || podcastState?.isSubscriptionsLoading == true ||
         podcastState?.isLoadingMoreSubscriptions == true || cloudState?.isLoading == true ||
         cloudState?.isLoadingMore == true || historyState.isRefreshing
@@ -860,8 +897,8 @@ fun SourceLibraryScreen(
         }
     }
     registerMeiloXNavigationViewport(listState)
-    MeiloXPinnedPage(title = title, bottomPadding = bottom, collapseProgress = collapse,
-        topBarBlurProgress = rememberGlasmioHeaderScrollEdge(listState),
+    MeiloXPinnedPage(title = title, bottomPadding = bottom, collapseProgressProvider = collapseProvider,
+        topBarBlurProgressProvider = scrollEdgeProvider,
         onNavigateBack = if (showArtists) ({ showArtists = false }) else if (isNavigationTab) null else ({ nav.navigateUp() }),
         actions = { listOfNotNull(
             sourceOptionsHeaderAction("source-library-provider", "music.note.list", "切换音源", selectedId, choices.map { it.id to it.displayName }, viewModel::selectProvider),
@@ -919,9 +956,9 @@ fun SourceLibraryScreen(
                         LibraryShareIndication(shareContent) {
                             GlasmioGroupedList(Modifier.padding(bottom = 12.dp)) {
                                 GlasmioListRow(title = stringResource(R.string.library_play_all), systemName = "play.fill", showTopSeparator = false,
-                                    onClick = { playVisible(filtered.filterIsInstance<SourceItem.TrackItem>().map { it.track }, 0, randomStart = true) })
+                                    onClick = { playVisible(filteredTracks, 0, randomStart = true) })
                                 if (hasRadio) GlasmioListRow(title = stringResource(R.string.library_heart_mode), systemName = "heart.circle.fill",
-                                    onClick = { player?.fmStart(filtered.filterIsInstance<SourceItem.TrackItem>().randomOrNull()?.track?.ref?.trackId, selectedId) })
+                                    onClick = { player?.fmStart(filteredTracks.randomOrNull()?.ref?.trackId, selectedId) })
                             }
                         }
                     }
@@ -950,21 +987,45 @@ fun SourceLibraryScreen(
                         }
                     } else items(filtered, key = { "source-library-row:${it.ref}" }) { item ->
                         when (item) {
-                            is SourceItem.TrackItem -> CompositionLocalProvider(
-                                LocalLibraryShareArtwork provides shareContent?.let { LibraryShareArtwork(it, "source-library-row:${item.ref}") },
-                            ) {
-                                LandscapeMediaRow(modifier = Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp), landscape = landscape,
-                                    image = item.artworkUrl, title = item.title, artist = item.track.artists.joinToString(" / ") { it.name },
-                                    detail = if (landscape) formatDuration(item.track.durationMs) else "", album = item.track.album.title,
-                                    isCurrentTrack = item.ref == playingLikedTrack, fullWidthTrackPress = true,
-                                    favorite = true, showDivider = item.ref != filtered.lastOrNull()?.ref,
-                                    onClick = { val tracks = filtered.filterIsInstance<SourceItem.TrackItem>().map { it.track }; playVisible(tracks, tracks.indexOf(item.track)) },
-                                    onMore = { selection.value = item.track to it }, menuAnchorState = trackMenuAnchor)
+                            is SourceItem.TrackItem -> {
+                                val artwork = remember(shareContent, item.ref) {
+                                    shareContent?.let { LibraryShareArtwork(it, "source-library-row:${item.ref}") }
+                                }
+                                val artistText = remember(item.track.artists) {
+                                    item.track.artists.joinToString(" / ") { it.name }
+                                }
+                                val detailText = remember(landscape, item.track.durationMs) {
+                                    if (landscape) formatDuration(item.track.durationMs) else ""
+                                }
+                                val onTrackClick = remember(item.track) {
+                                    {
+                                        val tracks = currentFilteredTracks.value
+                                        val idx = tracks.indexOf(item.track)
+                                        if (idx >= 0) currentPlayVisible.value(tracks, idx, false)
+                                    }
+                                }
+                                val onTrackMore = remember(item.track, selection) {
+                                    { rect: Rect -> selection.value = item.track to rect }
+                                }
+                                CompositionLocalProvider(LocalLibraryShareArtwork provides artwork) {
+                                    LandscapeMediaRow(modifier = rowPaddingModifier, landscape = landscape,
+                                        image = item.artworkUrl, title = item.title, artist = artistText,
+                                        detail = detailText, album = item.track.album.title,
+                                        isCurrentTrack = item.ref == playingLikedTrack, fullWidthTrackPress = true,
+                                        favorite = true, showDivider = item.ref != lastFilteredRef,
+                                        onClick = onTrackClick,
+                                        onMore = onTrackMore, menuAnchorState = trackMenuAnchor)
+                                }
                             }
-                            is SourceItem.PlaylistItem -> LandscapeMediaRow(modifier = Modifier.padding(horizontal = if (landscape) 0.dp else 4.dp), image = item.artworkUrl,
-                                title = item.title, artist = item.playlist.creatorName, detail = stringResource(R.string.playlist_song_count, item.playlist.trackCount),
-                                onClick = { navigateSourceContent(nav, item.ref) }, navigationArrow = true,
-                                showPressIndication = true, showDivider = item.ref != filtered.lastOrNull()?.ref)
+                            is SourceItem.PlaylistItem -> {
+                                val onPlaylistClick = remember(nav, item.ref) {
+                                    { navigateSourceContent(nav, item.ref) }
+                                }
+                                LandscapeMediaRow(modifier = rowPaddingModifier, image = item.artworkUrl,
+                                    title = item.title, artist = item.playlist.creatorName, detail = stringResource(R.string.playlist_song_count, item.playlist.trackCount),
+                                    onClick = onPlaylistClick, navigationArrow = true,
+                                    showPressIndication = true, showDivider = item.ref != lastFilteredRef)
+                            }
                             else -> Unit
                         }
                     }
@@ -1153,7 +1214,8 @@ private fun SourceTrackBrowseLoading() {
 @Composable
 private fun SourceBrowseScrollRequests(listState: LazyListState) {
     val nav = LocalNavController.current
-    val entry = nav.currentBackStackEntry
+    val owner = com.ljyh.mei.ui.screen.playlist.component.LocalPlaylistLocateOwner.current
+    val entry = nav.currentBackStackEntry?.takeIf { owner == null || it.route == owner }
     val scrollToTop by entry?.savedStateHandle?.getStateFlow("scrollToTop", false)?.collectAsState(initial = false)
         ?: remember { mutableStateOf(false) }
     LaunchedEffect(scrollToTop, listState) {

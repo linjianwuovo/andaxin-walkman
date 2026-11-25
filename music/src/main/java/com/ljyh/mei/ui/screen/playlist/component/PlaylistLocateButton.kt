@@ -189,7 +189,7 @@ private fun PlaylistLocateButtonChrome(
     navigationVisible: Boolean,
 ) {
     val miniPlayerVerticalOffset = LocalMiniPlayerVerticalOffset.current
-    val searchBounds = LocalMiniPlayerSearchBounds.current
+    val searchBoundsState = LocalMiniPlayerSearchBounds.current
     var buttonBounds by remember(registration) { mutableStateOf<Rect?>(null) }
 
     AnimatedVisibility(
@@ -199,6 +199,7 @@ private fun PlaylistLocateButtonChrome(
         modifier = modifier
             .onGloballyPositioned { buttonBounds = it.boundsInWindow() }
             .offset {
+                val searchBounds = searchBoundsState?.value
                 val x = searchBounds?.right?.minus(buttonBounds?.right ?: searchBounds.right) ?: 0f
                 androidx.compose.ui.unit.IntOffset(
                     x.roundToInt(),

@@ -28,8 +28,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +47,8 @@ import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import com.ljyh.mei.utils.largeImage
+
+private val PlaylistCardShape = ContinuousRoundedRectangle(8.dp)
 
 @Composable
 fun PlaylistCard(
@@ -69,7 +73,6 @@ fun PlaylistCard(
     Column(
         modifier = Modifier
             .width(cardSize)
-            .clip(ContinuousRoundedRectangle(8.dp)) // 整个组件裁切，防止水波纹溢出
             .clickable(
                 interactionSource = null,
                 indication = null,
@@ -77,14 +80,18 @@ fun PlaylistCard(
             )
     ) {
         Box(
-            modifier = Modifier.size(cardSize)
-                .homeArtworkBorder(ContinuousRoundedRectangle(8.dp))
+            modifier = Modifier
+                .size(cardSize)
+                // Cache the static squircle-clipped artwork + border tile in a GPU layer to avoid
+                // per-frame SW path mask texture uploads during scrolling and nav transitions.
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .homeArtworkBorder(PlaylistCardShape)
         ) {
             HomeCoverImage(
                 model = coverImg.takeIf(String::isNotBlank)?.let { if (imageSize) it.largeImage() else it },
                 modifier = Modifier
                     .matchParentSize()
-                    .clip(ContinuousRoundedRectangle(8.dp)),
+                    .clip(PlaylistCardShape),
             )
 
             // 底部左侧副标题 (如果有)

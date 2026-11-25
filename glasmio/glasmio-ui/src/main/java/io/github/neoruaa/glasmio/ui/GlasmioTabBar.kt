@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toIntSize
+import com.kyant.capsule.ContinuousRoundedRectangle
 import com.kyant.shapes.Capsule
 import io.github.neoruaa.glasmio.core.IosTypography
 import io.github.neoruaa.glasmio.core.LocalGlassAppearance
@@ -57,11 +58,13 @@ import io.github.neoruaa.glasmio.glass.rememberNavigationInnerShadows
 import io.github.neoruaa.glasmio.glass.render.Backdrop
 import io.github.neoruaa.glasmio.glass.render.rememberGlassMaterialContext
 import io.github.neoruaa.glasmio.glass.nativeControlLens
+import io.github.neoruaa.glasmio.glass.warmupNativeSheetGlass
 import io.github.neoruaa.glasmio.glass.render.backdrops.emptyBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.layerBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberCombinedBackdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
 import io.github.neoruaa.glasmio.glass.render.drawPlainBackdrop
+import io.github.neoruaa.glasmio.glass.render.isRuntimeShaderSupported
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import kotlinx.coroutines.launch
@@ -447,5 +450,44 @@ fun <T> GlasmioTabBar(
                 .then(highlight.gestureModifier)
                 .then(animation.modifier),
         )
+        if (selectedIndex >= 0 && appearance.usesRefraction && isRuntimeShaderSupported()) {
+            var warmed by remember { mutableStateOf(false) }
+            if (!warmed) {
+                LaunchedEffect(Unit) {
+                    withFrameNanos { }
+                    withFrameNanos { warmed = true }
+                }
+                Box(
+                    Modifier
+                        .size(8.dp, 8.dp)
+                        .clearAndSetSemantics { }
+                        .graphicsLayer { alpha = 0.004f }
+                        .drawPlainBackdrop(
+                            backdrop = emptyBackdrop(),
+                            shape = { Capsule() },
+                            effects = {
+                                nativeControlLens(
+                                    style = NativeControlLensStyle.TabBarIndicator,
+                                    liftProgress = 0.5f,
+                                    isDark = colors.isDark,
+                                    liftedContent = emptyBackdrop(),
+                                )
+                            },
+                        ),
+                )
+                Box(
+                    Modifier
+                        .size(24.dp, 24.dp)
+                        .clearAndSetSemantics { }
+                        .graphicsLayer { alpha = 0.004f }
+                        .drawPlainBackdrop(
+                            backdrop = emptyBackdrop(),
+                            shape = { ContinuousRoundedRectangle(8.dp) },
+                            samplingScale = { _, _ -> 0.5f },
+                            effects = { warmupNativeSheetGlass(colors.isDark) },
+                        ),
+                )
+            }
+        }
     }
 }

@@ -1,6 +1,9 @@
 package com.ljyh.mei.ui.navigation
 
 import com.ljyh.mei.ui.component.item.trackPressViewport
+import android.graphics.RenderEffect as AndroidRenderEffect
+import android.graphics.Shader
+import android.os.Build
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -12,9 +15,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -185,8 +188,10 @@ fun MeiloXPinnedPage(
     actionsSeparationProgress: Float? = null,
     actionSearch: GlasmioHeaderSearchState? = null,
     collapseProgress: Float = 1f,
+    collapseProgressProvider: (() -> Float)? = null,
     backgroundColor: Color? = null,
     topBarBlurProgress: Float = 0f,
+    topBarBlurProgressProvider: (() -> Float)? = null,
     backgroundBrush: Brush? = null,
     background: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable BoxScope.(PaddingValues) -> Unit,
@@ -195,8 +200,16 @@ fun MeiloXPinnedPage(
     val colors = LocalGlassColors.current
     val currentCollapse = rememberUpdatedState(collapseProgress)
     val currentEdge = rememberUpdatedState(topBarBlurProgress)
+    val currentCollapseProvider = rememberUpdatedState(collapseProgressProvider)
+    val currentEdgeProvider = rememberUpdatedState(topBarBlurProgressProvider)
+    val resolvedCollapseProvider = remember {
+        { currentCollapseProvider.value?.invoke() ?: currentCollapse.value }
+    }
+    val resolvedEdgeProvider = remember {
+        { currentEdgeProvider.value?.invoke() ?: currentEdge.value }
+    }
     val scrollState = remember {
-        GlasmioHeaderScrollState({ currentCollapse.value }, { currentEdge.value })
+        GlasmioHeaderScrollState(resolvedCollapseProvider, resolvedEdgeProvider)
     }
     val leading = onNavigateBack?.let { navigateBack ->
         listOf(GlasmioHeaderGroup("navigation", listOf(meiloxHeaderAction(
@@ -263,8 +276,10 @@ fun MeiloXPinnedPage(
                 }
             },
             actionsStyle = actionsStyle, actionsSeparationProgress = actionsSeparationProgress,
-            collapseProgress = collapseProgress, backgroundColor = backgroundColor,
-            topBarBlurProgress = topBarBlurProgress, backgroundBrush = backgroundBrush,
+            collapseProgress = collapseProgress, collapseProgressProvider = resolvedCollapseProvider,
+            backgroundColor = backgroundColor,
+            topBarBlurProgress = topBarBlurProgress, topBarBlurProgressProvider = resolvedEdgeProvider,
+            backgroundBrush = backgroundBrush,
             background = background, content = { padding ->
                 val extra = LocalMeiloXSearchTopPadding.current
                 content(PaddingValues(start = padding.calculateStartPadding(LocalLayoutDirection.current),
@@ -288,10 +303,12 @@ fun MeiloXPinnedPage(
     }
     val body: @Composable () -> Unit = {
         GlasmioPageBody(
-            contentPadding = contentPadding, modifier = modifier,
+            contentPadding = contentPadding,
+            topBarBlurProgress = resolvedEdgeProvider,
+            modifier = modifier,
             backgroundColor = backgroundColor ?: colors.groupedBackground,
             backgroundBrush = backgroundBrush, background = background,
-            topBarBlurProgress = topBarBlurProgress, content = content,
+            content = content,
         )
     }
     if (header == null) {
@@ -348,16 +365,20 @@ fun MeiloXPinnedListPage(
     content: LazyListScope.() -> Unit,
 ) {
     registerMeiloXNavigationViewport(listState)
-    val animatedCollapse = rememberGlasmioHeaderCollapse(listState,
+    val animatedCollapseState = rememberGlasmioHeaderCollapseState(listState,
         collapseEnterBreakpoint, collapseExitBreakpoint, collapseAnimationSpec)
+    val scrollEdgeState = rememberGlasmioHeaderScrollEdgeState(listState, collapseEnterBreakpoint)
     val showTitle = showsLargeTitle && (!rememberDeviceInfo().isLandscape || LocalGlasmioSidebarExpanded.current)
-    val collapse = if (showTitle) animatedCollapse else 1f
+    val collapseProvider = remember(showTitle, animatedCollapseState) {
+        if (showTitle) ({ animatedCollapseState.value }) else ({ 1f })
+    }
+    val edgeProvider = remember(scrollEdgeState) { { scrollEdgeState.value } }
     MeiloXPinnedPage(
         title = title, subtitle = subtitle, bottomPadding = bottomPadding, modifier = modifier,
         onNavigateBack = onNavigateBack, navigateBackContentDescription = navigateBackContentDescription,
         actions = actions, actionsStyle = actionsStyle, actionsSeparationProgress = actionsSeparationProgress,
         actionSearch = actionSearch,
-        collapseProgress = collapse, topBarBlurProgress = rememberGlasmioHeaderScrollEdge(listState, collapseEnterBreakpoint),
+        collapseProgressProvider = collapseProvider, topBarBlurProgressProvider = edgeProvider,
         backgroundColor = backgroundColor, backgroundBrush = backgroundBrush,
     ) { padding ->
         val listPadding = remember(padding, horizontalContentPadding, bottomPaddingValues, topContentPaddingAdjustment) {
@@ -383,11 +404,20 @@ fun MeiloXPinnedListPage(
                 ) {
                     if (showTitle) item(key = "ios-large-title:$title") {
                         Column(Modifier.fillMaxWidth().graphicsLayer {
+                            val collapse = animatedCollapseState.value.coerceIn(0f, 1f)
                             alpha = 1f - collapse
                             scaleX = 1f - .04f * collapse
                             scaleY = scaleX
                             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, .5f)
-                        }.blur(6.dp * collapse).offset(y = (-10).dp)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                val blurPx = 6.dp.toPx() * collapse
+                                clip = blurPx >= 0.5f
+                                renderEffect = if (blurPx >= 0.5f) {
+                                    AndroidRenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP)
+                                        .asComposeRenderEffect()
+                                } else null
+                            }
+                        }.offset(y = (-10).dp)
                             .padding(horizontal = largeTitleHorizontalPadding, vertical = 6.dp),
                         ) {
                             Text(title, style = IosTypography.largeTitle, fontWeight = FontWeight.Bold,

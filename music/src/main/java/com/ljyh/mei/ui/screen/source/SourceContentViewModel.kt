@@ -120,7 +120,7 @@ class SourceContentViewModel internal constructor(
     val providers = registry.providers
     val contentRevision = router.contentRevision
     val selectedProviderId = preferences.settings.map { it.preferredBrowseProvider }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+        .stateIn(viewModelScope, SharingStarted.Eagerly, preferences.latest?.preferredBrowseProvider.orEmpty())
     private val request = MutableStateFlow<SourceContentRequest?>(null)
     private var artistLogoRequested = false
     private val refreshVersion = MutableStateFlow(0L)

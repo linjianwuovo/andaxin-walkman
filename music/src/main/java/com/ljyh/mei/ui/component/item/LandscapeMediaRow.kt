@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.CircleShape
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.ljyh.mei.R
 import com.ljyh.mei.ui.component.playlist.FavoriteTrackStar
@@ -230,7 +231,7 @@ private fun MediaRowMenuButton(
     TrackMenuTrigger(menuAnchorState, onMore) { trigger, openMenu ->
         Box(
             Modifier.size(44.dp).then(offset)
-                .clip(ContinuousRoundedRectangle(22.dp))
+                .clip(CircleShape)
                 .then(trigger)
                 .clickable(interactionSource = null, indication = null, onClick = openMenu),
             contentAlignment = Alignment.Center,

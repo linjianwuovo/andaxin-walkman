@@ -117,6 +117,8 @@ internal fun BackdropEffectScope.completeNativeFilteredGlass(
     field: NativeGlassFilterField? = null,
     completion: NativeGlassCompletion? = null,
     filteredIsNativeRaw: Boolean = false,
+    opticalRect: IntRect = IntRect(0, base.height, base.width, base.height * 2),
+    storageSize: IntSize = IntSize(base.width, base.height * 2),
 ): RenderEffect {
     val storage = this as BackdropEffectScopeImpl
     val resolvedCompletion = completion ?: NativeGlassCompletion(NavigationMaterialRecipe.resolve(isDark, material), isDark,
@@ -124,11 +126,12 @@ internal fun BackdropEffectScope.completeNativeFilteredGlass(
         materialAlpha = alpha, edgeAlpha = alpha,
         idleColor = idleColor, overlayColor = overlayColor)
     val topology = resolvedCompletion.programTopology()
-    val atlas = NativeGlassMipAtlas(base, IntSize(base.width, base.height * 2), listOf(
-        IntRect(0, 0, base.width, base.height), IntRect(0, base.height, base.width, base.height * 2)),
-        producer, storage.colorManagedNativeGlass)
+    val atlas = NativeGlassMipAtlas(base, storageSize, listOf(
+        IntRect(0, 0, base.width, base.height), opticalRect),
+        producer, storage.colorManagedNativeGlass,
+        allowHardwareLinearSampling = storage.supportsNativeGlassHardwareLinearSampling)
     val retainedPair = Build.VERSION.SDK_INT >= 36 && storage.supportsRetainedOpticalStage &&
-        storage.supportsNativeGlassHardwareLinearSampling && !atlas.colorManaged && filteredIsNativeRaw &&
+        storage.supportsNativeGlassHardwareLinearSampling && !atlas.nativeGammaStorage && filteredIsNativeRaw &&
         field == null && topology == OrdinaryAtlasCompletion
     val functions = field?.shaderFunctions ?: NativeDefaultFieldShader
     val sources = storage.cachedResource("Glasmio.NativeControl.complete.sources") {
@@ -137,12 +140,16 @@ internal fun BackdropEffectScope.completeNativeFilteredGlass(
                 size > 8
         }
     }
-    val source = if (retainedPair) NativeRetainedCompletionProgram else sources.getOrPut(
+    val source = if (retainedPair) {
+        if (atlas.colorManaged) NativeRetainedCompletionProgramManaged else NativeRetainedCompletionProgram
+    } else sources.getOrPut(
         NativeControlCompletionSourceKey(functions, atlas.colorManaged, filteredIsNativeRaw, topology,
         samplingLayoutKey = atlas.samplingLayoutKey)) {
         nativeGlassCompletionFieldFunctions(functions) +
-            (if (!functions.contains("float3 nativeGlassRoundedField(")) NativeGlassSdfFunctions else "") + atlas.samplingFunctions +
-            (if (atlas.colorManaged) "" else GlassColorSpaceShaderFunctions) +
+            (if (topology.hasSourceShadow && topology.hasShadow &&
+                !functions.contains("float3 nativeGlassRoundedField(")) NativeGlassSdfFunctions else "") +
+            atlas.samplingFunctions +
+            (if (!atlas.colorManaged && !atlas.nativeGammaStorage && topology.hasPressGlow) GlassColorSpaceShaderFunctions else "") +
             (if (filteredIsNativeRaw) NativeControlFilteredRawFunctions else NativeControlFilteredFunctions) +
             nativeGlassCompletionShader(topology)
     }
@@ -167,12 +174,15 @@ internal fun BackdropEffectScope.completeNativeMenuFilteredGlass(
     field: NativeGlassFilterField,
     completion: NativeGlassCompletion,
     transitionRefraction: NativeMenuTransitionRefraction,
+    opticalRect: IntRect = IntRect(0, base.height, base.width, base.height * 2),
+    storageSize: IntSize = IntSize(base.width, base.height * 2),
 ): RenderEffect {
     val storage = this as BackdropEffectScopeImpl
     val topology = completion.programTopology()
-    val atlas = NativeGlassMipAtlas(base, IntSize(base.width, base.height * 2), listOf(
-        IntRect(0, 0, base.width, base.height), IntRect(0, base.height, base.width, base.height * 2)),
-        null, storage.colorManagedNativeGlass)
+    val atlas = NativeGlassMipAtlas(base, storageSize, listOf(
+        IntRect(0, 0, base.width, base.height), opticalRect),
+        null, storage.colorManagedNativeGlass,
+        allowHardwareLinearSampling = storage.supportsNativeGlassHardwareLinearSampling)
     val functions = field.shaderFunctions
     val sources = storage.cachedResource("Glasmio.NativeControl.menuComplete.sources") {
         object : LinkedHashMap<NativeControlCompletionSourceKey, String>(8, .75f, true) {
@@ -183,8 +193,11 @@ internal fun BackdropEffectScope.completeNativeMenuFilteredGlass(
     val source = sources.getOrPut(NativeControlCompletionSourceKey(functions, atlas.colorManaged,
         filteredIsNativeRaw = true, topology = topology, samplingLayoutKey = atlas.samplingLayoutKey)) {
         nativeGlassCompletionFieldFunctions(functions) +
-            (if (!functions.contains("float3 nativeGlassRoundedField(")) NativeGlassSdfFunctions else "") + atlas.samplingFunctions +
-            (if (atlas.colorManaged) "" else GlassColorSpaceShaderFunctions) + NativeMenuTransitionFilteredFunctions +
+            (if (topology.hasSourceShadow && topology.hasShadow &&
+                !functions.contains("float3 nativeGlassRoundedField(")) NativeGlassSdfFunctions else "") +
+            atlas.samplingFunctions +
+            (if (!atlas.colorManaged && !atlas.nativeGammaStorage && topology.hasPressGlow) GlassColorSpaceShaderFunctions else "") +
+            NativeMenuTransitionFilteredFunctions +
             nativeGlassCompletionShader(topology)
     }
     val shader = obtainRuntimeShader("Glasmio.NativeControl.menuComplete.${atlas.colorManaged}.${topology.cacheKey}.layout=${atlas.samplingLayoutKey}.${functions.hashCode()}",
@@ -240,18 +253,19 @@ uniform float2 transitionLens;
 uniform float transitionHasSecondary;
 half4 nativeMenuTransitionSample(float2 coord) {
     float4 rect = nativeAtlasRect(1);
-    return content.eval(rect.xy + clamp(coord, float2(0.5), transitionSampleExtent - float2(0.5)));
+    return half4(nativeAtlasDecode(float4(content.eval(rect.xy + clamp(coord, float2(0.5), transitionSampleExtent - float2(0.5))))));
 }
 half4 nativeGlassSample(float2 coord, float blurRadius) { return nativeMenuTransitionSample(coord); }
 """ + NativeGlassSpectralFunctions + CustomGlassChromaticFunctions + """
 float4 nativeAtlasFiltered(float2 coord, float3 liquid) {
     if (coord.x < transitionDrawingBounds.x || coord.y < transitionDrawingBounds.y ||
         coord.x > transitionDrawingBounds.z || coord.y > transitionDrawingBounds.w) return float4(0.0);
-    if (transitionLens.x <= 0.0 || transitionLens.y == 0.0) return float4(nativeMenuTransitionSample(coord));
     float2 p = coord - transitionCenter;
     float sd = liquid.x;
-    if (transitionHasSecondary < 0.5 && (abs(p.x) > transitionHalfSize.x + 1.0 || abs(p.y) > transitionHalfSize.y + 1.0)) return float4(0.0);
-    if (-sd >= max(transitionLens.x, 0.0)) return float4(nativeMenuTransitionSample(coord));
+    bool activeLens = transitionLens.x > 0.0 && transitionLens.y != 0.0;
+    if (activeLens && transitionHasSecondary < 0.5 &&
+        (abs(p.x) > transitionHalfSize.x + 1.0 || abs(p.y) > transitionHalfSize.y + 1.0)) return float4(0.0);
+    if (!activeLens || -sd >= max(transitionLens.x, 0.0)) return float4(nativeMenuTransitionSample(coord));
     float d = nativeGlassDisplacement(sd, 1.0 / transitionLens.x, transitionLens.y);
     float2 grad = liquid.yz;
     float2 refracted = coord + d * grad;

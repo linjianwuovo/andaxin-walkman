@@ -649,6 +649,7 @@ fun Modifier.navigationGlassBackground(
     materialContext: GlassMaterialContext? = null,
     shadowMaterial: NavigationGlassMaterial? = material,
     backgroundOverlay: (DrawScope.() -> Unit)? = null,
+    overlayColor: Color = Color.Transparent,
 ): Modifier = composed {
     val context = materialContext ?: run {
         val inherited = LocalBackdropLuminance.current.takeIf { luminanceState == null }
@@ -691,6 +692,7 @@ fun Modifier.navigationGlassBackground(
         prominentTint = prominentTint,
         luminanceState = context.luminanceState,
         backgroundOverlay = backgroundOverlay,
+        overlayColor = overlayColor,
         shadowMaterial = shadowMaterial,
     )
 }
@@ -731,6 +733,7 @@ internal fun Modifier.navigationGlassBackgroundResolved(
     sampledPressHighlight: ((Size) -> SampledPressHighlight?)? = null,
     darkFraction: Float = if (isDark) 1f else 0f,
     backgroundOverlay: (DrawScope.() -> Unit)? = null,
+    overlayColor: Color = Color.Transparent,
     fusePressOverlayIntoCompletion: Boolean = false,
     shadowMaterial: NavigationGlassMaterial? = material,
 ): Modifier {
@@ -739,15 +742,21 @@ internal fun Modifier.navigationGlassBackgroundResolved(
         NavigationMaterialRecipe.resolve(darkFraction, material, prominentTint, materialTint, containerAlphaMultiplier)
     } else null
     val completeNativeMaterial = nativeRecipe != null
+    val decoupleExteriorShadow = completeNativeMaterial && dropShadow == null && !nativeRecipe.hasTintMatrix()
     val surfaceHighlight = Highlight.Default.copy(
         alpha = (highlightAlphaMultiplier.coerceIn(0f, 1f) + opticalHighlightBoost).coerceIn(0f, 1f),
         style = HighlightStyle.Default(angle = highlightAngle, clear = material == NavigationGlassMaterial.Clear),
     )
+    val allowContactSamplingScale = !refractionHeight.value.isFinite() && !refractionAmount.value.isFinite()
     val samplingScale: (Size, Density) -> Float = { size, density ->
         val outline = shape()
-        if (outline !is LiquidContactShape && outline !is ToolbarActionShape &&
-            (outline is RoundedRectangularShape || outline is CornerBasedShape || outline === RectangleShape))
-            navigationGlassCaptureScale(size.minDimension / density.density) else 1f
+        val eligible = when {
+            outline is LiquidContactShape || outline is ToolbarActionShape || outline is NavigationGlassUnionShape -> allowContactSamplingScale
+            outline is Capsule || outline is RoundedRectangularShape || outline is CornerBasedShape || outline === RectangleShape -> true
+            else -> false
+        }
+        val minDimension = (outline as? NavigationGlassUnionShape)?.minimumDimension ?: size.minDimension
+        if (eligible) navigationGlassCaptureScale(minDimension / density.density) else 1f
     }
     val sampledPressRenderer = if (isRuntimeShaderSupported() && Build.VERSION.SDK_INT < 36 && sampledPressHighlight != null) PressHighlightRenderer() else null
     // Only the shared bottom base opts in: it has no child content before its press overlay.
@@ -757,8 +766,12 @@ internal fun Modifier.navigationGlassBackgroundResolved(
     var completedPressOverlay = false
     var geometryExtent = Float.NaN
     var cachedGeometry: NavigationGlassGeometryProfile? = null
+    val drawExteriorShadow = dropShadow == null && (
+        !completeNativeMaterial ||
+            (decoupleExteriorShadow && shadowMaterial != NavigationGlassMaterial.Clear && shadowAlpha > 0f)
+        )
     return this.then(
-        if (dropShadow == null && !completeNativeMaterial) {
+        if (drawExteriorShadow) {
             Modifier.navigationGlassDropShadow(
                 shape,
                 if (shadowAlpha == 1f) layerBlock else {
@@ -767,8 +780,10 @@ internal fun Modifier.navigationGlassBackgroundResolved(
                         alpha *= shadowAlpha.coerceIn(0f, 1f)
                     }
                 },
+                cacheBlurResult = decoupleExteriorShadow,
                 useNativeProfile = true,
                 nativeMaterial = shadowMaterial,
+                renderScale = if (decoupleExteriorShadow) 0.5f else 1f,
             )
         } else Modifier,
     )
@@ -785,7 +800,10 @@ internal fun Modifier.navigationGlassBackgroundResolved(
                 val surfaceShape = shape()
                 val outlineShape = surfaceShape as? NavigationGlassOutlineShape
                 val extent = outlineShape?.bodyDimension(size, this)
-                    ?: ((surfaceShape as? NavigationGlassUnionShape)?.minimumDimension ?: size.minDimension) / density
+                    ?: (surfaceShape as? NavigationGlassUnionShape)?.let {
+                        it.minimumDimension / (storage?.sourceDensity?.density ?: density)
+                    }
+                    ?: (size.minDimension / density)
                 val geometry = if (cachedGeometry == null || geometryExtent != extent) {
                     navigationGlassGeometryProfile(extent, material).also { cachedGeometry = it; geometryExtent = extent }
                 } else requireNotNull(cachedGeometry)
@@ -793,23 +811,28 @@ internal fun Modifier.navigationGlassBackgroundResolved(
                 val amount = if (refractionAmount.value.isFinite()) refractionAmount.toPx() else geometry.innerAmount * density
                 val nativeOptics = !refractionHeight.value.isFinite() && !refractionAmount.value.isFinite()
                 val contactShape = surfaceShape as? LiquidContactShape
-                val pressGlow = if (canFusePressOverlay && storage != null && storage.nativeGlassHardwareRendering &&
-                    !storage.colorManagedNativeGlass) {
+                val pressGlow = if (canFusePressOverlay && storage != null && storage.nativeGlassHardwareRendering) {
                     NativeGlassPressGlow(sampledPressHighlight?.invoke(storage.fullSize))
                 } else null
                 val completion = nativeRecipe?.let { recipe ->
                     NativeGlassCompletion(if (outlineShape == null) recipe else recipe.forMinimumDimension(extent), isDark,
                         if (material == NavigationGlassMaterial.Clear) 1f else 0f,
                         materialAlpha = materialPaintAlpha, edgeAlpha = innerShadowAlpha,
-                        shadow = if (dropShadow == null) navigationNativeShadowProfile(extent, shadowMaterial) else null,
-                        shadowAlpha = shadowAlpha, highlightAlpha = surfaceHighlight.alpha,
+                        shadow = if (dropShadow == null && !decoupleExteriorShadow)
+                            navigationNativeShadowProfile(extent, shadowMaterial) else null,
+                        shadowAlpha = shadowAlpha, overlayColor = overlayColor, highlightAlpha = surfaceHighlight.alpha,
                         highlightAngle = highlightAngle, darkFraction = darkFraction, pressGlow = pressGlow)
                 }
-                val completionBand = completion?.shadow?.let { (it.radius * 2f + 8f) * density + 2f } ?: 0f
+                val completionBand = completion?.let {
+                    if (it.shadow != null) (it.shadow.radius * 2f + 8f) * density + 2f
+                    else if (it.recipe.hasTintMatrix()) 10f * density + 2f
+                    else ceil(.53333333f * density + 2f)
+                } ?: 0f
+                val effectSamplingScale = storage?.samplingScale ?: 1f
                 val nativeField = if (isRuntimeShaderSupported() && (nativeOptics || completion != null)) when (surfaceShape) {
-                    is LiquidContactShape -> navigationContainerGlassField(surfaceShape, opticalCenter?.invoke(), completionBand)
-                    is ToolbarActionShape -> navigationToolbarGlassField(surfaceShape, completionBand)
-                    is NavigationGlassUnionShape -> surfaceShape.nativeField()
+                    is LiquidContactShape -> navigationContainerGlassField(surfaceShape, opticalCenter?.invoke(), completionBand, samplingScale = effectSamplingScale)
+                    is ToolbarActionShape -> navigationToolbarGlassField(surfaceShape, completionBand, samplingScale = effectSamplingScale)
+                    is NavigationGlassUnionShape -> surfaceShape.nativeField(samplingScale = effectSamplingScale)
                     is NavigationGlassOutlineShape -> surfaceShape.nativeField(size, layoutDirection, this, completionBand)
                     else -> null
                 } else null
@@ -884,45 +907,52 @@ internal fun Modifier.navigationGlassBackgroundResolved(
         },
         innerShadow = null,
         layerBlock = layerBlock,
-        onDrawSurface = {
-            if (appearance.reduceTransparency) {
-                drawRect(containerColor.copy(alpha = 1f))
-            } else if (completeNativeMaterial) {
-                // Face, coverage, exterior strip and top highlight share the full-resolution kernel.
-            } else if (nativeRecipe != null) {
-                requireNotNull(innerShadows).drawMaterial(
-                    this, shape(), nativeRecipe, isDark = isDark,
-                    alpha = innerShadowAlpha, materialAlpha = materialPaintAlpha,
-                )
-            } else if (material == null && surfaceOverlay != null) {
-                // Preserve the original Navigation overlay contract, including detail inner shadows.
-                surfaceOverlay()
-            } else {
-                if (navigationMaterial && sampleBackdrop && appearance.usesBackdrop) {
-                    drawNavigationGlassMaterial(containerColor, isDark, containerAlphaMultiplier, material, materialTint, alpha = materialPaintAlpha)
-                } else {
-                    drawRect(
-                        containerColor.copy(
-                            alpha = containerColor.alpha * containerAlphaMultiplier.coerceAtLeast(0f),
-                        ),
+        onDrawSurface = if (appearance.reduceTransparency || !completeNativeMaterial || backgroundOverlay != null) {
+            {
+                if (appearance.reduceTransparency) {
+                    drawRect(containerColor.copy(alpha = 1f))
+                } else if (completeNativeMaterial) {
+                    // Face, coverage, exterior strip and top highlight share the full-resolution kernel.
+                } else if (nativeRecipe != null) {
+                    requireNotNull(innerShadows).drawMaterial(
+                        this, shape(), nativeRecipe, isDark = isDark,
+                        alpha = innerShadowAlpha, materialAlpha = materialPaintAlpha,
                     )
+                    if (overlayColor.alpha > 0f) drawRect(overlayColor)
+                } else if (material == null && surfaceOverlay != null) {
+                    // Preserve the original Navigation overlay contract, including detail inner shadows.
+                    surfaceOverlay()
+                    if (overlayColor.alpha > 0f) drawRect(overlayColor)
+                } else {
+                    if (navigationMaterial && sampleBackdrop && appearance.usesBackdrop) {
+                        drawNavigationGlassMaterial(containerColor, isDark, containerAlphaMultiplier, material, materialTint, alpha = materialPaintAlpha)
+                    } else {
+                        drawRect(
+                            containerColor.copy(
+                                alpha = containerColor.alpha * containerAlphaMultiplier.coerceAtLeast(0f),
+                            ),
+                        )
+                    }
+                    surfaceOverlay?.invoke(this)
+                    if (navigationMaterial && sampleBackdrop && appearance.usesBackdrop) {
+                        innerShadows?.draw(this, shape(), isDark = isDark, alpha = innerShadowAlpha)
+                    }
+                    if (overlayColor.alpha > 0f) drawRect(overlayColor)
                 }
-                surfaceOverlay?.invoke(this)
-                if (navigationMaterial && sampleBackdrop && appearance.usesBackdrop) {
-                    innerShadows?.draw(this, shape(), isDark = isDark, alpha = innerShadowAlpha)
+                // Background carriers precede foreground content and remain in backdrop exports.
+                backgroundOverlay?.invoke(this)
+            }
+        } else null,
+        onDrawFront = if (pressOverlay != null || canFusePressOverlay) {
+            {
+                if (completedPressOverlay) {
+                    // Keep press state in the draw read set after its overlay is fused.
+                    sampledPressHighlight?.invoke(size)
+                } else {
+                    pressOverlay?.invoke(this)
                 }
             }
-            // Background carriers precede foreground content and remain in backdrop exports.
-            backgroundOverlay?.invoke(this)
-        },
-        onDrawFront = {
-            if (completedPressOverlay) {
-                // Keep press state in the draw read set after its overlay is fused.
-                sampledPressHighlight?.invoke(size)
-            } else {
-                pressOverlay?.invoke(this)
-            }
-        },
+        } else null,
     )
 }
 

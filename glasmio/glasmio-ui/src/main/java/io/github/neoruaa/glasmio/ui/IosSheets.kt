@@ -51,10 +51,10 @@ import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -85,6 +85,7 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import io.github.neoruaa.glasmio.glass.render.Backdrop
 import io.github.neoruaa.glasmio.glass.render.backdrops.rememberLayerBackdrop
+import io.github.neoruaa.glasmio.glass.render.drawDirectBackdrop
 import io.github.neoruaa.glasmio.glass.render.drawPlainBackdrop
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.kyant.shapes.Capsule
@@ -410,7 +411,7 @@ fun GlasmioBottomSheet(
                 val largeBackground by remember(frame) {
                     derivedStateOf(structuralEqualityPolicy()) { frame.value.expansionProgress > 0.5f }
                 }
-                val surfaceHeight by remember(frame) {
+                val surfaceHeightState = remember(frame) {
                     derivedStateOf(structuralEqualityPolicy()) {
                         val height = if (contentSized) layout.containerHeight - layout.fullTop else frame.value.naturalHeight
                         height.roundToInt().coerceAtLeast(1)
@@ -424,27 +425,47 @@ fun GlasmioBottomSheet(
                     )
                 }
                 val systemInsets = view.rootWindowInsets
-                val shape by remember(frame, systemInsets, density, layoutDirection) {
+                val shapeState = remember(frame, systemInsets, density, layoutDirection, fullScreen, floating, compactEdge) {
+                    val floatingShape = ContinuousRoundedRectangle(32.dp)
+                    val compactEdgeShape = ContinuousRoundedRectangle(topStart = 38.dp, topEnd = 38.dp)
                     val minimumBottom = with(density) { 20.dp.toPx() }
                     val leftRadius = systemInsets?.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_LEFT)?.radius ?: 0
                     val rightRadius = systemInsets?.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_RIGHT)?.radius ?: 0
                     val isLtr = layoutDirection == LayoutDirection.Ltr
+                    var cachedKey = Long.MIN_VALUE
+                    var cachedShape: Shape = compactEdgeShape
                     derivedStateOf(structuralEqualityPolicy()) {
                         val geometry = frame.value
                         when {
                             fullScreen -> RectangleShape
-                            geometry.capsularProgress > 0f ->
-                                ContinuousRoundedRectangle(with(density) { (geometry.naturalHeight / 2f).toDp() })
-                            floating -> ContinuousRoundedRectangle(32.dp)
-                            compactEdge -> ContinuousRoundedRectangle(topStart = 38.dp, topEnd = 38.dp)
-                            else -> with(density) {
-                                val left = max(minimumBottom, leftRadius - geometry.sideInset).toDp()
-                                val right = max(minimumBottom, rightRadius - geometry.sideInset).toDp()
-                                ContinuousRoundedRectangle(
-                                    topStart = 38.dp, topEnd = 38.dp,
-                                    bottomStart = if (isLtr) left else right,
-                                    bottomEnd = if (isLtr) right else left,
-                                )
+                            geometry.capsularProgress > 0f -> {
+                                val halfPx = geometry.naturalHeight.roundToInt().coerceAtLeast(0)
+                                val key = -(halfPx.toLong() + 1L)
+                                if (key != cachedKey) {
+                                    cachedKey = key
+                                    cachedShape = ContinuousRoundedRectangle(with(density) { (halfPx * 0.5f).toDp() })
+                                }
+                                cachedShape
+                            }
+                            floating -> floatingShape
+                            compactEdge -> compactEdgeShape
+                            else -> {
+                                val leftHalfPx = (max(minimumBottom, leftRadius - geometry.sideInset) * 2f).roundToInt().coerceAtLeast(0)
+                                val rightHalfPx = (max(minimumBottom, rightRadius - geometry.sideInset) * 2f).roundToInt().coerceAtLeast(0)
+                                val key = (leftHalfPx.toLong() shl 32) or (rightHalfPx.toLong() and 0xFFFF_FFFFL)
+                                if (key != cachedKey) {
+                                    cachedKey = key
+                                    cachedShape = with(density) {
+                                        val left = (leftHalfPx * 0.5f).toDp()
+                                        val right = (rightHalfPx * 0.5f).toDp()
+                                        ContinuousRoundedRectangle(
+                                            topStart = 38.dp, topEnd = 38.dp,
+                                            bottomStart = if (isLtr) left else right,
+                                            bottomEnd = if (isLtr) right else left,
+                                        )
+                                    }
+                                }
+                                cachedShape
                             }
                         }
                     }
@@ -458,6 +479,7 @@ fun GlasmioBottomSheet(
                         else -> 1f
                     },
                     groupedListStyle = LocalGlasmioSheetGroupedListStyle.current,
+                    directBackplateVisible = contentBackground == null && topBarBlurProgress <= 0.001f,
                 )
                 CompositionLocalProvider(LocalIosSheetMaterialContext provides contentMaterial) {
                 GlasmioSheetSurface(
@@ -500,10 +522,10 @@ fun GlasmioBottomSheet(
                             }
                         },
                     backdrop = backdrop,
-                    shape = shape,
+                    shapeProvider = { shapeState.value },
                     applyDragScale = false,
                     interactive = false,
-                    glassFraction = glass.value,
+                    glassFractionProvider = { glass.value },
                 ) {
                     val chromeBackdrop = rememberLayerBackdrop()
                     val chromeColors = LocalGlassColors.current
@@ -527,7 +549,6 @@ fun GlasmioBottomSheet(
                     val sheetVerticalInsets = if (floating) WindowInsets(0, 0, 0, 0)
                         else navigationInsets.only(WindowInsetsSides.Vertical)
                     Layout(
-                        modifier = Modifier.clip(shape),
                         content = {
                             if (topBar == null) {
                                 Column(Modifier.fillMaxWidth().windowInsetsPadding(sheetVerticalInsets)) {
@@ -545,13 +566,13 @@ fun GlasmioBottomSheet(
                                 Box(Modifier.fillMaxWidth()) {
                                     Box(
                                         (if (contentSized) Modifier.fillMaxWidth() else Modifier.fillMaxSize())
-                                            .glassBackdropSource(chromeBackdrop)
+                                            .then(if (appearance.usesBackdrop) Modifier.glassBackdropSource(chromeBackdrop, maxCaptureHeight = headerHeight + 48.dp) else Modifier)
                                             .trackBackdropPosition(chromeBackdrop),
                                     ) {
                                         Box(
                                             Modifier.matchParentSize()
-                                                .then(if (sheetBackplate != null && chromeColors.groupedBackground.alpha < 1f) Modifier.drawPlainBackdrop(
-                                                    sheetBackplate, shape = { RectangleShape }, effects = {},
+                                                .then(if (sheetBackplate != null && chromeColors.groupedBackground.alpha < 1f) Modifier.drawDirectBackdrop(
+                                                    sheetBackplate,
                                                 ) else Modifier)
                                                 .background(chromeColors.groupedBackground),
                                         ) { contentBackground?.invoke(this) }
@@ -567,10 +588,10 @@ fun GlasmioBottomSheet(
                                     Box(
                                         Modifier.fillMaxWidth()
                                             .height(headerHeight + if (appearance.usesBackdrop) 34.dp else 0.dp)
-                                            .then(if (appearance.usesBackdrop) Modifier.progressiveBlurBackdrop(
+                                            .then(if (appearance.usesBackdrop && topBarBlurProgress > 0.001f) Modifier.progressiveBlurBackdrop(
                                                 backdrop = chromeBackdrop,
                                                 progress = topBarBlurProgress,
-                                            ) else Modifier.graphicsLayer {
+                                            ) else if (appearance.usesBackdrop) Modifier else Modifier.graphicsLayer {
                                                 alpha = topBarBlurProgress.coerceIn(0f, 1f)
                                             }.background(chromeColors.groupedBackground.copy(alpha = 1f))),
                                     )
@@ -594,7 +615,7 @@ fun GlasmioBottomSheet(
                             }
                         },
                     ) { measurables, constraints ->
-                        val height = surfaceHeight
+                        val height = surfaceHeightState.value
                         val child = measurables.single().measure(Constraints(
                             minWidth = constraints.maxWidth,
                             maxWidth = constraints.maxWidth,

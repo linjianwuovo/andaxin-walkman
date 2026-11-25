@@ -10,6 +10,7 @@ import android.view.RoundedCorner
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
@@ -863,23 +864,18 @@ fun BottomSheet(
             }
         }
         if (active) {
-            // Only the empty input surface is remeasured. Its bounds and continuous corners
-            // follow the drawn shell; the full-sized snapshot/background hosts keep their dimensions.
+            // Keep the active hit surface full-sized and clip hit testing in the graphics layer,
+            // avoiding per-frame re-measurement and path allocation while preserving exact shell bounds.
             Box(Modifier
-                .layout { measurable, constraints ->
-                    val bounds = layers.containerBounds
-                        .translate(-layers.hostBounds.topLeft)
-                    val placeable = measurable.measure(Constraints.fixed(
-                        bounds.width.roundToInt().coerceAtLeast(0),
-                        bounds.height.roundToInt().coerceAtLeast(0),
-                    ))
-                    layout(constraints.maxWidth, constraints.maxHeight) {
-                        placeable.place(bounds.left.roundToInt(), bounds.top.roundToInt())
-                    }
-                }
+                .fillMaxSize()
                 .graphicsLayer {
+                    val bounds = layers.containerBounds.translate(-layers.hostBounds.topLeft)
+                    val radius = layers.containerCornerRadius(expandedCornerRadius)
                     clip = true
-                    shape = ContinuousRoundedRectangle(layers.containerCornerRadius(expandedCornerRadius).toDp())
+                    shape = object : Shape {
+                        override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density) =
+                            Outline.Rounded(RoundRect(bounds, CornerRadius(radius)))
+                    }
                 }
                 .sheetGestures(state, layers, null)
                 .clearAndSetSemantics { })
@@ -925,6 +921,7 @@ internal fun PlayerSheetArtworkOverlay(layers: PlayerSheetLayers) {
         }
         val imageWidth = if (layoutSize.width > 0) with(density) { layoutSize.width.toDp() } else minOf(maxWidth, maxHeight)
         val imageHeight = if (layoutSize.height > 0) with(density) { layoutSize.height.toDp() } else imageWidth
+        val clipCache = remember { PlayerArtworkClipCache() }
         Box(
             modifier = Modifier.size(imageWidth, imageHeight)
                 .graphicsLayer {
@@ -941,9 +938,9 @@ internal fun PlayerSheetArtworkOverlay(layers: PlayerSheetLayers) {
                         layers.sourceContainer, layers.hostBounds, progress,
                     )
                     val bounds = artworkBounds.translate(-layers.hostBounds.topLeft + layers.motionOffset)
-                    val imageWidth = size.width.coerceAtLeast(1f)
+                    val imageWidthPx = size.width.coerceAtLeast(1f)
                     val logicalTargetWidth = layers.targetArtworkLayoutSize.width.coerceAtLeast(1)
-                    val visualScaleX = bounds.width / imageWidth
+                    val visualScaleX = bounds.width / imageWidthPx
                     transformOrigin = TransformOrigin(0f, 0f)
                     scaleX = visualScaleX
                     scaleY = bounds.height / size.height.coerceAtLeast(1f)
@@ -954,20 +951,47 @@ internal fun PlayerSheetArtworkOverlay(layers: PlayerSheetLayers) {
                         layers.artworkCornerRadius().toPx() * target.width / logicalTargetWidth
                     val radius = mix(sourceRadius, targetRadius, progress) /
                         visualScaleX.coerceAtLeast(0.001f)
-                    val continuity = if (layers.circularArtwork) {
-                        if (progress == 1f) G1Continuity else
+                    if (layers.circularArtwork) {
+                        val continuity = if (progress == 1f) G1Continuity else
                             Continuity.Default.lerp(G1Continuity, progress.toDouble())
-                    } else Continuity.Default
-                    shape = ContinuousRoundedRectangle(radius.toDp(), continuity = continuity)
-                    clip = true
+                        shape = ContinuousRoundedRectangle(radius.toDp(), continuity = continuity)
+                        clip = true
+                    } else {
+                        // Use an analytic hardware outline for the elevation shadow; exact G2
+                        // continuous corners are clipped via corner-bounded tiles below without
+                        // per-frame 1056x1056 SW path mask texture uploads.
+                        shape = RoundedCornerShape(radius.toDp())
+                        clip = false
+                    }
                     shadowElevation = layers.artworkShadowElevation().toPx() * progress *
-                        imageWidth / logicalTargetWidth
+                        imageWidthPx / logicalTargetWidth
                 }
-                .drawBehind {
-                    // Loading/error painters can be empty. Preserve the endpoint's
-                    // surface frame instead of depending on a capture to fill it.
-                    drawRect(layers.artworkBackgroundColor)
-            },
+                .drawWithContent {
+                    if (!layers.sharesArtwork) return@drawWithContent
+                    if (layers.circularArtwork) {
+                        drawRect(layers.artworkBackgroundColor)
+                        drawContent()
+                        return@drawWithContent
+                    }
+                    val progress = layers.motionProgress
+                    val target = layers.targetArtwork
+                    val artworkBounds = playerContainerAnchoredArtworkRect(
+                        layers.sourceArtwork, target,
+                        layers.sourceContainer, layers.hostBounds, progress,
+                    )
+                    val imageWidthPx = size.width.coerceAtLeast(1f)
+                    val logicalTargetWidth = layers.targetArtworkLayoutSize.width.coerceAtLeast(1)
+                    val visualScaleX = artworkBounds.width / imageWidthPx
+                    val sourceRadius = layers.miniArtworkCornerRadius.toPx()
+                    val targetRadius = layers.artworkCornerRadius().toPx() * target.width / logicalTargetWidth
+                    val radius = (mix(sourceRadius, targetRadius, progress) /
+                        visualScaleX.coerceAtLeast(0.001f)).coerceAtLeast(0f)
+                    val shape = clipCache.resolve(size, radius, layoutDirection, this)
+                    clipGlassShape(Rect(Offset.Zero, size), radius, shape, clipCache.path) {
+                        drawRect(layers.artworkBackgroundColor)
+                        this@drawWithContent.drawContent()
+                    }
+                },
         ) {
             Image(
                 painter = painter,
@@ -977,6 +1001,38 @@ internal fun PlayerSheetArtworkOverlay(layers: PlayerSheetLayers) {
             )
             AutoMixIncomingArtwork { layers.motionProgress }
         }
+    }
+}
+
+private class PlayerArtworkClipCache {
+    val path = Path()
+    private var size = Size.Unspecified
+    private var radius = Float.NaN
+    private var direction: LayoutDirection? = null
+    private var shape: ContinuousRoundedRectangle? = null
+
+    fun resolve(
+        targetSize: Size,
+        targetRadius: Float,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): ContinuousRoundedRectangle {
+        val cached = shape
+        if (cached != null && size == targetSize && radius == targetRadius && direction == layoutDirection) {
+            return cached
+        }
+        val next = ContinuousRoundedRectangle(with(density) { targetRadius.toDp() })
+        path.rewind()
+        when (val outline = next.createOutline(targetSize, layoutDirection, density)) {
+            is Outline.Rectangle -> path.addRect(outline.rect)
+            is Outline.Rounded -> path.addRoundRect(outline.roundRect)
+            is Outline.Generic -> path.addPath(outline.path)
+        }
+        size = targetSize
+        radius = targetRadius
+        direction = layoutDirection
+        shape = next
+        return next
     }
 }
 
