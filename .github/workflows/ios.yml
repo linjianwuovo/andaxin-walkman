@@ -53,6 +53,9 @@ jobs:
           restore-keys: |
             mac-gradle-
 
+      - name: Test lyrics fixture readiness parser
+        run: python3 -B -m unittest discover -s .github/scripts -p test_ios_lyrics_smoke.py -v
+
       - name: Verify committed production inputs
         run: python3 .github/scripts/ios_lyrics_smoke.py guard write "$RUNNER_TEMP/ios-production-source.json"
 

@@ -68,7 +68,21 @@
     "observed_failure": "10 of 12 native cases passed. Page reordering timed out at row 1 after a coordinate tap; the accessibility title lookup retried stale duplicate static-text matches. Equalizer horizontal navigation reached Rock and band 0 reported value 5.0, but XCTest rejected adjust(toNormalizedSliderPosition:) because Compose exports the slider as Other, not Slider. No IPA was packaged.",
     "diagnosis": "The current evidence does not prove page-order mutation or persistence. Labels are duplicated in the page navigation, and reorder rows were keyed by composition position. The equalizer value is readable and requires a pointer drag instead of a native Slider-only XCTest method.",
     "correction": "Give reorder rows stable page keys and each visible title a unique test tag; verify the initial order, tap the live arrow element, and retain immediate and relaunch order checks. Drag the real equalizer control and retain a bounded wait for changed numeric gain plus relaunch persistence. Native rerun pending; neither interaction is accepted yet.",
+    "corrected_run": 45682158348,
+    "acceptance": "All 12 music UI cases passed in run 45682158348. That run still failed later in lyrics fixture capture and produced no IPA; physical-device and full parity acceptance remain pending."
+  },
+  {
+    "workflow_run": 45682158348,
+    "tested_commit": "4c37a7d6df5128270b13d1f2ffc0200671468bfd",
+    "result": "failure",
+    "evidence_artifacts": {
+      "ios-music-ui": 15059370692,
+      "ios-lyrics-visual": 15059197183
+    },
+    "observed_failure": "All 12 music UI cases passed, including immediate/relaunch page order and actual equalizer gain persistence. Six of seven lyrics captures passed; romanized-off timed out with only FOLLOW_SETTLED parsed. Device IPA packaging was skipped.",
+    "diagnosis": "The configured layout phonetic-hidden cannot be recognized by fixture_markers final [a-z]+ token. A local wait_ready regression reproduces the same timeout even with the correct emitted marker; the remaining six configured layout tokens parse correctly.",
+    "correction": "Allow hyphens in the layout token while retaining exact expected-case/layout and follow-settled validation. Add parser/readiness regression tests for every configured fixture plus rejected wrong cases/layouts, premature readiness, and embedded tokens; run them before native builds. Native capture and device packaging rerun pending.",
     "corrected_run": "pending",
-    "acceptance": "Not accepted. Requires all 12 native cases and an actual unsigned device IPA; physical-device audio and broader parity remain unverified."
+    "acceptance": "Twelve native music UI cases verified. No IPA or full parity acceptance yet; all seven fixture captures, package validation and physical-device/sandbox checks remain required."
   }
 ]

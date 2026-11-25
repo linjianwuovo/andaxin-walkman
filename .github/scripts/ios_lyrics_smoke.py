@@ -677,7 +677,7 @@ def inspect_png(path):
 
 
 def fixture_markers(log):
-    pattern = rb"(?<![\w:])" + MARKER.encode() + rb":(?:FOLLOW_SETTLED:[a-z-]+|READY:[a-z-]+:[a-z]+:[a-z]+)(?=\s|$)"
+    pattern = rb"(?<![\w:])" + MARKER.encode() + rb":(?:FOLLOW_SETTLED:[a-z-]+|READY:[a-z-]+:[a-z]+:[a-z-]+)(?=\s|$)"
     return [match.decode("ascii") for match in re.findall(pattern, log)]
 
 
