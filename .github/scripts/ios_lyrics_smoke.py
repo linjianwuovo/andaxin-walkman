@@ -503,7 +503,8 @@ def production_snapshot(repo, sha, executable):
         "AndaXin-unsigned.ipa", "ipa_list.txt", "shared-framework.zip",
     }
     outputs = {".gradle", ".kotlin", "build", "build-device", "Payload", PROJECT,
-               "shared/build", "app/build", "music/build", "glasmio/.gradle", "glasmio/.kotlin", "glasmio/build"}
+               "shared/build", "app/build", "music/build", "glasmio/.gradle", "glasmio/.kotlin", "glasmio/build",
+               "music/.cxx", "glasmio/glasmio-glass/.cxx"}
     outputs.update(f"glasmio/{module}/build" for module in
                    ("glasmio-core", "glasmio-glass", "glasmio-ui", "glasmio-scaffold", "glasmio-icons"))
     # Inspect ignored files too: XcodeGen and Gradle do not consult .gitignore when finding inputs.

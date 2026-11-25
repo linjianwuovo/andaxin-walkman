@@ -37,6 +37,7 @@ MeiloX 提交时间为 2026-11-25 07:15:05 UTC；Glasmio 提交时间为 2026-11
 - `:shared:compileKotlinIosSimulatorArm64` 任务通过，本次复用此前已通过的编译结果；不将其计作模拟器运行或设备验收。
 - 逐文件核对上游：44 个文件完全一致，5 个文件仅保留已检查的宿主差异；`MusicScreen.kt` 单独检查适配差异并通过宿主编译。没有缺失文件或遗留合并标记。
 - `git diff --check` 通过。首次宿主编译发现漏导入 `GlasmioNavigationPhase`，补齐后重编通过。
+- 生产输入守卫仅增加 `music/.cxx` 和 `glasmio/glasmio-glass/.cxx` 两个原生构建输出目录。隔离 Git 仓库验证确认：这两个 CMake 缓存可通过，其他未提交源码仍会被拒绝。
 - 本地 APK：`app/build/outputs/apk/stable/debug/app-stable-debug.apk`，98,359,811 字节，SHA-256 `abf1f56b3045152492517ee9ada5c4e50891d5351ed5a8e41cba0ad32bac87b9`。
 - `adb devices -l` 没有已连接设备。设备上的动画、音频和账号流程仍待验证，构建与单元测试不替代这些验收。
 
