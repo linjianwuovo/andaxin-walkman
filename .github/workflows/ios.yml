@@ -314,6 +314,7 @@ jobs:
             testQueueCurrentRemovalSelectsNeighbourAndKeepsLastSong
             testRepeatAndShuffleControlsRemainIndependent
             testPlaybackPreferencesPersistAndTranslationDefaultsEnabled
+            testRomanizationIsEnabledByDefaultAndIndependentFromTranslation
           )
           status=0
           for test in "${tests[@]}"; do

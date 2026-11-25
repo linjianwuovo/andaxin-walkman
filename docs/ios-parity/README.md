@@ -49,3 +49,8 @@ No item is accepted yet. Missing items include real DSP equalization, script-sou
 - Latest exact-source JVM suite: 61 tests, zero failures/errors/skips. External log: `D:/gongzuoqu/andaxin-work/tmp/ios-parity-v0941-20261125/queue-translation/gradle-test.log`.
 - Isolated lyric fixture expanded from three to five cases with translation shown/hidden. All replacement anchors were checked against LF-normalized candidate sources (Git archive is LF; untouched Windows files can be CRLF). Full committed-source dry-run follows before push.
 - Native build/UI, physical audio, live services, and full-format lyric parity remain unaccepted. This batch does not implement all remaining lyric capabilities or claim full app parity.
+## Romanization parity batch — pending native verification
+- `romalrc` is parsed as phonetic data rather than reused as an original-lyric fallback. Nearest pairs are matched within 1000 ms, one-to-one, and preserve timing/word times/translation.
+- The iOS default is romanization on, stored independently of translation and exposed through a dedicated seekable text row above the translation.
+- JVM coverage includes timestamp boundary, non-reuse, malformed-safe behavior, independent visibility, YRC preservation and default-on ordering. Isolated lyrics fixtures add romanized-on/romanized-off render cases; XCUITest adds default/independence/persistence checks.
+- This batch is pending native compile/UI evidence. Broader lyric format capabilities and physical/live-service acceptance remain unaccepted.

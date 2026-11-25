@@ -280,6 +280,20 @@ final class MusicParityTests: XCTestCase {
         capture("repeat-and-shuffle-independent")
     }
 
+    func testRomanizationIsEnabledByDefaultAndIndependentFromTranslation() {
+        app.launch()
+        musicTab()
+        let romanize = element("music-romanize-lyrics")
+        let translate = element("music-translate-lyrics")
+        scrollTo(romanize)
+        assertSelected(romanize, true)
+        assertSelected(translate, true)
+        romanize.tap()
+        assertSelected(romanize, false)
+        assertSelected(translate, true)
+        capture("romanization-independent-default-on")
+    }
+
     func testPlaybackPreferencesPersistAndTranslationDefaultsEnabled() {
         app.launch()
         musicTab()
@@ -299,6 +313,16 @@ final class MusicParityTests: XCTestCase {
         assertSelected(element("music-always-previous"), false)
         scrollTo(element("music-translate-lyrics"))
         assertSelected(element("music-translate-lyrics"), false)
-        capture("loop-previous-translation-preferences-persisted")
+        let romanize = element("music-romanize-lyrics")
+        scrollTo(romanize)
+        assertSelected(romanize, true)
+        romanize.tap()
+        assertSelected(romanize, false)
+        app.terminate()
+        app.launch()
+        musicTab()
+        scrollTo(element("music-romanize-lyrics"))
+        assertSelected(element("music-romanize-lyrics"), false)
+        capture("loop-previous-translation-romanization-preferences-persisted")
     }
 }

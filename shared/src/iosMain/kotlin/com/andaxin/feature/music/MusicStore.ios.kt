@@ -34,6 +34,7 @@ internal object MusicStore {
     private const val KEY_LYRIC_FONT = "music.lyricFont"
     private const val KEY_LYRIC_COLOR = "music.lyricColor"
     private const val KEY_TRANSLATE_LYRICS = "music.translateLyrics"
+    private const val KEY_ROMANIZE_LYRICS = "music.romanizeLyrics"
     private const val KEY_CUSTOM_PLAYLISTS = "music.customPlaylists"
 
     fun loadMusicU(): String? = defaults.stringForKey(KEY_MUSIC_U)?.takeIf { it.isNotBlank() }
@@ -214,6 +215,13 @@ internal object MusicStore {
 
     fun saveTranslateLyrics(value: Boolean) {
         defaults.setBool(value, forKey = KEY_TRANSLATE_LYRICS)
+    }
+
+    fun loadRomanizeLyrics(): Boolean =
+        (defaults.objectForKey(KEY_ROMANIZE_LYRICS) as? NSNumber)?.boolValue ?: true
+
+    fun saveRomanizeLyrics(value: Boolean) {
+        defaults.setBool(value, forKey = KEY_ROMANIZE_LYRICS)
     }
 
     fun loadCustomPlaylists(): Map<String, List<Long>> {

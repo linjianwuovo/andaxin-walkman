@@ -2737,6 +2737,42 @@
         "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicLyricTranslationTest.kt"
       ],
       "note": "Standard [start,duration](start,duration,0) text parsing implemented. Broader offsets, background/credits, ruby/romanization and full TTML/QRC parity remain separate unaccepted gaps."
+    },
+    {
+      "id": "music.lyrics.romanization_default",
+      "kind": "preference",
+      "title": "歌词音译／罗马音默认开启且独立持久化",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/setting/LyricsSettings.kt:59-60,81-82",
+      "ios": [
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicStore.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicLyricPhoneticTest.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "Default true NSUserDefaults preference, independent toggle from translation, separate tags, relaunch read persisted. Native UI acceptance pending."
+    },
+    {
+      "id": "music.lyrics.romanization_parse_render",
+      "kind": "behavior",
+      "title": "接口罗马音在 1000 ms 内配对并实际渲染为可点歌词行",
+      "android": "music/src/main/java/com/ljyh/mei/utils/lyric/PhoneticLyrics.kt:12-60",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/NeteaseApi.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicLyricPhoneticTest.kt",
+        ".github/scripts/ios_lyrics_smoke.py"
+      ],
+      "note": "romalrc parsed independently; global nearest 1:1 pairing within 1000 ms preserves original timing, word times and translation. Phonetic appears above translation and has separate seek/hide behavior. Broader TTML/ruby/offset/credits remain unverified gaps."
     }
   ]
 }

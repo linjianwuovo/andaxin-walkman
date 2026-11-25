@@ -95,6 +95,7 @@ data class LyricLine(
     val text: String,
     val wordTimes: List<Long> = emptyList(),
     val translation: String = "",
+    val phonetic: String = "",
 )
 
 data class MusicCatalogItem(val id: Long, val name: String, val cover: String, val count: Int = 0)
@@ -383,21 +384,53 @@ private fun mergeLyricTranslations(original: List<LyricLine>, translations: List
     }
 }
 
+internal fun attachMusicPhonetics(original: List<LyricLine>, phonetics: List<LyricLine>): List<LyricLine> {
+    if (phonetics.isEmpty()) return original
+    data class Match(val lineIndex: Int, val phoneticIndex: Int, val distance: Long)
+    val candidates = buildList {
+        original.forEachIndexed { lineIndex, line ->
+            phonetics.forEachIndexed { phoneticIndex, phonetic ->
+                val distance = kotlin.math.abs(line.timeMs - phonetic.timeMs)
+                if (distance in 0L..1_000L && phonetic.text.isNotBlank() && phonetic.text != "♪" &&
+                    !phonetic.text.startsWith("//")) add(Match(lineIndex, phoneticIndex, distance))
+            }
+        }
+    }.sortedBy { it.distance }
+    val matches = mutableMapOf<Int, Int>()
+    val used = mutableSetOf<Int>()
+    for (match in candidates) {
+        if (match.lineIndex !in matches && match.phoneticIndex !in used) {
+            matches[match.lineIndex] = match.phoneticIndex
+            used += match.phoneticIndex
+        }
+    }
+    return original.mapIndexed { index, line ->
+        val phonetic = matches[index]?.let { phonetics[it].text }
+        if (line.phonetic.isNotBlank() || phonetic == null) line else line.copy(phonetic = phonetic)
+    }
+}
+
 fun parseLyrics(json: String): List<LyricLine> = runCatching {
     val root = Json.parseToJsonElement(json).jsonObject
     val lrcObject = root["lrc"] as? JsonObject ?: root
-    val original = sequenceOf("ttml", "yrc", "qrc", "lrc", "translatedLrc", "romalrc")
+    val original = sequenceOf("ttml", "yrc", "qrc", "lrc", "translatedLrc")
         .map { key -> parseLyricPayload(lyricPayload(lrcObject[key] ?: root[key])) }
         .firstOrNull { it.isNotEmpty() }.orEmpty()
     val translations = sequenceOf("ytlrc", "tlyric", "translatedLrc").map { key ->
         parseLyricPayload(lyricPayload(root[key] ?: lrcObject[key]))
             .filter { it.text != "♪" && it.text.isNotBlank() && !it.text.startsWith("//") }
     }.firstOrNull { it.isNotEmpty() }.orEmpty()
-    mergeLyricTranslations(original, translations)
+    val phonetics = runCatching {
+        parseLyricPayload(lyricPayload(root["romalrc"] ?: lrcObject["romalrc"]))
+    }.getOrDefault(emptyList())
+    attachMusicPhonetics(mergeLyricTranslations(original, translations), phonetics)
 }.getOrElse { emptyList() }
 
 internal fun displayedLyricTranslation(line: LyricLine, enabled: Boolean): String? =
     line.translation.takeIf { enabled && it.isNotBlank() && it != line.text }
+
+internal fun displayedLyricPhonetic(line: LyricLine, enabled: Boolean): String? =
+    line.phonetic.takeIf { enabled && it.isNotBlank() && it != line.text }
 
 data class MusicSongPage(val songs: List<MusicSong>, val more: Boolean, val total: Int)
 

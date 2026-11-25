@@ -73,6 +73,8 @@ class MusicController(
         private set
     var translateLyrics by mutableStateOf(MusicStore.loadTranslateLyrics())
         private set
+    var romanizeLyrics by mutableStateOf(MusicStore.loadRomanizeLyrics())
+        private set
     var tabOrder by mutableStateOf(MusicStore.loadTabOrder())
         private set
     var tabVisibility by mutableStateOf(MusicStore.loadTabVisibility())
@@ -309,6 +311,11 @@ class MusicController(
     fun setTranslateLyrics(value: Boolean) {
         translateLyrics = value
         MusicStore.saveTranslateLyrics(value)
+    }
+
+    fun setRomanizeLyrics(value: Boolean) {
+        romanizeLyrics = value
+        MusicStore.saveRomanizeLyrics(value)
     }
 
     fun setTabOrder(order: List<String>) {

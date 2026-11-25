@@ -553,7 +553,10 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
         SettingRow("翻译歌词") {
             FilterChip(selected = controller.translateLyrics, onClick = { controller.setTranslateLyrics(!controller.translateLyrics) }, modifier = Modifier.testTag("music-translate-lyrics"), label = { Text(if (controller.translateLyrics) "开" else "关") })
         }
-        Text("翻译开关已开启时只尝试解析接口返回的译文；匿名接口可能不提供译文。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SettingRow("音译 / 罗马音") {
+            FilterChip(selected = controller.romanizeLyrics, onClick = { controller.setRomanizeLyrics(!controller.romanizeLyrics) }, modifier = Modifier.testTag("music-romanize-lyrics"), label = { Text(if (controller.romanizeLyrics) "开" else "关") })
+        }
+        Text("译文和音译分别显示接口提供的文本；接口未返回时不自动生成。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SectionTitle("均衡器")
         Text("均衡器：原生 DSP 不在当前 iOS 工程能力内；这里只保留设备音效说明，不假装有可调音效。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SettingRow("网易云账号") {
@@ -1005,6 +1008,17 @@ private fun KaraokeLyricsView(controller: MusicController, lines: List<LyricLine
                             browsing = false
                         }.padding(horizontal = 4.dp, vertical = 6.dp),
                     )
+                    displayedLyricPhonetic(line, controller.romanizeLyrics)?.let { phonetic ->
+                        Text(
+                            text = phonetic,
+                            style = lyricStyle.copy(fontSize = (fontSize * 0.6f).sp, lineHeight = (fontSize * 0.85f).sp),
+                            color = if (active) color.copy(alpha = 0.8f) else Color.White.copy(alpha = inactiveAlpha),
+                            modifier = Modifier.fillMaxWidth().testTag("music-lyric-phonetic-$index").clickable {
+                                controller.seekTo(line.timeMs / 1000.0)
+                                browsing = false
+                            }.padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                    }
                     displayedLyricTranslation(line, controller.translateLyrics)?.let { translation ->
                         Text(
                             text = translation,
