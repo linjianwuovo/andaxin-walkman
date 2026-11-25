@@ -55,19 +55,17 @@ No item is accepted yet. Missing items include real DSP equalization, script-sou
 - JVM coverage includes timestamp boundary, non-reuse, malformed-safe behavior, independent visibility, YRC preservation and default-on ordering. Isolated lyrics fixtures add romanized-on/romanized-off render cases; XCUITest adds default/independence/persistence checks.
 - This batch is pending native compile/UI evidence. Broader lyric format capabilities and physical/live-service acceptance remain unaccepted.
 
-## 课程导入日历批次（v0.9.41 对齐）— 待真机授权验收
-- 共享层早就备好了两条路的两半：`.ics` 文本（`TimetableIcs.build`）和「要写进日历的那批课」
-  （`TimetableIcs.events`），缺的是 iOS 侧的落点。界面上「导入到日程」那一行只在
-  `BriefEnv.addToCalendar` 被插上时才画——之前 iOS 没插，所以他看不到这一行。
-- 这轮补上：`CalendarImport.kt`（去重口径，平台无关）+ `IosCalendarExport.kt`（EventKit）。
-  授权先要 write-only（我们只写不读），全拒时说清楚去系统设置开。
-- 去重：uid 写进 notes 的 `#andaxin:<uid>` 行，导入前按这批课的时间跨度把已有事件读回来认前缀，
-  只补新的。**不删用户已有的日历条目**；同一批里重复的 uid 只写一条。
-- `iosApp/project.yml` 补 `NSCalendarsWriteOnlyAccessUsageDescription` 与
-  `NSCalendarsUsageDescription`——缺了它们授权回调直接回 false，表现是「点了没反应」。
-- JVM 证据：`CalendarImportTest` 7 条（标记往返、认不出的不误判、去重、三种提示语），
-  总计 130 tests 全绿。
-- **未计 accepted**：授权弹框、真写进哪个日历、重复点两次的实际效果，都要在物理 iPhone 上验。
+## 课程导入日历修复 — 待真机授权验收
+- 原有 `IosCalendar.kt` 已接入日历；前一批次新增的入口被后续初始化覆盖，因此不能把当时的编译通过视为新实现已生效。本次删除旧实现，仅保留 `BriefEnv.addToCalendar → IosCalendarExport`。
+- 去重需要读取既有事件，原先“write-only 就够”的描述错误。iOS 17+ 使用完整访问授权；iOS 16 使用旧授权接口，Info.plist 同时提供完整访问和旧版权限说明。
+- 保留 notes 中的 `#andaxin:<uid>` 标记，以 uid 与实际开课时间共同去重，避免下一学期同周次的课被误跳过；不删除已有事件。
+- 成功数仅统计 `saveEvent` 返回成功的条目，失败数与已存在数分别呈现；所有授权结果与界面回调在主线程处理，并阻止并发重复导入。
+- 本地证据：`CalendarImportTest` 11 条、`ClassReminderPlanTest` 11 条均无失败；`:shared:compileKotlinIosSimulatorArm64` 编译通过。物理 iPhone 的授权、拒绝权限、导入与重试仍未验收，`accepted=false`。
+
+## 审计纠正 — 2026-11-25
+- 撤回未提交草稿对 196 个条目的批量重分类，包含缺少实测证据的 52 个 `accepted=true`，以及把通用界面/歌词/缓存选项直接判为平台阻塞的结论。
+- 页面标签、偏好键和源码命中只能作为待查线索，不能证明功能可用或平台无法实现。恢复原有逐项待审状态，全部 279 项的 `accepted` 仍为 false。
+- 不改变完整对齐范围；Widget、MCP、脚本音源等真实缺口继续保留，不以规模或工具环境为由排除。
 
 ## 均衡器批次（v0.9.41 对齐）— 待真机听感验收
 - 口径与安卓 `music/.../TenBandEqualizer.kt` 逐项对齐，写进 `logicMain/EqualizerModel.kt`：

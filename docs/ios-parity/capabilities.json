@@ -2772,7 +2772,7 @@
       "evidence": [
         "shared/src/jvmTest/kotlin/com/andaxin/core/schedule/CalendarImportTest.kt"
       ],
-      "note": "课程表那屏的两条路都通了：①「导出这份课表（.ics）」走 BriefEnv.shareFile（tmp + 系统分享面板）；②「导入到日程」走 BriefEnv.addToCalendar → EventKit（只写不读，iOS 17 起 write-only 就够）。去重按 uid（写进 notes 的 #andaxin:<uid>，读回来按前缀捞），点两次不会变成两条；不删用户已有的日历条目。Info.plist 补了 NSCalendarsWriteOnlyAccessUsageDescription + NSCalendarsUsageDescription，少了它们授权回调直接回 false（跟相机那个坑同一类）。**未计 accepted**：真机上的授权弹框、写进哪个日历、跨版本行为都要在物理 iPhone 上验一次。"
+      "note": "已合并为唯一 BriefEnv.addToCalendar → IosCalendarExport 入口，移除后续覆盖它的旧实现。iOS 17+ 请求完整访问权限，以便在本批次时间窗口内读取事件去重；iOS 16 走 requestAccessToEntityType。NSCalendarsFullAccessUsageDescription 与 NSCalendarsUsageDescription 已声明。去重身份由原 notes 标记 uid + 事件实际开课时间组成，避免跨学期同周次误判；只统计 saveEvent 实际成功数，失败项可重试，回调统一回主线程。11 条 CalendarImportTest 与 11 条 ClassReminderPlanTest 本地通过，iOS Simulator Arm64 Kotlin 编译通过。尚无真机授权/日历写入/拒绝权限/重复导入证据，保持 accepted=false。"
     },
     {
       "id": "host.camera",

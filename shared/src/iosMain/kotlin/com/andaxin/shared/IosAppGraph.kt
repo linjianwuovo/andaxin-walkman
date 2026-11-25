@@ -131,10 +131,6 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         // 「上课提醒」这一端的落点（系统日历触发器，见 IosClassReminder）：链由共享层的
         // planClassReminder 算，这里只给"把链交给系统"这台机器。
         it.reminder = com.andaxin.feature.notify.IosReminderHost
-        // 「导入到日程」：EventKit 写进用户自己的默认日历（安卓那条缝今天没人插，所以只有 iOS 有）。
-        it.addToCalendar = { events, onResult ->
-            com.andaxin.core.schedule.IosCalendarExport.import(events, onResult)
-        }
     }
 
     // PhotoHost 那三根插槽，iOS 只插第一根：正文附图交 IosImages（NSURLSession 取、Skia 解）。
@@ -163,11 +159,9 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         com.andaxin.feature.brief.BriefEnv.saveUrl = { name, url ->
             downloadThenShare(name, url)
         }
-        // 「把这一周的课直接写进系统日历」：只有 iOS 有这一档（EventKit），见 IosCalendar.kt。
-        // 安卓那边要 WRITE_CALENDAR 运行时权限 + CalendarContract，是另一件事，所以没插 ——
-        // 不插那一行就不画，不摆哑键。
+        // 课表导入只保留一个 EventKit 落点，避免后续初始化覆盖权限和去重逻辑。
         com.andaxin.feature.brief.BriefEnv.addToCalendar = { events, onResult ->
-            addEventsToCalendar(events, onResult)
+            com.andaxin.core.schedule.IosCalendarExport.import(events, onResult)
         }
         com.andaxin.feature.brief.BriefEnv.openOutside = { url ->
             val target = platform.Foundation.NSURL.URLWithString(url)
