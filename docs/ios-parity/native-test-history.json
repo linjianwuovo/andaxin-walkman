@@ -1,0 +1,11 @@
+{
+  "workflow_run": 45518859583,
+  "tested_commit": "8dc7f84a16bb84cd66cb3ef64db8ef66caef556b",
+  "result": "failure",
+  "evidence_artifact": "ios-music-ui / 14981337397",
+  "observed_failure": "All three UI tests timed out waiting for Switch.value == '1' (value remained empty); native Accessibility tree represented the checked Compose Switch with the Selected trait.",
+  "diagnosis": "Test observation mismatch; not evidence that the app preference toggle failed.",
+  "correction": "Use XCUIElement.isSelected and seed a fresh simulator app container before each independent test case.",
+  "corrected_run": "pending",
+  "acceptance": "not accepted"
+}

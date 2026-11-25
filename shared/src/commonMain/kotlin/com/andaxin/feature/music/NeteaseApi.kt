@@ -90,7 +90,12 @@ fun neteaseArtistAlbumsCall(id: Long, limit: Int = 30, offset: Int = 0, musicU: 
     headers = baseHeaders(musicU),
 )
 
-data class LyricLine(val timeMs: Long, val text: String, val wordTimes: List<Long> = emptyList())
+data class LyricLine(
+    val timeMs: Long,
+    val text: String,
+    val wordTimes: List<Long> = emptyList(),
+    val translation: String = "",
+)
 
 data class MusicCatalogItem(val id: Long, val name: String, val cover: String, val count: Int = 0)
 data class MusicArtistDetail(val id: Long, val name: String, val cover: String, val description: String)
@@ -268,9 +273,12 @@ private fun classicLrcTimeMs(line: String): Long? {
 private fun parseClassicLrc(raw: String): List<LyricLine> {
     val result = mutableListOf<LyricLine>()
     raw.lineSequence().forEach { line ->
-        val time = classicLrcTimeMs(line) ?: return@forEach
-        val text = line.replace(classicTimeRegex, "").trim();
-        result.add(LyricLine(time, if (text.isEmpty()) "♪" else text))
+        val text = line.replace(classicTimeRegex, "").trim()
+        classicTimeRegex.findAll(line).forEach { match ->
+            classicLrcTimeMs(match.value)?.let { time ->
+                result.add(LyricLine(time, text.ifEmpty { "♪" }))
+            }
+        }
     }
     return result.sortedBy { it.timeMs }
 }
@@ -307,33 +315,89 @@ private fun parseTtmlLyrics(raw: String): List<LyricLine> {
     if (result.isNotEmpty()) return result.sortedBy { it.timeMs }
     return parseClassicLrc(stripTags(raw))
 }
+private val yrcLineRegex = Regex("""^\[(\d+),(\d+)\](.*)$""")
+private val yrcWordRegex = Regex("""\((\d+),(\d+),\d+\)""")
+
+private fun parseYrcLyrics(raw: String): List<LyricLine> = raw.lineSequence().mapNotNull { row ->
+    val line = yrcLineRegex.matchEntire(row.trim()) ?: return@mapNotNull null
+    val start = line.groupValues[1].toLongOrNull() ?: return@mapNotNull null
+    val content = line.groupValues[3]
+    val words = yrcWordRegex.findAll(content).toList()
+    if (words.isEmpty()) return@mapNotNull null
+    val text = StringBuilder()
+    val times = mutableListOf<Long>()
+    words.forEachIndexed { index, word ->
+        val wordStart = word.groupValues[1].toLongOrNull() ?: return@forEachIndexed
+        val end = words.getOrNull(index + 1)?.range?.first ?: content.length
+        val chunk = content.substring(word.range.last + 1, end)
+        text.append(chunk)
+        repeat(chunk.length) { times.add((wordStart - start).coerceAtLeast(0L)) }
+    }
+    text.toString().takeIf { it.isNotBlank() }?.let { LyricLine(start, it, times) }
+}.sortedBy { it.timeMs }.toList()
+
 private fun parseLyricPayload(raw: String): List<LyricLine> {
     if (raw.isBlank()) return emptyList()
     if (raw.trimStart().startsWith("{")) return runCatching {
-        val obj = Json.parseToJsonElement(raw).jsonObject;
-        val translated = arrayOrEmpty(obj, "translatedLyric").mapNotNull { e -> classicLrcTimeMs(contentOrNull(e, "lineLyric").orEmpty())?.let { LyricLine(it, contentOrNull(e, "lineLyric").orEmpty()) } };
+        val obj = Json.parseToJsonElement(raw).jsonObject
+        val translated = arrayOrEmpty(obj, "translatedLyric").flatMap { e ->
+            parseClassicLrc(contentOrNull(e, "lineLyric").orEmpty())
+        }
         if (translated.isNotEmpty()) translated else parseClassicLrc(contentOrNull(obj, "lyric").orEmpty())
     }.getOrElse { parseClassicLrc(raw) }
     if (raw.contains("<p") && raw.contains("</p>")) return parseTtmlLyrics(raw)
     if (raw.contains("<cy")) return parseRichLyrics(raw)
-    return parseClassicLrc(raw)
+    val yrc = parseYrcLyrics(raw)
+    return yrc.ifEmpty { parseClassicLrc(raw) }
+}
+
+private fun lyricPayload(value: JsonElement?): String = when (value) {
+    is JsonPrimitive -> value.contentOrNull
+    is JsonObject -> contentOrNull(value, "lyric") ?: contentOrNull(value, "content")
+    else -> null
+}.orEmpty()
+
+private fun mergeLyricTranslations(original: List<LyricLine>, translations: List<LyricLine>): List<LyricLine> {
+    if (translations.isEmpty()) return original
+    val attached = mutableMapOf<Int, String>()
+    if (original.any { it.wordTimes.isNotEmpty() }) {
+        for (translation in translations) {
+            val nearest = original.indices.filter { it !in attached }
+                .minWithOrNull(compareBy<Int> { kotlin.math.abs(original[it].timeMs - translation.timeMs) }
+                    .thenByDescending { original[it].text.length }) ?: continue
+            if (kotlin.math.abs(original[nearest].timeMs - translation.timeMs) <= 3000L) {
+                attached[nearest] = translation.text
+            }
+        }
+    } else {
+        var nearest = 0
+        for ((index, line) in original.withIndex()) {
+            while (nearest < translations.lastIndex &&
+                kotlin.math.abs(translations[nearest].timeMs - line.timeMs) >
+                kotlin.math.abs(translations[nearest + 1].timeMs - line.timeMs)) nearest++
+            attached[index] = translations[nearest].text
+        }
+    }
+    return original.mapIndexed { index, line ->
+        line.copy(translation = attached[index].orEmpty().takeUnless { it == line.text }.orEmpty())
+    }
 }
 
 fun parseLyrics(json: String): List<LyricLine> = runCatching {
     val root = Json.parseToJsonElement(json).jsonObject
-    val lrcObject = root["lrc"]?.jsonObject ?: root
-    val candidates = listOf("ttml", "yrc", "qrc", "lrc", "translatedLrc", "romalrc")
-    val chosen = candidates.firstNotNullOfOrNull { key ->
-        val value = lrcObject[key] ?: root[key]
-        val text = when {
-            value == null -> null
-            value is JsonPrimitive -> value.contentOrNull
-            else -> contentOrNull(value, "lyric") ?: contentOrNull(value, "content")
-        }
-        text?.takeIf { it.isNotBlank() }
-    }.orEmpty()
-    parseLyricPayload(chosen)
+    val lrcObject = root["lrc"] as? JsonObject ?: root
+    val original = sequenceOf("ttml", "yrc", "qrc", "lrc", "translatedLrc", "romalrc")
+        .map { key -> parseLyricPayload(lyricPayload(lrcObject[key] ?: root[key])) }
+        .firstOrNull { it.isNotEmpty() }.orEmpty()
+    val translations = sequenceOf("ytlrc", "tlyric", "translatedLrc").map { key ->
+        parseLyricPayload(lyricPayload(root[key] ?: lrcObject[key]))
+            .filter { it.text != "♪" && it.text.isNotBlank() && !it.text.startsWith("//") }
+    }.firstOrNull { it.isNotEmpty() }.orEmpty()
+    mergeLyricTranslations(original, translations)
 }.getOrElse { emptyList() }
+
+internal fun displayedLyricTranslation(line: LyricLine, enabled: Boolean): String? =
+    line.translation.takeIf { enabled && it.isNotBlank() && it != line.text }
 
 data class MusicSongPage(val songs: List<MusicSong>, val more: Boolean, val total: Int)
 

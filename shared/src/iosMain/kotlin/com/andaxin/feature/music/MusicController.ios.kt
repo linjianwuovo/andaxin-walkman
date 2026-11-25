@@ -27,10 +27,6 @@ import platform.UIKit.UIImage
 import kotlin.coroutines.resume
 import kotlin.time.TimeSource
 
-private const val MODE_LIST = 0
-private const val MODE_ONE = 1
-private const val MODE_SHUFFLE = 2
-private const val MODE_REPEAT_ALL = 3
 
 /*
  * 音乐 tab 的全部状态和网络调用都收在这里，composable 只负责画。
@@ -55,7 +51,11 @@ class MusicController(
         private set
     var likedIds by mutableStateOf<Set<Long>>(emptySet())
         private set
-    var playMode by mutableStateOf(MusicStore.loadPlayMode())
+    private var playbackMode by mutableStateOf(MusicStore.loadPlaybackMode())
+        private set
+    var loopPlaybackEnabled by mutableStateOf(MusicStore.loadLoopPlayback())
+        private set
+    var alwaysPrevious by mutableStateOf(MusicStore.loadAlwaysPrevious())
         private set
     var bitrate by mutableStateOf(MusicStore.loadBitrate())
         private set
@@ -98,6 +98,9 @@ class MusicController(
     private var librarySongs = MusicStore.loadLibrarySongs()
 
     private var index = -1
+    private val queueSlots = MusicQueueSlots()
+    private var shuffleQueue = emptyList<MusicSong>()
+    private var shuffleOrder = MusicStore.loadShuffleOrder()
     private var loaded = false
     private var endHandled = false
     private var lastTickPosition = 0.0
@@ -154,9 +157,42 @@ class MusicController(
         MusicStore.saveLikedIds(likedIds)
     }
 
-    fun setPlayMode(value: Int) {
-        playMode = if (value in MODE_LIST..MODE_REPEAT_ALL) value else MODE_LIST
-        MusicStore.savePlayMode(playMode)
+    fun cyclePlayMode() {
+        val previous = playbackMode
+        playbackMode = nextMusicPlaybackMode(playbackMode, loopPlaybackEnabled)
+        if (playbackMode.shuffleEnabled && !previous.shuffleEnabled) resetShuffleOrder()
+        MusicStore.savePlaybackMode(playbackMode)
+    }
+
+    fun toggleShuffle() {
+        playbackMode = playbackMode.copy(shuffleEnabled = !playbackMode.shuffleEnabled)
+        if (playbackMode.shuffleEnabled) resetShuffleOrder()
+        MusicStore.savePlaybackMode(playbackMode)
+    }
+
+    fun cycleRepeatMode() {
+        val repeatMode = nextMusicRepeatMode(playbackMode.repeatMode)
+        playbackMode = playbackMode.copy(repeatMode = repeatMode)
+        setLoopPlaybackEnabled(repeatMode != MUSIC_REPEAT_OFF)
+        MusicStore.savePlaybackMode(playbackMode)
+    }
+
+    val shuffleEnabled: Boolean get() = playbackMode.shuffleEnabled
+
+    fun repeatModeLabel(): String = when (playbackMode.repeatMode) {
+        MUSIC_REPEAT_ONE -> "单曲循环"
+        MUSIC_REPEAT_ALL -> "全部循环"
+        else -> "循环关闭"
+    }
+
+    fun setLoopPlaybackEnabled(value: Boolean) {
+        loopPlaybackEnabled = value
+        MusicStore.saveLoopPlayback(value)
+    }
+
+    fun setAlwaysPrevious(value: Boolean) {
+        alwaysPrevious = value
+        MusicStore.saveAlwaysPrevious(value)
     }
 
     fun loadSelectedTabLabel(): String = MusicStore.loadSelectedTab().ifEmpty { "首页" }
@@ -166,8 +202,6 @@ class MusicController(
     }
 
     suspend fun fetchText(call: HttpCall): String = engine.execute(call).bodyText
-
-    fun cyclePlayMode() = setPlayMode((playMode + 1) % 4)
 
     fun setBitrate(value: Int) {
         bitrate = if (value == 320000) 320000 else 128000
@@ -190,7 +224,8 @@ class MusicController(
     }
 
     fun playQueueAt(index: Int) {
-        if (queue.indices.contains(index)) scope.launch { playAt(index) }
+        val slot = queueSlots.keyAt(index) ?: return
+        requestPlaybackAtOccurrence(slot)
     }
 
     fun addToQueue(song: MusicSong, playNext: Boolean = false) {
@@ -199,9 +234,11 @@ class MusicController(
             return
         }
         val nextIndex = if (index >= 0) index + 1 else queue.size
+        val insertionIndex = if (playNext && nextIndex <= queue.size) nextIndex else queue.size
         queue = if (playNext && nextIndex <= queue.size) {
             queue.toMutableList().also { it.add(nextIndex, song) }
         } else queue + song
+        queueSlots.insert(insertionIndex)
         MusicStore.saveQueue(queue, index.coerceAtLeast(0))
         message = if (playNext) "已插播到下一首" else "已加入播放队列"
     }
@@ -213,6 +250,7 @@ class MusicController(
         }
         val removingCurrent = target == index
         val wasPlaying = playing
+        queueSlots.remove(target)
         queue = edit.queue
         index = edit.index
         if (removingCurrent) {
@@ -234,8 +272,8 @@ class MusicController(
             nowPlaying.clear()
             refreshNowPlaying()
             if (wasPlaying && index >= 0) {
-                val nextSong = current ?: return
-                scope.launch { play(nextSong) }
+                val nextSlot = queueSlots.keyAt(index) ?: return
+                requestPlaybackAtOccurrence(nextSlot)
             }
         }
         MusicStore.saveQueue(queue, index.coerceAtLeast(0))
@@ -243,6 +281,7 @@ class MusicController(
 
     fun moveQueueItem(from: Int, to: Int) {
         val edit = moveMusicQueueItem(queue, index, from, to) ?: return
+        queueSlots.move(from, to)
         queue = edit.queue
         index = edit.index
         MusicStore.saveQueue(queue, index)
@@ -347,11 +386,11 @@ class MusicController(
         }
     }
 
-    fun playModeLabel(): String = when (playMode) {
-        MODE_ONE -> "单曲循环"
-        MODE_SHUFFLE -> "随机播放"
-        MODE_REPEAT_ALL -> "全部循环"
-        else -> "列表循环"
+    fun playModeLabel(): String = when {
+        playbackMode.shuffleEnabled -> "随机播放"
+        playbackMode.repeatMode == MUSIC_REPEAT_ONE -> "单曲循环"
+        playbackMode.repeatMode == MUSIC_REPEAT_ALL -> "全部循环"
+        else -> "顺序播放"
     }
     fun clearSearchHistory() = MusicStore.saveSearchHistory(emptyList())
 
@@ -368,17 +407,21 @@ class MusicController(
 
     /** 从当前列表里把某首歌挑出来放；缺歌时不往队列里塞占位数据。 */
     suspend fun play(song: MusicSong) {
-        val list = when {
-            queue.any { it.id == song.id } -> queue
-            songs.any { it.id == song.id } -> songs
-            else -> queue + song
+        if (queue.none { it.id == song.id }) {
+            if (songs.any { it.id == song.id }) {
+                val active = current
+                queue = if (active != null && songs.none { it.id == active.id }) listOf(active) + songs else songs
+                queueSlots.reset(queue.size)
+                index = active?.let { item -> queue.indexOfFirst { it.id == item.id } } ?: -1
+            } else {
+                addToQueue(song)
+            }
         }
-        val active = current
-        queue = if (active != null && list.none { it.id == active.id }) listOf(active) + list else list
-        index = active?.let { item -> queue.indexOfFirst { it.id == item.id } } ?: -1
+        val target = index.takeIf { queue.getOrNull(it)?.id == song.id }
+            ?: queue.indexOfFirst { it.id == song.id }
+        val slot = queueSlots.keyAt(target) ?: return
         MusicStore.saveQueue(queue, index.coerceAtLeast(0))
-        // 播放历史的落点只有 playAt：它同时覆盖点选、下一首、队列与自动续播。
-        playAt(queue.indexOfFirst { it.id == song.id })
+        playAtOccurrence(slot)
     }
 
     /** 首页/发现点推荐卡片：搜到什么就把结果装进队列，供播放器“下一首”走。 */
@@ -390,6 +433,7 @@ class MusicController(
         if (results.isNotEmpty()) {
             val active = current
             queue = if (active != null && results.none { it.id == active.id }) listOf(active) + results else results
+            queueSlots.reset(queue.size)
             index = active?.let { song -> queue.indexOfFirst { it.id == song.id } } ?: -1
             MusicStore.saveQueue(queue, index.coerceAtLeast(0))
             message = "「$trimmed」已放入播放队列"
@@ -435,9 +479,11 @@ class MusicController(
     }
 
     fun toggle() {
-        val song = current ?: return
+        if (current == null) return
         if (!loaded) {
-            scope.launch { playAt(index, startAt = position) }
+            val slot = queueSlots.keyAt(index) ?: return
+            val startAt = position
+            requestPlaybackAtOccurrence(slot, startAt = startAt)
             return
         }
         if (playing) {
@@ -451,39 +497,49 @@ class MusicController(
         refreshNowPlaying()
     }
 
-    fun next() {
+    fun next() = advanceQueue(automatic = false)
+
+    private fun advanceQueue(automatic: Boolean) {
         if (queue.isEmpty()) return
-        if (playMode != MODE_REPEAT_ALL && playMode != MODE_SHUFFLE && index >= queue.lastIndex) {
-            message = "已播放到队列末尾"
-            pauseFromRemote()
+        val target = if (automatic && playbackMode.repeatMode == MUSIC_REPEAT_ONE) index else {
+            musicQueueNavigationIndex(index, queue.size, playbackMode.repeatMode, forward = true, navigationOrder())
+        }
+        if (target == null) {
+            if (automatic) {
+                message = "已播放到队列末尾"
+                pauseFromRemote()
+            }
             return
         }
-        val target = when (playMode) {
-            MODE_ONE -> index
-            MODE_SHUFFLE -> randomOther()
-            MODE_REPEAT_ALL -> (index + 1) % queue.size
-            else -> index + 1
-        }
-        val request = ++playbackRequest
-        scope.launch {
-            if (request == playbackRequest) playAt(target)
-        }
+        val slot = queueSlots.keyAt(target) ?: return
+        requestPlaybackAtOccurrence(slot)
     }
 
     fun previous() {
         if (queue.isEmpty()) return
-        val target = if (playMode == MODE_SHUFFLE) randomOther() else index - 1
-        val request = ++playbackRequest
-        scope.launch {
-            if (request == playbackRequest) playAt(target)
-        }
+        val target = previousMusicQueueIndex(
+            index, queue.size, position, alwaysPrevious,
+            repeatMode = playbackMode.repeatMode, shuffleOrder = navigationOrder(),
+        )
+        val slot = queueSlots.keyAt(target) ?: return
+        requestPlaybackAtOccurrence(slot)
     }
 
-    /** 随机挑一首不是当前这首的曲目；单曲队列停在原处。 */
-    private fun randomOther(): Int {
-        if (queue.size <= 1) return index
-        val pick = (0 until queue.size).random()
-        return if (pick == index) (pick + 1) % queue.size else pick
+    private fun resetShuffleOrder() {
+        shuffleQueue = emptyList()
+        shuffleOrder = emptyList()
+        MusicStore.saveShuffleOrder(shuffleOrder)
+    }
+
+    private fun navigationOrder(): List<Int>? {
+        if (!playbackMode.shuffleEnabled) return null
+        if ((shuffleQueue.isNotEmpty() && shuffleQueue != queue) || !isMusicShuffleOrder(shuffleOrder, queue.size)) {
+            val remaining = queue.indices.filter { it != index }.shuffled()
+            shuffleOrder = if (index in queue.indices) listOf(index) + remaining else remaining
+            MusicStore.saveShuffleOrder(shuffleOrder)
+        }
+        shuffleQueue = queue
+        return shuffleOrder
     }
 
     fun seekTo(seconds: Double) {
@@ -500,16 +556,23 @@ class MusicController(
         refreshNowPlaying()
     }
 
-    private suspend fun playAt(target: Int, startAt: Double = 0.0): Boolean {
+    private fun requestPlaybackAtOccurrence(slot: Any, startAt: Double = 0.0) {
+        val request = ++playbackRequest
+        scope.launch {
+            if (request == playbackRequest) playAtOccurrence(slot, startAt)
+        }
+    }
+
+    private suspend fun playAtOccurrence(slot: Any, startAt: Double = 0.0): Boolean {
         val list = queue
-        if (list.isEmpty()) return false
-        val i = ((target % list.size) + list.size) % list.size
+        val i = queueSlots.indexOf(slot)
+        if (i !in list.indices) return false
         val song = list[i]
         val request = ++playbackRequest
         message = null
         val url = resolve(song, bitrate)
         if (request != playbackRequest || !scope.isActive) return false
-        val liveIndex = queue.indexOfFirst { it.id == song.id }
+        val liveIndex = queueSlots.indexOf(slot)
         if (liveIndex < 0) return false
         // 续播（startAt > 0）不是新的收听，别把恢复当成又听了一次。
         val newListen = current?.id != song.id && startAt <= 0.5
@@ -591,6 +654,7 @@ class MusicController(
             restorePosition = restorePlaybackPosition,
         )
         queue = restored.queue
+        queueSlots.reset(queue.size)
         index = restored.index
         current = restored.current
         position = restored.positionSeconds
@@ -638,8 +702,7 @@ class MusicController(
             lastTickPosition = position
             if (playing && !player.seeking && (atTail || rewound) && !endHandled) {
                 endHandled = true
-                // 单曲循环绕过 next()，确保自动续播也停在同一首。
-                if (playMode == MODE_ONE) scope.launch { playAt(index) } else next()
+                advanceQueue(automatic = true)
             }
             if (position - lastSavedPosition >= 5.0) {
                 lastSavedPosition = position
@@ -695,7 +758,9 @@ class MusicController(
     private fun resumeFromRemote() {
         if (current == null) return
         if (!loaded) {
-            scope.launch { playAt(index, startAt = position) }
+            val slot = queueSlots.keyAt(index) ?: return
+            val startAt = position
+            requestPlaybackAtOccurrence(slot, startAt = startAt)
             return
         }
         player.resume()

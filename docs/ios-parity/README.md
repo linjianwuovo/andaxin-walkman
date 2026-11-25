@@ -14,7 +14,7 @@
 No item is accepted yet. Missing items include real DSP equalization, script-source runtime, MCP and native widget families. Other source-present pages still require action-by-action verification. The existing equalizer explanation is explicitly not an implementation.
 
 ## Execution batches
-1. Playback restore and normal music entry: keep queue/position paused at startup; preference defaults on; reject non-finite persisted positions; explicit play resumes; My → Music uses normal route and native Back. Local JVM music suite: 32 tests pass, including 7 new restore tests. Native compile/simulator/physical checks pending.
+1. Playback restore and normal music entry: keep queue/position paused at startup; preference defaults on; reject non-finite persisted positions; explicit play resumes; My → Music uses normal route and native Back. Local JVM suite passed. Native run `45518859583` compiled the Kotlin/Native app and XCTest target but all first three UI cases failed at the harness reading switch `value` as `"1"`; the xcresult accessibility tree showed `Selected` with an empty value. The harness now checks `isSelected` and the next CI run is pending; simulator behavior has not passed yet. Physical checks remain pending.
 2. Host/platform: route/action audit, account/session, campus read workflows, image/avatar, camera/QR, files/share/calendar/reminders, GPS/background, theme/accessibility, correct iOS update channel. Service writes remain blocked without sandbox.
 3. Music catalog/account: source management, multi-source search/browse, library and playlists, account/security/QR, messages, comments/wiki, recognition and listen-together. Implement real actions; live checks require proper test account.
 4. Music playback/platform: DSP, modes/queue, lyrics, local files, download/storage, audio output/background, widgets, MCP, settings. Native constraints require usable equivalents, not placeholder copy.
@@ -25,8 +25,8 @@ No item is accepted yet. Missing items include real DSP equalization, script-sou
 - JVM report directory: `shared/build/test-results/jvmTest`; 32 tests, zero failures/errors/skips, initial run after playback changes. Re-run after the normal route and accessibility-tag changes also passed (27 seconds).
 - Evidence log: `D:/gongzuoqu/andaxin-work/tmp/ios-parity-v0941-20261125/playback-restore/gradle-test-native-tags.log`.
 - Device checks: launch after active playback must remain silent/paused; queue/index/position restored; explicit play resumes; preference off starts at zero after relaunch; retain settings across restart; use native Back from My → Music; exercise both the Music tab and pushed music page without duplicate player state.
-- Native test target: `iosApp/UITests/MusicParityTests.swift`; three tests exercise My → Music → native Back, the legacy playing flag across relaunches, and the persisted restore-position switch. Test queues are injected into simulator launch preferences; no remote playback or service submission is performed.
-- The simulator assertions are not physical playback, persisted real-audio, or full-parity acceptance. The initial iOS candidate is 0.9.35 (187); macOS compilation and the new UI suite are still pending.
+- Native test target: `iosApp/UITests/MusicParityTests.swift`; eight tests cover My → Music → native Back, paused restore/relaunch and switch persistence, queue reorder/removal, repeat-vs-shuffle independence, and playback preferences. Each case runs from a fresh simulator app install; no real audio or service writes occur. Test queues are injected into simulator launch preferences; no remote playback or service submission is performed.
+- The simulator assertions are not physical playback, persisted real-audio, or full-parity acceptance. The initial iOS candidate is 0.9.35 (187). Native compilation passed on run `45518859583`, but its 3 UI cases failed due to the XCTest value-vs-selected observation; corrected tests are awaiting a fresh native run.
 - No service writes were submitted. No iPhone or new native CI evidence yet.
 
 ## Queue editing batch — implemented, not accepted
@@ -34,3 +34,18 @@ No item is accepted yet. Missing items include real DSP equalization, script-sou
 - Shared helpers preserve the active item through every reorder; removing an earlier item keeps position, while removing the current item resets position and selects the next item (or preceding item at the end). Existing playing-state continuation is retained but has not been audio-verified.
 - Seven new `MusicQueueEditTest` cases cover last-item/invalid guards, index transitions, duplicate IDs, all valid moves and persisted paused restore. JVM suite: 39 tests, zero failures/errors/skips; log `D:/gongzuoqu/andaxin-work/tmp/ios-parity-v0941-20261125/queue-edit/gradle-test.log`.
 - Three additional native tests exercise up/down and saved order after relaunch, removal before current, current removal and disabled single-item actions. Native execution is still pending; this does not establish actual audio behavior or full parity.
+
+
+## Playback-mode batch — local behavior fixed, native pending
+- Separated repeat mode from shuffle and restored Android's independent loop/always-previous preferences. Repeat control now follows Android queue order: off → all → one → off; shuffle remains independent. Media3 1.11.1 bytecode verifies its 3-second previous-track threshold and one-repeat behavior for manual navigation.
+- iOS UITests now assert native `XCUIElement.isSelected` for Compose switches/chips rather than reading an empty `value`; the failed first native run's accessibility tree shows the restore switch with the `Selected` trait, while its `value` is empty. This corrected a test-observation error, not yet a passing native result.
+- CI runs each of the eight UI tests in a fresh app install and stores a separate `.xcresult`, so persisted NSUserDefaults cannot leak across test cases. Native rerun still pending.
+- JVM music suite: 48 tests, zero failures/errors/skips after repeat ordering update. `MusicPlaybackModesTest` covers legacy migration, independent repeat/shuffle cycles, 3-second boundary, invalid positions, manual/automatic single-repeat semantics, stable shuffle navigation and bounds.
+- Remaining audio output/physical iPhone checks are not satisfied by simulator tests. No account/service writes were submitted.
+
+## Queue identity and translated-lyrics batch — pending native verification
+- All coroutine playback entry points capture a unique queue-occurrence key and request token before dispatch. Duplicate song IDs no longer force the first matching occurrence after URL resolution; removed/replaced targets cannot fall back to another occurrence.
+- Translation preference now drives real text rendering below the original lyric, including seek actions. Standard NetEase YRC parsing preserves per-character word starts; unusable rich payloads fall back to usable LRC.
+- Latest exact-source JVM suite: 61 tests, zero failures/errors/skips. External log: `D:/gongzuoqu/andaxin-work/tmp/ios-parity-v0941-20261125/queue-translation/gradle-test.log`.
+- Isolated lyric fixture expanded from three to five cases with translation shown/hidden. All replacement anchors were checked against LF-normalized candidate sources (Git archive is LF; untouched Windows files can be CRLF). Full committed-source dry-run follows before push.
+- Native build/UI, physical audio, live services, and full-format lyric parity remain unaccepted. This batch does not implement all remaining lyric capabilities or claim full app parity.

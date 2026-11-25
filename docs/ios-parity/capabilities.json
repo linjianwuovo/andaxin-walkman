@@ -2613,6 +2613,130 @@
         "iosApp/UITests/MusicParityTests.swift"
       ],
       "note": "JVM logic tests passed; native UI tests added but not executed yet. Actual playing audio and physical-device checks remain pending."
+    },
+    {
+      "id": "music.playback.mode",
+      "kind": "behavior",
+      "title": "播放模式：顺序、单曲循环、全部循环、随机",
+      "android": "music/src/main/java/com/ljyh/mei/playback/MusicService.kt:1602-1618",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicPlaybackModes.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicStore.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicPlaybackModesTest.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "Shared behavior and UI implemented; JVM tests pass. Native CI/UI and physical audio checks remain pending; first native run exposed an XCTest value-vs-selected assertion mismatch."
+    },
+    {
+      "id": "music.playback.loop_preference",
+      "kind": "preference",
+      "title": "循环播放偏好控制随机/顺序模式的循环设置",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/setting/PlaySetting.kt:94",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicPlaybackModes.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicStore.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicPlaybackModesTest.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "Shared deterministic logic and UI are implemented; local JVM evidence only; native CI/audio/physical behavior remains pending."
+    },
+    {
+      "id": "music.playback.previous_behavior",
+      "kind": "preference",
+      "title": "上一首：始终上一首或超过3秒先重播当前曲目",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/setting/PlaySetting.kt:97",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicPlaybackModes.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicStore.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicPlaybackModesTest.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "Shared behavior and UI implemented; JVM tests pass. Native CI/UI and physical audio checks remain pending; first native run exposed an XCTest value-vs-selected assertion mismatch."
+    },
+    {
+      "id": "music.lyrics.translation_default",
+      "kind": "preference",
+      "title": "翻译歌词默认开启",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/setting/LyricsSettings.kt:59",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicPlaybackModes.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicStore.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "iosApp/UITests/MusicParityTests.swift",
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicLyricTranslationTest.kt"
+      ],
+      "note": "Preference defaults true and now controls actual translation rendering. Persistence UITest and translated-on/off fixtures await native execution."
+    },
+    {
+      "id": "music.queue.async_occurrence",
+      "kind": "behavior",
+      "title": "重复歌曲与异步播放请求按队列 occurrence 定位",
+      "android": "music/src/main/java/com/ljyh/mei/ui/component/player/component/applemusic/PlayerQueuePage.kt:1003-1017",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicQueueSlots.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicQueueSlotsTest.kt"
+      ],
+      "note": "Unique slot keys survive move/insert and invalidate removed or replaced occurrences. Capture request and slot before coroutine dispatch. Native async/audio acceptance remains pending."
+    },
+    {
+      "id": "music.lyrics.translation_render",
+      "kind": "behavior",
+      "title": "接口译文实际显示、开关隐藏并保留原词时间",
+      "android": "music/src/main/java/com/ljyh/mei/utils/lyric/LRCParser.kt:97-130",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/NeteaseApi.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicLyricTranslationTest.kt",
+        ".github/scripts/ios_lyrics_smoke.py"
+      ],
+      "note": "Classic LRC uses nearest translation timestamps; karaoke uses unique matching within 3 seconds. Native translated-on/off fixture rendering pending. No live account or physical test."
+    },
+    {
+      "id": "music.lyrics.netease_yrc",
+      "kind": "behavior",
+      "title": "网易云 YRC 行时间与逐字起始时间",
+      "android": "music/src/main/java/com/ljyh/mei/utils/lyric/YRCParser.kt:12-20",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/NeteaseApi.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicLyricTranslationTest.kt"
+      ],
+      "note": "Standard [start,duration](start,duration,0) text parsing implemented. Broader offsets, background/credits, ruby/romanization and full TTML/QRC parity remain separate unaccepted gaps."
     }
   ]
 }

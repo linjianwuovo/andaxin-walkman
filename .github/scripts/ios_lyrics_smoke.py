@@ -28,6 +28,8 @@ CASES = {
     "timed-cover": ("decoded", "timed"),
     "mixed-no-cover": ("none", "wrapped"),
     "completed-empty": ("none", "empty"),
+    "translated-on": ("none", "translated"),
+    "translated-off": ("none", "original"),
 }
 READY_SECONDS = 60
 BUILD_SECONDS = 900
@@ -202,7 +204,7 @@ def patch_set(png):
 
 fun IosAppGraph.armIosLyricsVisualFixture(key: String) {{
     val case = key.removePrefix("{MARKER}:")
-    require(key != case && case in setOf("timed-cover", "mixed-no-cover", "completed-empty"))
+    require(key != case && case in setOf("timed-cover", "mixed-no-cover", "completed-empty", "translated-on", "translated-off"))
     lyricsVisualCase = case
 }}
 
@@ -297,16 +299,25 @@ import androidx.compose.ui.unit.dp
             }
         }
 '''),
-            ('''                    text = if (active) karaokeLine(line, controller.position, color) else AnnotatedString(line.text),
+            ('''                        text = if (active) karaokeLine(line, controller.position, color) else AnnotatedString(line.text),
 ''', '''                    text = if (active) karaokeLine(line, controller.position, color) else AnnotatedString(line.text),
                     onTextLayout = { result ->
                         if (active && onFixtureLayout != null && result.size.width > 0 && result.size.height > 0) {
                             val elapsed = (controller.position * 1000).toLong() - line.timeMs
                             if (line.wordTimes.size == line.text.length && line.wordTimes.firstOrNull()?.let { elapsed > it } == true &&
                                 line.wordTimes.lastOrNull()?.let { elapsed < it } == true) onFixtureLayout("timed")
-                            else if (result.lineCount > 1) onFixtureLayout("wrapped")
+                            else if (line.translation.isNotBlank()) {
+                                if (!controller.translateLyrics) onFixtureLayout("original")
+                            } else if (result.lineCount > 1) onFixtureLayout("wrapped")
                         }
                     },
+'''),
+            ("                            text = translation,\n", '''                            text = translation,
+                            onTextLayout = { result ->
+                                if (active && onFixtureLayout != null && result.size.width > 0 && result.size.height > 0) {
+                                    onFixtureLayout("translated")
+                                }
+                            },
 '''),
         ],
         CONTROLLER: [
@@ -318,25 +329,32 @@ import androidx.compose.ui.unit.dp
         internal fun lyricsVisualFixture(case: String): MusicController = MusicController(lyricsVisualOnly = true).apply {{
             val cover = case == "timed-cover"
             val mixed = case == "mixed-no-cover"
-            require(cover || mixed || case == "completed-empty")
+            val translated = case == "translated-on" || case == "translated-off"
+            require(cover || mixed || translated || case == "completed-empty")
             val song = MusicSong(
-                id = if (cover) 9101L else if (mixed) 9102L else 9103L,
-                name = if (cover) "纸灯沿着风走" else if (mixed) "The folded atlas · 折页地图" else "静默温室",
+                id = if (cover) 9101L else if (mixed) 9102L else if (translated) 9104L else 9103L,
+                name = if (cover) "纸灯沿着风走" else if (mixed) "The folded atlas · 折页地图" else if (translated) "A lantern over the river" else "静默温室",
                 artist = "Glass Orchard · 玻璃果园",
                 album = "Paper Observatory",
                 cover = if (cover) "{COVER}" else "",
                 duration = if (cover) 182_000L else if (mixed) 241_000L else 156_000L,
             )
             current = song
-            position = if (cover) 12.4 else if (mixed) 49.5 else 22.0
+            position = if (cover) 12.4 else if (mixed) 49.5 else if (translated) 12.4 else 22.0
             duration = song.duration / 1000.0
             lyricsVisible = true
             musicU = null
-            playMode = MODE_LIST
+            playbackMode = MusicPlaybackMode(MUSIC_REPEAT_OFF, false)
             lyricFontSize = 28
             lyricColor = if (mixed) "#FFF3AF" else ""
-            translateLyrics = false
+            translateLyrics = case == "translated-on"
             lyrics = when {{
+                translated -> listOf(
+                    LyricLine(6_000L, "Leave the window open", translation = "让窗留给风"),
+                    LyricLine(10_000L, "A lantern over the river", translation = "河面上，一盏纸灯"),
+                    LyricLine(17_000L, "The stars find their way home", translation = "星光找到了回家的路"),
+                    LyricLine(24_000L, "Tomorrow begins on a blank page", translation = "明天从一张白纸升起"),
+                )
                 cover -> {{
                     val line = "纸灯沿着风走，照见河上的星"
                     listOf(
@@ -373,12 +391,10 @@ import androidx.compose.ui.unit.dp
     private fun startPlaybackRestore() {
 '''),
             *[(f"    fun {signature} {{\n", f"    fun {signature} {{\n        if (lyricsVisualOnly) return\n") for signature in (
-                "reloadLyrics()", "toggle()", "next()", "previous()", "seekTo(seconds: Double)",
+                "reloadLyrics()", "toggle()", "previous()", "seekTo(seconds: Double)", "cyclePlayMode()",
             )],
-            ("    fun cyclePlayMode() = setPlayMode((playMode + 1) % 4)\n", '''    fun cyclePlayMode() {
-        if (!lyricsVisualOnly) setPlayMode((playMode + 1) % 4)
-    }
-'''),
+            ("    fun next() = advanceQueue(automatic = false)\n",
+             "    fun next() { if (!lyricsVisualOnly) advanceQueue(automatic = false) }\n"),
         ],
         IMAGES: [
             ("        val bytes = fetch(url) ?: return null\n", f'''        if (url != "{COVER}") return null

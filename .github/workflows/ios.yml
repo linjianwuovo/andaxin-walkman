@@ -294,25 +294,50 @@ jobs:
           path: ${{ runner.temp }}/ios-parity-visual/
           if-no-files-found: error
 
-      - name: Exercise music restore and My entry on iOS
+      - name: Exercise music restore, queue and playback preferences on iOS
         id: music_ui_test
-        timeout-minutes: 15
+        timeout-minutes: 25
         run: |
-          set -o pipefail
-          xcodebuild test -project iosApp/AndaXin.xcodeproj \
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/ios-music-ui"
+          mkdir -p "$ROOT"
+          xcodebuild build-for-testing -project iosApp/AndaXin.xcodeproj \
             -scheme AndaXin -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIM_UDID" \
-            -derivedDataPath build \
-            -resultBundlePath "$RUNNER_TEMP/ios-music-ui.xcresult" \
-            -parallel-testing-enabled NO \
-            -only-testing:AndaXinUITests/MusicParityTests \
-            CODE_SIGNING_ALLOWED=NO | xcbeautify
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO | xcbeautify
+          tests=(
+            testMyMusicEntryReturnsAndSharesPausedPlayer
+            testLegacyPlayingFlagDoesNotAutoplayAfterRelaunch
+            testRestorePositionPreferencePersistsAcrossRelaunch
+            testQueueReorderPersistsAndKeepsCurrentPausedSong
+            testQueueRemovalBeforeCurrentPreservesPausedPosition
+            testQueueCurrentRemovalSelectsNeighbourAndKeepsLastSong
+            testRepeatAndShuffleControlsRemainIndependent
+            testPlaybackPreferencesPersistAndTranslationDefaultsEnabled
+          )
+          status=0
+          for test in "${tests[@]}"; do
+            if xcrun simctl get_app_container "$SIM_UDID" com.andaxin.ios app >/dev/null 2>&1; then
+              xcrun simctl uninstall "$SIM_UDID" com.andaxin.ios
+            fi
+            if ! xcodebuild test-without-building -project iosApp/AndaXin.xcodeproj \
+              -scheme AndaXin -configuration Debug \
+              -destination "platform=iOS Simulator,id=$SIM_UDID" \
+              -derivedDataPath build \
+              -resultBundlePath "$ROOT/$test.xcresult" \
+              -parallel-testing-enabled NO \
+              "-only-testing:AndaXinUITests/MusicParityTests/$test" \
+              CODE_SIGNING_ALLOWED=NO | xcbeautify; then
+              status=1
+            fi
+          done
+          exit "$status"
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && (steps.music_ui_test.outcome == 'success' || steps.music_ui_test.outcome == 'failure') }}
         with:
           name: ios-music-ui
-          path: ${{ runner.temp }}/ios-music-ui.xcresult
+          path: ${{ runner.temp }}/ios-music-ui/
           if-no-files-found: error
 
       - name: Capture deterministic native iOS lyrics

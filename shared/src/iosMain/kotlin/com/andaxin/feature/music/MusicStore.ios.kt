@@ -19,6 +19,11 @@ internal object MusicStore {
     private const val KEY_RECENT_TIMES = "music.recent.playedAt"
     private const val KEY_LIKED = "music.liked"
     private const val KEY_PLAY_MODE = "music.playMode"
+    private const val KEY_REPEAT_MODE = "music.repeatMode"
+    private const val KEY_SHUFFLE_ENABLED = "music.shuffleEnabled"
+    private const val KEY_SHUFFLE_ORDER = "music.shuffleOrder"
+    private const val KEY_LOOP_PLAYBACK = "music.loopPlayback"
+    private const val KEY_ALWAYS_PREVIOUS = "music.alwaysPrevious"
     private const val KEY_SEARCH_HISTORY = "music.searchHistory"
     private const val KEY_BITRATE = "music.bitrate"
     private const val KEY_LYRICS_VISIBLE = "music.lyricsVisible"
@@ -89,10 +94,42 @@ internal object MusicStore {
         defaults.setObject(ids.map { it as Any }, forKey = KEY_LIKED)
     }
 
-    fun loadPlayMode(): Int = defaults.integerForKey(KEY_PLAY_MODE).toInt().coerceIn(0, 3)
+    fun loadPlaybackMode(): MusicPlaybackMode {
+        val repeat = defaults.objectForKey(KEY_REPEAT_MODE) as? NSNumber
+        val shuffle = defaults.objectForKey(KEY_SHUFFLE_ENABLED) as? NSNumber
+        if (repeat != null || shuffle != null) {
+            val repeatMode = repeat?.intValue?.coerceIn(MUSIC_REPEAT_OFF, MUSIC_REPEAT_ALL) ?: MUSIC_REPEAT_ALL
+            return MusicPlaybackMode(repeatMode, shuffle?.boolValue ?: false)
+        }
+        val legacy = defaults.objectForKey(KEY_PLAY_MODE) as? NSNumber
+            ?: return MusicPlaybackMode(MUSIC_REPEAT_ALL, false)
+        return migrateLegacyMusicPlaybackMode(legacy.intValue)
+    }
 
-    fun savePlayMode(value: Int) {
-        defaults.setInteger(value.toLong(), forKey = KEY_PLAY_MODE)
+    fun savePlaybackMode(value: MusicPlaybackMode) {
+        defaults.setInteger(value.repeatMode.toLong(), forKey = KEY_REPEAT_MODE)
+        defaults.setBool(value.shuffleEnabled, forKey = KEY_SHUFFLE_ENABLED)
+    }
+
+    fun loadShuffleOrder(): List<Int> = defaults.arrayForKey(KEY_SHUFFLE_ORDER).orEmpty()
+        .mapNotNull { (it as? NSNumber)?.intValue }
+
+    fun saveShuffleOrder(order: List<Int>) {
+        defaults.setObject(order.map { it.toLong() }, forKey = KEY_SHUFFLE_ORDER)
+    }
+
+    fun loadLoopPlayback(): Boolean =
+        (defaults.objectForKey(KEY_LOOP_PLAYBACK) as? NSNumber)?.boolValue ?: true
+
+    fun saveLoopPlayback(value: Boolean) {
+        defaults.setBool(value, forKey = KEY_LOOP_PLAYBACK)
+    }
+
+    fun loadAlwaysPrevious(): Boolean =
+        (defaults.objectForKey(KEY_ALWAYS_PREVIOUS) as? NSNumber)?.boolValue ?: true
+
+    fun saveAlwaysPrevious(value: Boolean) {
+        defaults.setBool(value, forKey = KEY_ALWAYS_PREVIOUS)
     }
 
     fun loadSearchHistory(): List<String> = (defaults.arrayForKey(KEY_SEARCH_HISTORY) as? List<*>)
@@ -172,7 +209,8 @@ internal object MusicStore {
         defaults.setObject(value, forKey = KEY_LYRIC_COLOR)
     }
 
-    fun loadTranslateLyrics(): Boolean = defaults.boolForKey(KEY_TRANSLATE_LYRICS)
+    fun loadTranslateLyrics(): Boolean =
+        (defaults.objectForKey(KEY_TRANSLATE_LYRICS) as? NSNumber)?.boolValue ?: true
 
     fun saveTranslateLyrics(value: Boolean) {
         defaults.setBool(value, forKey = KEY_TRANSLATE_LYRICS)

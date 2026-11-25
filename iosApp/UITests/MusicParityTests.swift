@@ -42,17 +42,34 @@ final class MusicParityTests: XCTestCase {
         waitFor(element("music-restore-position"))
     }
 
-    private func setRestorePosition(_ enabled: Bool) {
-        let toggle = element("music-restore-position")
+    private func assertSelected(_ control: XCUIElement, _ enabled: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        waitFor(control, file: file, line: line)
+        let state = NSPredicate { _, _ in control.isSelected == enabled }
+        let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: state, object: control)], timeout: 5)
+        XCTAssertEqual(result, .completed, "Unexpected selected state: \(control.debugDescription)", file: file, line: line)
+    }
+
+    private func setToggle(_ identifier: String, _ enabled: Bool) {
+        let toggle = element(identifier)
         waitFor(toggle)
         XCTAssertTrue(toggle.isHittable)
-        let expected = enabled ? "1" : "0"
-        if (toggle.value as? String) != expected {
+        if toggle.isSelected != enabled {
             toggle.tap()
         }
-        let state = NSPredicate(format: "value == %@", expected)
-        let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: state, object: toggle)], timeout: 5)
-        XCTAssertEqual(result, .completed, "Restore-position switch did not reach \(expected)")
+        assertSelected(toggle, enabled)
+    }
+
+    private func setRestorePosition(_ enabled: Bool) {
+        setToggle("music-restore-position", enabled)
+    }
+
+    private func scrollTo(_ control: XCUIElement) {
+        for _ in 0..<5 {
+            if control.exists && control.isHittable { return }
+            app.swipeUp()
+        }
+        waitFor(control)
+        XCTAssertTrue(control.isHittable)
     }
 
     private func assertPaused(position: String, song: String = "Restore check B") {
@@ -129,7 +146,7 @@ final class MusicParityTests: XCTestCase {
         app.launch()
         musicTab()
         let toggle = element("music-restore-position")
-        XCTAssertEqual(toggle.value as? String, "0")
+        assertSelected(toggle, false)
         assertPaused(position: "0:00")
         capture("restore-disabled-zero-position")
         setRestorePosition(true)
@@ -239,5 +256,49 @@ final class MusicParityTests: XCTestCase {
             XCTAssertFalse(item.isEnabled, "Single-item action must be disabled: \(action)")
         }
         capture("queue-last-song-protected")
+    }
+
+    func testRepeatAndShuffleControlsRemainIndependent() {
+        launchQueueEditor()
+        let repeatButton = element("music-queue-repeat")
+        waitFor(repeatButton)
+        XCTAssertTrue(repeatButton.label.contains("全部循环"))
+        repeatButton.tap()
+        let shuffle = element("music-queue-shuffle")
+        waitFor(shuffle)
+        XCTAssertTrue(element("music-repeat-mode-label").label.contains("单曲循环"))
+        XCTAssertTrue(element("music-shuffle-mode-label").label.contains("随机关闭"))
+        shuffle.tap()
+        XCTAssertTrue(element("music-repeat-mode-label").label.contains("单曲循环"))
+        XCTAssertTrue(element("music-shuffle-mode-label").label.contains("随机开启"))
+        repeatButton.tap()
+        XCTAssertTrue(element("music-repeat-mode-label").label.contains("循环关闭"))
+        XCTAssertTrue(element("music-shuffle-mode-label").label.contains("随机开启"))
+        repeatButton.tap()
+        XCTAssertTrue(element("music-repeat-mode-label").label.contains("全部循环"))
+        XCTAssertTrue(element("music-shuffle-mode-label").label.contains("随机开启"))
+        capture("repeat-and-shuffle-independent")
+    }
+
+    func testPlaybackPreferencesPersistAndTranslationDefaultsEnabled() {
+        app.launch()
+        musicTab()
+        assertSelected(element("music-loop-playback"), true)
+        assertSelected(element("music-always-previous"), true)
+        setToggle("music-loop-playback", false)
+        setToggle("music-always-previous", false)
+        let translation = element("music-translate-lyrics")
+        scrollTo(translation)
+        assertSelected(translation, true)
+        translation.tap()
+        assertSelected(translation, false)
+        app.terminate()
+        app.launch()
+        musicTab()
+        assertSelected(element("music-loop-playback"), false)
+        assertSelected(element("music-always-previous"), false)
+        scrollTo(element("music-translate-lyrics"))
+        assertSelected(element("music-translate-lyrics"), false)
+        capture("loop-previous-translation-preferences-persisted")
     }
 }

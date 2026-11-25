@@ -496,6 +496,14 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
             Switch(checked = controller.restorePlaybackPosition, onCheckedChange = controller::setRestorePlaybackPosition, modifier = Modifier.testTag("music-restore-position"))
         }
         Text("下次启动时恢复上次位置；始终暂停，点击播放后继续。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SettingRow("列表循环偏好") {
+            Switch(checked = controller.loopPlaybackEnabled, onCheckedChange = controller::setLoopPlaybackEnabled, modifier = Modifier.testTag("music-loop-playback"))
+        }
+        Text("切换播放模式时，决定随机或顺序模式是否循环整份队列。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SettingRow("始终切到上一首") {
+            Switch(checked = controller.alwaysPrevious, onCheckedChange = controller::setAlwaysPrevious, modifier = Modifier.testTag("music-always-previous"))
+        }
+        Text("关闭后，播放超过 3 秒时先回到本曲开头；否则切到上一首。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SettingRow("播放音质") {
             FilterChip(selected = bitrate == 128000, onClick = { controller.setBitrate(128000) }, label = { Text("128k") })
             Spacer(Modifier.width(8.dp))
@@ -543,7 +551,7 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
             }
         }
         SettingRow("翻译歌词") {
-            FilterChip(selected = controller.translateLyrics, onClick = { controller.setTranslateLyrics(!controller.translateLyrics) }, label = { Text(if (controller.translateLyrics) "开" else "关") })
+            FilterChip(selected = controller.translateLyrics, onClick = { controller.setTranslateLyrics(!controller.translateLyrics) }, modifier = Modifier.testTag("music-translate-lyrics"), label = { Text(if (controller.translateLyrics) "开" else "关") })
         }
         Text("翻译开关已开启时只尝试解析接口返回的译文；匿名接口可能不提供译文。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SectionTitle("均衡器")
@@ -898,18 +906,18 @@ private fun PlayerPanel(
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                TransportIcon(Transport.Mode, foreground, Modifier.size(30.dp), onClick = { controller.cyclePlayMode() })
-                IconButton(onClick = { controller.previous() }, modifier = Modifier.size(52.dp)) { TransportIcon(Transport.Prev, foreground, Modifier.size(26.dp)) }
+                TransportIcon(Transport.Mode, foreground, Modifier.size(30.dp).testTag("music-play-mode"), onClick = { controller.cyclePlayMode() })
+                IconButton(onClick = { controller.previous() }, modifier = Modifier.size(52.dp).testTag("music-previous")) { TransportIcon(Transport.Prev, foreground, Modifier.size(26.dp)) }
                 FilledIconButton(
                     onClick = { controller.toggle() },
                     modifier = Modifier.size(64.dp),
                     shape = CircleShape,
                     colors = IconButtonDefaults.filledIconButtonColors(containerColor = playBackground, contentColor = playColor),
                 ) { TransportIcon(if (controller.playing) Transport.Pause else Transport.Play, playColor, Modifier.size(30.dp)) }
-                IconButton(onClick = { controller.next() }, modifier = Modifier.size(52.dp)) { TransportIcon(Transport.Next, foreground, Modifier.size(26.dp)) }
+                IconButton(onClick = { controller.next() }, modifier = Modifier.size(52.dp).testTag("music-next")) { TransportIcon(Transport.Next, foreground, Modifier.size(26.dp)) }
                 TransportIcon(Transport.Queue, foreground, Modifier.size(30.dp), onClick = onQueue)
             }
-            Text(when (controller.playMode) { 1 -> "单曲循环"; 2 -> "随机播放"; else -> "列表循环" }, style = MaterialTheme.typography.labelSmall, color = secondary, modifier = Modifier.padding(top = 4.dp))
+            Text(controller.playModeLabel(), style = MaterialTheme.typography.labelSmall, color = secondary, modifier = Modifier.padding(top = 4.dp).testTag("music-play-mode-label"))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (controller.musicU == null) "未登录" else "已登录", style = MaterialTheme.typography.labelSmall, color = secondary, modifier = Modifier.weight(1f))
                 TextButton(onClick = if (controller.musicU == null) onLogin else onLogout, colors = actionColors) { Text(if (controller.musicU == null) "登录" else "退出") }
@@ -986,16 +994,29 @@ private fun KaraokeLyricsView(controller: MusicController, lines: List<LyricLine
                 val active = index == activeIndex
                 val distance = abs(index - activeIndex.coerceAtLeast(0))
                 val inactiveAlpha = when (distance) { 0, 1 -> 0.72f; 2 -> 0.60f; else -> 0.52f }
-                Text(
-                    text = if (active) karaokeLine(line, controller.position, color) else AnnotatedString(line.text),
-                    style = lyricStyle,
-                    color = if (active) color else Color.White.copy(alpha = inactiveAlpha),
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth().clickable {
-                        controller.seekTo(line.timeMs / 1000.0)
-                        browsing = false
-                    }.padding(horizontal = 4.dp, vertical = 6.dp),
-                )
+                Column {
+                    Text(
+                        text = if (active) karaokeLine(line, controller.position, color) else AnnotatedString(line.text),
+                        style = lyricStyle,
+                        color = if (active) color else Color.White.copy(alpha = inactiveAlpha),
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            controller.seekTo(line.timeMs / 1000.0)
+                            browsing = false
+                        }.padding(horizontal = 4.dp, vertical = 6.dp),
+                    )
+                    displayedLyricTranslation(line, controller.translateLyrics)?.let { translation ->
+                        Text(
+                            text = translation,
+                            style = lyricStyle.copy(fontSize = (fontSize * 0.72f).sp, lineHeight = fontSize.sp),
+                            color = if (active) color.copy(alpha = 0.8f) else Color.White.copy(alpha = inactiveAlpha),
+                            modifier = Modifier.fillMaxWidth().testTag("music-lyric-translation-$index").clickable {
+                                controller.seekTo(line.timeMs / 1000.0)
+                                browsing = false
+                            }.padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -1046,6 +1067,14 @@ private fun QueueSheet(controller: MusicController, onClose: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("播放队列", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 TextButton(onClick = onClose, modifier = Modifier.testTag("music-queue-close")) { Text("关闭") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = controller::cycleRepeatMode, modifier = Modifier.testTag("music-queue-repeat")) {
+                    Text(controller.repeatModeLabel(), modifier = Modifier.testTag("music-repeat-mode-label"))
+                }
+                TextButton(onClick = controller::toggleShuffle, modifier = Modifier.testTag("music-queue-shuffle")) {
+                    Text(if (controller.shuffleEnabled) "随机开启" else "随机关闭", modifier = Modifier.testTag("music-shuffle-mode-label"))
+                }
             }
             Text("可调整顺序、移除歌曲；至少保留一首歌曲。", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
