@@ -294,6 +294,27 @@ jobs:
           path: ${{ runner.temp }}/ios-parity-visual/
           if-no-files-found: error
 
+      - name: Exercise music restore and My entry on iOS
+        id: music_ui_test
+        timeout-minutes: 15
+        run: |
+          set -o pipefail
+          xcodebuild test -project iosApp/AndaXin.xcodeproj \
+            -scheme AndaXin -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -derivedDataPath build \
+            -resultBundlePath "$RUNNER_TEMP/ios-music-ui.xcresult" \
+            -parallel-testing-enabled NO \
+            -only-testing:AndaXinUITests/MusicParityTests \
+            CODE_SIGNING_ALLOWED=NO | xcbeautify
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && (steps.music_ui_test.outcome == 'success' || steps.music_ui_test.outcome == 'failure') }}
+        with:
+          name: ios-music-ui
+          path: ${{ runner.temp }}/ios-music-ui.xcresult
+          if-no-files-found: error
+
       - name: Capture deterministic native iOS lyrics
         timeout-minutes: 25
         run: |

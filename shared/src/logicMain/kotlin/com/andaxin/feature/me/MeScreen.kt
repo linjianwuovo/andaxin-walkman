@@ -1,6 +1,7 @@
 package com.andaxin.feature.me
 
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -116,6 +117,7 @@ private val ENTRIES = listOf(
     Entry("待办事务", "待办·申请·已办", "affair"),
     Entry("查寝签到", "记录与详情", "dorm"),
     Entry("校园卡", "余额与流水", "card"),
+    Entry("音乐", "上下学路上听歌", "music"),
     Entry("报修", "单据与新建", "repair"),
     Entry("AI 课堂", "课件与签到", "aiclass"),
     Entry("公开课", "目录与进度", "opencourse"),
@@ -261,6 +263,7 @@ private fun EntryGrid(entries: List<Entry>, icon: (@Composable (key: String) -> 
                     Column(
                         Modifier
                             .weight(1f)
+                            .testTag("me-entry-${e.route.orEmpty()}")
                             .pressClick { e.route?.let(open) }
                             .padding(vertical = Gap.md),
                         horizontalAlignment = Alignment.CenterHorizontally,

@@ -1,0 +1,2546 @@
+{
+  "schema": 1,
+  "baseline": {
+    "baselineTag": "v0.9.41",
+    "baselineCommit": "7dbd5e6f21ed82ce122d32370eca257f0c1d9dc9",
+    "apkSha256": "159132c9c78bd6e60be237b9e1009cb0b9bbb04fe8a1500fb31b283f4e8d489f",
+    "apkBytes": 54154884,
+    "iosStartCommit": "1dbc2d4b8818d5b0a9ba012bb4777a7615211216"
+  },
+  "rules": [
+    "Discovery ledger, not a parity certification. Expand every screen/settings family into actual actions as implemented.",
+    "No feature accepted from route names, source key counts, compilation, mock data or screenshots alone.",
+    "All service mutations require a dedicated test account/sandbox; none available now.",
+    "Physical iPhone acceptance pending; user signs/installs unsigned IPA.",
+    "Android stable baseline only; do not move goalposts to later default commits."
+  ],
+  "items": [
+    {
+      "id": "host.route.SHELF",
+      "kind": "route",
+      "title": "shelf",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:181",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.THEME",
+      "kind": "route",
+      "title": "theme",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:182",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.ABOUT",
+      "kind": "route",
+      "title": "about",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:183",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.LICENSES",
+      "kind": "route",
+      "title": "licenses",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:185",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.PROFILE",
+      "kind": "route",
+      "title": "profile",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:187",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.SPORT",
+      "kind": "route",
+      "title": "sport",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:188",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.SPORT_RUN",
+      "kind": "route",
+      "title": "sport/run",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:189",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.SPORT_RECORDS",
+      "kind": "route",
+      "title": "sport/records",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:190",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.SPORT_MAINTAIN",
+      "kind": "route",
+      "title": "sport/maintain",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:191",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.SPORT_PLANNER",
+      "kind": "route",
+      "title": "sport/planner",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:192",
+      "status": "excluded_from_stable",
+      "accepted": false,
+      "evidence": [],
+      "reason": "RootShell.kt:548-549 registers this route only when graph.debug exists; stable baseline has no planner entry."
+    },
+    {
+      "id": "host.route.SPORT_DETAIL",
+      "kind": "route",
+      "title": "sport/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:193",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.WELCOME",
+      "kind": "route",
+      "title": "gate",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:195",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.MORE",
+      "kind": "route",
+      "title": "more",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:196",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.MUSIC",
+      "kind": "route",
+      "title": "music",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:198",
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [],
+      "ios": [
+        "shared/src/logicMain/kotlin/com/andaxin/feature/me/MeScreen.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/shared/IosScreens.kt"
+      ],
+      "remaining": [
+        "Compile on iOS",
+        "Open from My page and return using native navigation on iPhone"
+      ]
+    },
+    {
+      "id": "host.route.MUSIC_PLAYER_ARG",
+      "kind": "argument",
+      "title": "openPlayer",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:200",
+      "status": "not_a_capability",
+      "accepted": false,
+      "evidence": [],
+      "reason": "Navigation argument, retained for coverage; not counted as a feature."
+    },
+    {
+      "id": "host.route.NOTIFY",
+      "kind": "route",
+      "title": "notify",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:201",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.CARD",
+      "kind": "route",
+      "title": "card",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:202",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.CARD_FLOWS",
+      "kind": "route",
+      "title": "card/flows",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:203",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.LOGIN",
+      "kind": "route",
+      "title": "login",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:204",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.DORM",
+      "kind": "route",
+      "title": "dorm",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:205",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.DORM_DETAIL",
+      "kind": "route",
+      "title": "dorm/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:206",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.DORM_TASK",
+      "kind": "route",
+      "title": "dorm/task/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:207",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.EXAM",
+      "kind": "route",
+      "title": "exam",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:208",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.EXAM_DETAIL",
+      "kind": "route",
+      "title": "exam/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:209",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.CREDIT",
+      "kind": "route",
+      "title": "credit",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:210",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.CREDIT_DETAIL",
+      "kind": "route",
+      "title": "credit/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:211",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.LABOR",
+      "kind": "route",
+      "title": "labor",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:212",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.LABOR_DETAIL",
+      "kind": "route",
+      "title": "labor/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:213",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.HOLIDAY",
+      "kind": "route",
+      "title": "holiday",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:214",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.HOLIDAY_DETAIL",
+      "kind": "route",
+      "title": "holiday/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:215",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.HOLIDAY_FORM",
+      "kind": "route",
+      "title": "holiday/form",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:216",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.REPAIR",
+      "kind": "route",
+      "title": "repair",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:217",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.REPAIR_DETAIL",
+      "kind": "route",
+      "title": "repair/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:218",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.REPAIR_FORM",
+      "kind": "route",
+      "title": "repair/form",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:219",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.AFFAIR",
+      "kind": "route",
+      "title": "affair",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:220",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.AFFAIR_TAB",
+      "kind": "route",
+      "title": "affair/tab/{tab}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:222",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.AFFAIR_DETAIL",
+      "kind": "route",
+      "title": "affair/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:223",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.AFFAIR_FORM",
+      "kind": "route",
+      "title": "affair/form",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:224",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.DEKT",
+      "kind": "route",
+      "title": "dekt",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:226",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.AICLASS",
+      "kind": "route",
+      "title": "aiclass",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:227",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.AICLASS_DETAIL",
+      "kind": "route",
+      "title": "aiclass/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:228",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.AICLASS_SCAN",
+      "kind": "route",
+      "title": "aiclass/scan",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:229",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.AICLASS_SIGN_QR",
+      "kind": "route",
+      "title": "aiclass/signqr/{u}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:232",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.AICLASS_PAPER",
+      "kind": "route",
+      "title": "aiclass/paper/{r}/{c}/{t}?title={title}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:234",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.AICLASS_PLAY",
+      "kind": "route",
+      "title": "aiclass/play/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:235",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.OPEN_COURSE",
+      "kind": "route",
+      "title": "opencourse",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:236",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.OPEN_COURSE_DETAIL",
+      "kind": "route",
+      "title": "opencourse/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:237",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.GROUP",
+      "kind": "route",
+      "title": "group",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:238",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.NOTICE_DETAIL",
+      "kind": "route",
+      "title": "notice/detail/{id}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:240",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.WEB",
+      "kind": "route",
+      "title": "web/{u}",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:247",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.route.ID_ARG",
+      "kind": "argument",
+      "title": "id",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:254",
+      "status": "not_a_capability",
+      "accepted": false,
+      "evidence": [],
+      "reason": "Navigation argument, retained for coverage; not counted as a feature."
+    },
+    {
+      "id": "host.route.TAB_ARG",
+      "kind": "argument",
+      "title": "tab",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:256",
+      "status": "not_a_capability",
+      "accepted": false,
+      "evidence": [],
+      "reason": "Navigation argument, retained for coverage; not counted as a feature."
+    },
+    {
+      "id": "music.route.Home",
+      "kind": "route",
+      "title": "home",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:10",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.Library",
+      "kind": "route",
+      "title": "library",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:11",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.LibraryCategory",
+      "kind": "route",
+      "title": "library_category",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:12",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.FindMusic",
+      "kind": "route",
+      "title": "find_music",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:13",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.PlaylistCategory",
+      "kind": "route",
+      "title": "playlist_category",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:14",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SearchResult",
+      "kind": "route",
+      "title": "search_result",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:15",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.PlayList",
+      "kind": "route",
+      "title": "playlist",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:16",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.Setting",
+      "kind": "route",
+      "title": "setting",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:17",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.ContentSettings",
+      "kind": "route",
+      "title": "setting/content",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:18",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.NeteaseLogin",
+      "kind": "route",
+      "title": "account/login",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:19",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.NeteaseWebLogin",
+      "kind": "route",
+      "title": "account/web_login",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:20",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.PcQrLogin",
+      "kind": "route",
+      "title": "account/pc_qr_login",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:21",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.AccountHome",
+      "kind": "route",
+      "title": "account/home",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:22",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.NeteaseMusician",
+      "kind": "route",
+      "title": "account/musician",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:23",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.AccountSecurity",
+      "kind": "route",
+      "title": "account/security",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:24",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.AccountBindings",
+      "kind": "route",
+      "title": "account/security/bindings",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:25",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.AccountDevices",
+      "kind": "route",
+      "title": "account/security/devices",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:26",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.AccountAuthorizations",
+      "kind": "route",
+      "title": "account/security/authorizations",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:27",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.AccountWeb",
+      "kind": "route",
+      "title": "account/security/web",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:28",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.AccountConnections",
+      "kind": "route",
+      "title": "account/connections",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:29",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.AccountListeningRank",
+      "kind": "route",
+      "title": "account/listening_rank",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:30",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.ListeningStats",
+      "kind": "route",
+      "title": "account/listening_stats",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:31",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.AppearanceSettings",
+      "kind": "route",
+      "title": "setting/appearance",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:32",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.GeneralSettings",
+      "kind": "route",
+      "title": "setting/general",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:33",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.LocalMcpSettings",
+      "kind": "route",
+      "title": "setting/general/local-mcp",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:34",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.LyricsSettings",
+      "kind": "route",
+      "title": "setting/lyrics",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:35",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.PlaySettings",
+      "kind": "route",
+      "title": "setting/play",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:36",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.EqualizerSettings",
+      "kind": "route",
+      "title": "setting/equalizer",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:37",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.DownloadSettings",
+      "kind": "route",
+      "title": "setting/download",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:38",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.StorageManagement",
+      "kind": "route",
+      "title": "setting/storage",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:39",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SourceManagement",
+      "kind": "route",
+      "title": "setting/sources",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:40",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SourceMarket",
+      "kind": "route",
+      "title": "setting/sources/market",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:41",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SourcePluginSettings",
+      "kind": "route",
+      "title": "setting/sources/plugin",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:42",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SourceContent",
+      "kind": "route",
+      "title": "source/content",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:43",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SourceArtistSongs",
+      "kind": "route",
+      "title": "source/artist/songs",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:44",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SourceArtistAlbums",
+      "kind": "route",
+      "title": "source/artist/albums",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:45",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SourceAccount",
+      "kind": "route",
+      "title": "source/account",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:46",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SourcePlaylistCreate",
+      "kind": "route",
+      "title": "source/playlist/create",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:47",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SourcePlaylistEdit",
+      "kind": "route",
+      "title": "source/playlist/edit",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:48",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SourcePlaylistPicker",
+      "kind": "route",
+      "title": "source/playlist/picker",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:49",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.DownloadManage",
+      "kind": "route",
+      "title": "download_manage",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:50",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.LocalMusic",
+      "kind": "route",
+      "title": "local_music",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:51",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.LocalSongList",
+      "kind": "route",
+      "title": "local_songs",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:52",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.EveryDay",
+      "kind": "route",
+      "title": "everyday",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:53",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.Album",
+      "kind": "route",
+      "title": "album",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:54",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.Artist",
+      "kind": "route",
+      "title": "artist",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:55",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.ArtistInfo",
+      "kind": "route",
+      "title": "artist-info",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:56",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.ArtistSongs",
+      "kind": "route",
+      "title": "artist-songs",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:57",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.ArtistAlbums",
+      "kind": "route",
+      "title": "artist-albums",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:58",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.History",
+      "kind": "route",
+      "title": "history",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:59",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.Podcasts",
+      "kind": "route",
+      "title": "podcasts",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:60",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.PodcastDetail",
+      "kind": "route",
+      "title": "podcast",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:61",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.CloudMusic",
+      "kind": "route",
+      "title": "cloud_music",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:62",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.Search",
+      "kind": "route",
+      "title": "search",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:63",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.PrivateMessages",
+      "kind": "route",
+      "title": "private_messages",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:64",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.OfficialMessages",
+      "kind": "route",
+      "title": "official_messages",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:65",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.PrivateConversation",
+      "kind": "route",
+      "title": "private_message",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:66",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.MessageContacts",
+      "kind": "route",
+      "title": "message_contacts",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:67",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.ListenTogether",
+      "kind": "route",
+      "title": "listen_together",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:68",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SongRecognition",
+      "kind": "route",
+      "title": "song_recognition",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:69",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.Comment",
+      "kind": "route",
+      "title": "comment",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:70",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.SongWiki",
+      "kind": "route",
+      "title": "song_wiki",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:71",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.Test",
+      "kind": "route",
+      "title": "test",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:72",
+      "status": "needs_stable_reachability_check",
+      "accepted": false,
+      "evidence": [],
+      "reason": "A declaration does not establish a user-visible stable entry."
+    },
+    {
+      "id": "music.route.About",
+      "kind": "route",
+      "title": "about",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:73",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.route.Log",
+      "kind": "route",
+      "title": "log",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:74",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.preference.LastHomePageTime",
+      "kind": "preference",
+      "title": "LastHomePageTime",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:12",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LastHomePageData_1",
+      "kind": "preference",
+      "title": "LastHomePageData_1",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:13",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LastHomePageData_2",
+      "kind": "preference",
+      "title": "LastHomePageData_2",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:14",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.HideExplicitKey",
+      "kind": "preference",
+      "title": "HideExplicitKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:15",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PauseListenHistoryKey",
+      "kind": "preference",
+      "title": "PauseListenHistoryKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:16",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.DarkModeKey",
+      "kind": "preference",
+      "title": "DarkModeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:17",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PureBlackKey",
+      "kind": "preference",
+      "title": "PureBlackKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:18",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PlayerTextAlignmentKey",
+      "kind": "preference",
+      "title": "PlayerTextAlignmentKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:19",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.SliderStyleKey",
+      "kind": "preference",
+      "title": "SliderStyleKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:20",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.UserIdKey",
+      "kind": "preference",
+      "title": "UserIdKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:22",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.UserNicknameKey",
+      "kind": "preference",
+      "title": "UserNicknameKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:23",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.UserAvatarUrlKey",
+      "kind": "preference",
+      "title": "UserAvatarUrlKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:24",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.UserPhotoKey",
+      "kind": "preference",
+      "title": "UserPhotoKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:25",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.ShowLyricsKey",
+      "kind": "preference",
+      "title": "ShowLyricsKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:26",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LyricVisualStyleKey",
+      "kind": "preference",
+      "title": "LyricVisualStyleKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:27",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LyricTranslationEnabledKey",
+      "kind": "preference",
+      "title": "LyricTranslationEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:28",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LyricRomanizationEnabledKey",
+      "kind": "preference",
+      "title": "LyricRomanizationEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:29",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LyricGlowEnabledKey",
+      "kind": "preference",
+      "title": "LyricGlowEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:30",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LyricLiftEnabledKey",
+      "kind": "preference",
+      "title": "LyricLiftEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:31",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LyricLongToneEnabledKey",
+      "kind": "preference",
+      "title": "LyricLongToneEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:32",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LyricAutoFollowEnabledKey",
+      "kind": "preference",
+      "title": "LyricAutoFollowEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:33",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.SystemLyricsEnabledKey",
+      "kind": "preference",
+      "title": "SystemLyricsEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:34",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.BluetoothLyricsEnabledKey",
+      "kind": "preference",
+      "title": "BluetoothLyricsEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:35",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.FloatingLyricsTranslationKey",
+      "kind": "preference",
+      "title": "FloatingLyricsTranslationKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:36",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.FloatingLyricsNextLineKey",
+      "kind": "preference",
+      "title": "FloatingLyricsNextLineKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:37",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.FloatingLyricsFontScaleKey",
+      "kind": "preference",
+      "title": "FloatingLyricsFontScaleKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:38",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.CookieKey",
+      "kind": "preference",
+      "title": "CookieKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:41",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseCsrfKey",
+      "kind": "preference",
+      "title": "NeteaseCsrfKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:42",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseMusicAKey",
+      "kind": "preference",
+      "title": "NeteaseMusicAKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:43",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseRefreshTokenKey",
+      "kind": "preference",
+      "title": "NeteaseRefreshTokenKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:44",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseUrsAppIdKey",
+      "kind": "preference",
+      "title": "NeteaseUrsAppIdKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:45",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseSessionTypeKey",
+      "kind": "preference",
+      "title": "NeteaseSessionTypeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:46",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseWebSessionNoticeDismissedKey",
+      "kind": "preference",
+      "title": "NeteaseWebSessionNoticeDismissedKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:47",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.MusicQualityKey",
+      "kind": "preference",
+      "title": "MusicQualityKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:48",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.CoverStyleKey",
+      "kind": "preference",
+      "title": "CoverStyleKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:51",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.DynamicThemeKey",
+      "kind": "preference",
+      "title": "DynamicThemeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:52",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AccentColorKey",
+      "kind": "preference",
+      "title": "AccentColorKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:54",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.InterfaceLetterSpacingKey",
+      "kind": "preference",
+      "title": "InterfaceLetterSpacingKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:57",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PlayerActionKey",
+      "kind": "preference",
+      "title": "PlayerActionKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:58",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NormalLyricTextSizeKey",
+      "kind": "preference",
+      "title": "NormalLyricTextSizeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:60",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NormalLyricTextBoldKey",
+      "kind": "preference",
+      "title": "NormalLyricTextBoldKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:61",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AccompanimentLyricTextSizeKey",
+      "kind": "preference",
+      "title": "AccompanimentLyricTextSizeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:63",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AccompanimentLyricTextBoldKey",
+      "kind": "preference",
+      "title": "AccompanimentLyricTextBoldKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:64",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LoopPlaybackKey",
+      "kind": "preference",
+      "title": "LoopPlaybackKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:66",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AllowConcurrentPlaybackKey",
+      "kind": "preference",
+      "title": "AllowConcurrentPlaybackKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:67",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AudioOutputModeKey",
+      "kind": "preference",
+      "title": "AudioOutputModeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:68",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PreviousPlaybackKey",
+      "kind": "preference",
+      "title": "PreviousPlaybackKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:69",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NoAudioSourceKey",
+      "kind": "preference",
+      "title": "NoAudioSourceKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:70",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.IsShuffleModeKey",
+      "kind": "preference",
+      "title": "IsShuffleModeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:71",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.CloudShuffleEnabledKey",
+      "kind": "preference",
+      "title": "CloudShuffleEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:72",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.RepeatModeKey",
+      "kind": "preference",
+      "title": "RepeatModeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:73",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PlaybackSnapshotKey",
+      "kind": "preference",
+      "title": "PlaybackSnapshotKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:74",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.RestorePlaybackPositionKey",
+      "kind": "preference",
+      "title": "RestorePlaybackPositionKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:75",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NotificationLeftActionKey",
+      "kind": "preference",
+      "title": "NotificationLeftActionKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:77",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NotificationRightActionKey",
+      "kind": "preference",
+      "title": "NotificationRightActionKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:78",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.QueueModesIntroDismissedKey",
+      "kind": "preference",
+      "title": "QueueModesIntroDismissedKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:79",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoMixEnabledKey",
+      "kind": "preference",
+      "title": "AutoMixEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:81",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoMixModeKey",
+      "kind": "preference",
+      "title": "AutoMixModeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:82",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoMixDurationKey",
+      "kind": "preference",
+      "title": "AutoMixDurationKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:83",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoMixFadeCurveKey",
+      "kind": "preference",
+      "title": "AutoMixFadeCurveKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:84",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoMixTempoMatchingKey",
+      "kind": "preference",
+      "title": "AutoMixTempoMatchingKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:85",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoMixMaxTempoAdjustmentKey",
+      "kind": "preference",
+      "title": "AutoMixMaxTempoAdjustmentKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:86",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoMixTransitionBarsKey",
+      "kind": "preference",
+      "title": "AutoMixTransitionBarsKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:87",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoMixTailCutBarsKey",
+      "kind": "preference",
+      "title": "AutoMixTailCutBarsKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:88",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.EqualizerEnabledKey",
+      "kind": "preference",
+      "title": "EqualizerEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:89",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.EqualizerPresetKey",
+      "kind": "preference",
+      "title": "EqualizerPresetKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:90",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.EqualizerPreampKey",
+      "kind": "preference",
+      "title": "EqualizerPreampKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:91",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.EqualizerBandGainsKey",
+      "kind": "preference",
+      "title": "EqualizerBandGainsKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:92",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.DeviceIdKey",
+      "kind": "preference",
+      "title": "DeviceIdKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:94",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.SDeviceIdKey",
+      "kind": "preference",
+      "title": "SDeviceIdKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:95",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseSecurityIdentityKey",
+      "kind": "preference",
+      "title": "NeteaseSecurityIdentityKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:96",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseLocalDeviceIdKey",
+      "kind": "preference",
+      "title": "NeteaseLocalDeviceIdKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:97",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseDeviceRegisteredModelKey",
+      "kind": "preference",
+      "title": "NeteaseDeviceRegisteredModelKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:98",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseNmcidKey",
+      "kind": "preference",
+      "title": "NeteaseNmcidKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:99",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseNmdiKey",
+      "kind": "preference",
+      "title": "NeteaseNmdiKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:100",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseNmdiFinalKey",
+      "kind": "preference",
+      "title": "NeteaseNmdiFinalKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:101",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NeteaseNmtidKey",
+      "kind": "preference",
+      "title": "NeteaseNmtidKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:102",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.DebugKey",
+      "kind": "preference",
+      "title": "DebugKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:103",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.DevModeKey",
+      "kind": "preference",
+      "title": "DevModeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:104",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AndroidIdKey",
+      "kind": "preference",
+      "title": "AndroidIdKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:105",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.OriginalCoverKey",
+      "kind": "preference",
+      "title": "OriginalCoverKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:108",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.ProgressBarStyleKey",
+      "kind": "preference",
+      "title": "ProgressBarStyleKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:109",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.MeshFlowSpeedKey",
+      "kind": "preference",
+      "title": "MeshFlowSpeedKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:111",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.MeshRenderScaleKey",
+      "kind": "preference",
+      "title": "MeshRenderScaleKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:112",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.MeshStaticModeKey",
+      "kind": "preference",
+      "title": "MeshStaticModeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:113",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.MeshPlayingKey",
+      "kind": "preference",
+      "title": "MeshPlayingKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:114",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.MeshLowFreqVolumeKey",
+      "kind": "preference",
+      "title": "MeshLowFreqVolumeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:115",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.MeshSubdivisionKey",
+      "kind": "preference",
+      "title": "MeshSubdivisionKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:116",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LibraryStyleKey",
+      "kind": "preference",
+      "title": "LibraryStyleKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:118",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LibraryDefaultPageKey",
+      "kind": "preference",
+      "title": "LibraryDefaultPageKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:119",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.KeepBottomBarExpandedKey",
+      "kind": "preference",
+      "title": "KeepBottomBarExpandedKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:120",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.HorizontalSafeAreaEnabledKey",
+      "kind": "preference",
+      "title": "HorizontalSafeAreaEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:121",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.BottomFloatingContentExtraSpacingKey",
+      "kind": "preference",
+      "title": "BottomFloatingContentExtraSpacingKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:122",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LiquidGlassEnabledKey",
+      "kind": "preference",
+      "title": "LiquidGlassEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:125",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LegacyApiCompatibilityNoticeShownKey",
+      "kind": "preference",
+      "title": "LegacyApiCompatibilityNoticeShownKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:126",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.GlassHdrEffectsKey",
+      "kind": "preference",
+      "title": "GlassHdrEffectsKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:127",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.ReduceTransparencyKey",
+      "kind": "preference",
+      "title": "ReduceTransparencyKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:128",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.ColorfulDetailBackgroundsKey",
+      "kind": "preference",
+      "title": "ColorfulDetailBackgroundsKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:129",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PredictiveBackAnimationEnabledKey",
+      "kind": "preference",
+      "title": "PredictiveBackAnimationEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:130",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PlayerStyleKey",
+      "kind": "preference",
+      "title": "PlayerStyleKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:132",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PlayerKeepScreenOnKey",
+      "kind": "preference",
+      "title": "PlayerKeepScreenOnKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:133",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PlaylistCoverStyleKey",
+      "kind": "preference",
+      "title": "PlaylistCoverStyleKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:134",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PlaylistTrackTableHeaderKey",
+      "kind": "preference",
+      "title": "PlaylistTrackTableHeaderKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:135",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.TabletAnimationStyleKey",
+      "kind": "preference",
+      "title": "TabletAnimationStyleKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:136",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.DownloadPathKey",
+      "kind": "preference",
+      "title": "DownloadPathKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:138",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.DownloadQualityKey",
+      "kind": "preference",
+      "title": "DownloadQualityKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:139",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoCacheEnabledKey",
+      "kind": "preference",
+      "title": "AutoCacheEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:140",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoCachePlaybackThresholdKey",
+      "kind": "preference",
+      "title": "AutoCachePlaybackThresholdKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:141",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AutoCacheQualityKey",
+      "kind": "preference",
+      "title": "AutoCacheQualityKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:142",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.ImageCacheLimitMbKey",
+      "kind": "preference",
+      "title": "ImageCacheLimitMbKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:143",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.MusicCacheLimitMbKey",
+      "kind": "preference",
+      "title": "MusicCacheLimitMbKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:144",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PodcastsEnabledKey",
+      "kind": "preference",
+      "title": "PodcastsEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:147",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.DownloadsEnabledKey",
+      "kind": "preference",
+      "title": "DownloadsEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:148",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.CloudMusicEnabledKey",
+      "kind": "preference",
+      "title": "CloudMusicEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:149",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.ListeningHistoryEnabledKey",
+      "kind": "preference",
+      "title": "ListeningHistoryEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:150",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.FindMusicTabEnabledKey",
+      "kind": "preference",
+      "title": "FindMusicTabEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:151",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LibraryTabEnabledKey",
+      "kind": "preference",
+      "title": "LibraryTabEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:152",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PodcastsTabEnabledKey",
+      "kind": "preference",
+      "title": "PodcastsTabEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:153",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.DownloadsTabEnabledKey",
+      "kind": "preference",
+      "title": "DownloadsTabEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:154",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.CloudMusicTabEnabledKey",
+      "kind": "preference",
+      "title": "CloudMusicTabEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:155",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.ListeningHistoryTabEnabledKey",
+      "kind": "preference",
+      "title": "ListeningHistoryTabEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:156",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.NavigationTabOrderKey",
+      "kind": "preference",
+      "title": "NavigationTabOrderKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:157",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.AppAppearanceKey",
+      "kind": "preference",
+      "title": "AppAppearanceKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:158",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.LastSelectedTabKey",
+      "kind": "preference",
+      "title": "LastSelectedTabKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:159",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.RecognizeClipboardLinksKey",
+      "kind": "preference",
+      "title": "RecognizeClipboardLinksKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:160",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.QqTimeoutKey",
+      "kind": "preference",
+      "title": "QqTimeoutKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:162",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.FlymeStatusBarLyricsEnabledKey",
+      "kind": "preference",
+      "title": "FlymeStatusBarLyricsEnabledKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:285",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PrivateFmModeKey",
+      "kind": "preference",
+      "title": "PrivateFmModeKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:286",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.preference.PrivateFmSceneKey",
+      "kind": "preference",
+      "title": "PrivateFmSceneKey",
+      "android": "music/src/main/java/com/ljyh/mei/constants/PreferenceKeys.kt:287",
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": [],
+      "note": "Storage key discovery only; check shipping UI, default and behavior before matching."
+    },
+    {
+      "id": "music.restore.paused",
+      "kind": "behavior",
+      "title": "重启恢复队列但始终暂停",
+      "android": "music/src/main/java/com/ljyh/mei/playback/PlaybackPersistence.kt:72-76",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicPlaybackRestore.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.restore.position",
+      "kind": "behavior",
+      "title": "恢复进度默认开启；关闭后重启从零但保留队列",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/setting/PlaySetting.kt:98",
+      "ios": [
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicStore.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.audio.equalizer",
+      "kind": "behavior",
+      "title": "可实际调节并生效的均衡器",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/setting/EqualizerSettings.kt",
+      "ios": [],
+      "status": "missing",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.widget.families",
+      "kind": "behavior",
+      "title": "桌面播放、歌词、最近、评论、收藏、推荐和榜单小组件",
+      "android": "music/src/main/AndroidManifest.xml",
+      "ios": [],
+      "status": "missing",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.mcp",
+      "kind": "behavior",
+      "title": "本地 MCP 的启停、端口、LAN、令牌与权限",
+      "android": "music/src/main/java/com/ljyh/mei/mcp/McpService.kt",
+      "ios": [],
+      "status": "missing",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.script.sources",
+      "kind": "behavior",
+      "title": "源安装、配置、脚本隔离与多源搜索/浏览/播放",
+      "android": "music/src/main/java/com/ljyh/mei/source/script/QuickJsEngineService.kt",
+      "ios": [],
+      "status": "missing",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.files.import",
+      "kind": "behavior",
+      "title": "设备音频导入、分类、标签和持久授权",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt",
+      "ios": [],
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.audio.background",
+      "kind": "behavior",
+      "title": "后台、锁屏/耳机控制与中断恢复",
+      "android": "music/src/main/AndroidManifest.xml",
+      "ios": [
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicNowPlaying.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicPlayer.ios.kt"
+      ],
+      "status": "partial_unverified",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.calendar",
+      "kind": "behavior",
+      "title": "课程导出/日历授权与提醒",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt",
+      "ios": [
+        "shared/src/iosMain/kotlin/com/andaxin/shared/IosCalendar.kt"
+      ],
+      "status": "partial_unverified",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.camera",
+      "kind": "behavior",
+      "title": "查寝拍照与 AI 扫码的相机授权和回传",
+      "android": "app/src/main/AndroidManifest.xml",
+      "ios": [
+        "shared/src/iosMain/kotlin/com/andaxin/shared/IosCamera.kt"
+      ],
+      "status": "partial_unverified",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.gps",
+      "kind": "behavior",
+      "title": "运动定位、后台与轨迹持久化",
+      "android": "app/src/main/AndroidManifest.xml",
+      "ios": [
+        "shared/src/iosMain/kotlin/com/andaxin/shared/IosGps.kt"
+      ],
+      "status": "partial_unverified",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.avatar",
+      "kind": "behavior",
+      "title": "本地头像选择/裁剪/持久化",
+      "android": "app/src/main/java/com/andaxin/feature/me/MeScreen.kt",
+      "ios": [
+        "shared/src/iosMain/kotlin/com/andaxin/shared/IosScreens.kt"
+      ],
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.update",
+      "kind": "behavior",
+      "title": "iOS 自身发布源、正确 IPA 与独立版本检测",
+      "android": "app/src/main/java/com/andaxin/data/capture/UpdateFeed.kt",
+      "ios": [
+        "shared/src/logicMain/kotlin/com/andaxin/data/capture/UpdateFeed.kt"
+      ],
+      "status": "needs_audit",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "host.service.writes",
+      "kind": "behavior",
+      "title": "查寝/请假/离返校/报修/运动等真实提交",
+      "android": "app/src/main/java/com/andaxin/shell/RootShell.kt",
+      "ios": [
+        "shared/src/logicMain/kotlin/com/andaxin/feature/modules"
+      ],
+      "status": "blocked_sandbox",
+      "accepted": false,
+      "evidence": []
+    },
+    {
+      "id": "music.service.writes",
+      "kind": "behavior",
+      "title": "账号、云歌单、评论/消息等真实写入",
+      "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt",
+      "ios": [],
+      "status": "blocked_sandbox",
+      "accepted": false,
+      "evidence": []
+    }
+  ]
+}

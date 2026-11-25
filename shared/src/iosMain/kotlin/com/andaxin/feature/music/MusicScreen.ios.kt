@@ -52,6 +52,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -83,6 +84,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -488,6 +490,10 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
     val lyricsVisible = controller.lyricsVisible
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle("播放与歌词")
+        SettingRow("恢复播放进度") {
+            Switch(checked = controller.restorePlaybackPosition, onCheckedChange = controller::setRestorePlaybackPosition, modifier = Modifier.testTag("music-restore-position"))
+        }
+        Text("下次启动时恢复上次位置；始终暂停，点击播放后继续。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SettingRow("播放音质") {
             FilterChip(selected = bitrate == 128000, onClick = { controller.setBitrate(128000) }, label = { Text("128k") })
             Spacer(Modifier.width(8.dp))
@@ -817,7 +823,7 @@ private fun MiniPlayer(song: MusicSong, controller: MusicController, expanded: (
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).clickable { expanded() },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).testTag("music-mini-player").clickable { expanded() },
     ) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             AlbumArt(song.cover, Modifier.size(44.dp))
@@ -828,7 +834,7 @@ private fun MiniPlayer(song: MusicSong, controller: MusicController, expanded: (
             }
             FilledIconButton(
                 onClick = { controller.toggle() },
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(40.dp).testTag("music-mini-toggle"),
                 shape = CircleShape,
                 colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
             ) { TransportIcon(if (controller.playing) Transport.Pause else Transport.Play, MaterialTheme.colorScheme.onPrimary, Modifier.size(18.dp)) }

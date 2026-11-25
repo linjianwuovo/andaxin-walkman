@@ -165,10 +165,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// 把一扇 route 推到当前那一格的导航栈上（只给 CI 用）
     private func openRoute(_ key: String, _ g: IosAppGraph) {
-        if key == "music" {
-            tabsController?.selectedIndex = 3
-            return
-        }
         let nav = tabsController?.selectedViewController as? UINavigationController
         guard let host = nav?.topViewController else {
             NSLog("AndaXin 壳：CI 推 \(key) 失败 —— 拿不到宿主 VC")

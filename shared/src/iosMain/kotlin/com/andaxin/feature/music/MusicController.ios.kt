@@ -61,6 +61,8 @@ class MusicController(
         private set
     var lyricsVisible by mutableStateOf(MusicStore.loadLyricsVisible())
         private set
+    var restorePlaybackPosition by mutableStateOf(MusicStore.loadRestorePlaybackPosition())
+        private set
     var sleepMinutes by mutableStateOf(MusicStore.loadSleepMinutes())
         private set
     var sleepRemaining by mutableStateOf(MusicStore.loadSleepMinutes() * 60)
@@ -122,17 +124,11 @@ class MusicController(
     )
 
     init {
-        // 用户 11-16 的决定：上次在放，重开接着放。restore() 把队列/位置摆好，
-        // 这里只在"上次确实在放"时才真的出声，位置由 startAt 接上。
-        val wasPlaying = restore()
+        restore()
         history = MusicStore.loadRecent()
         historyPlayedAt = MusicStore.loadRecentTimes()
         likedIds = MusicStore.loadLikedIds()
         scope.launch { ticker() }
-        if (wasPlaying && index >= 0) {
-            val resumeAt = position
-            scope.launch { playAt(index, startAt = resumeAt) }
-        }
     }
 
     fun queueIndexOf(song: MusicSong): Int = queue.indexOfFirst { it.id == song.id }
@@ -179,6 +175,11 @@ class MusicController(
     fun setLyricsVisible(value: Boolean) {
         lyricsVisible = value
         MusicStore.saveLyricsVisible(value)
+    }
+
+    fun setRestorePlaybackPosition(value: Boolean) {
+        restorePlaybackPosition = value
+        MusicStore.saveRestorePlaybackPosition(value)
     }
 
     fun reloadLyrics() {
@@ -231,7 +232,6 @@ class MusicController(
             lastTickPosition = 0.0
             lastSavedPosition = 0.0
             MusicStore.savePosition(0.0)
-            MusicStore.savePlaying(false)
             nowPlaying.clear()
             refreshNowPlaying()
             if (wasPlaying && index >= 0) {
@@ -457,7 +457,6 @@ class MusicController(
             sleepTick = TimeSource.Monotonic.markNow()
             playing = true
         }
-        MusicStore.savePlaying(playing)
         refreshNowPlaying()
     }
 
@@ -547,7 +546,6 @@ class MusicController(
         lastSavedPosition = position
         MusicStore.saveQueue(queue, index)
         MusicStore.savePosition(position)
-        MusicStore.savePlaying(true)
         refreshNowPlaying()
         loadCover(song)
         if (newListen) recordHistory(song)
@@ -594,18 +592,19 @@ class MusicController(
         return direct?.takeIf { it.isNotBlank() } ?: neteaseOuterUrl(song.id)
     }
 
-    /** 恢复队列和位置，并返回上次是否正在播放。 */
-    private fun restore(): Boolean {
-        val saved = MusicStore.loadQueue()
-        if (saved.isEmpty()) return false
-        val savedIndex = MusicStore.loadIndex().coerceIn(0, saved.lastIndex)
-        queue = saved
-        index = savedIndex
-        current = saved[savedIndex]
-        position = MusicStore.loadPosition()
-        playing = false
+    private fun restore() {
+        val restored = restoreMusicPlayback(
+            queue = MusicStore.loadQueue(),
+            index = MusicStore.loadIndex(),
+            positionSeconds = MusicStore.loadPosition(),
+            restorePosition = restorePlaybackPosition,
+        )
+        queue = restored.queue
+        index = restored.index
+        current = restored.current
+        position = restored.positionSeconds
+        playing = restored.playing
         refreshNowPlaying()
-        return MusicStore.loadPlaying()
     }
 
     private suspend fun ticker() {
@@ -711,7 +710,6 @@ class MusicController(
         player.resume()
         sleepTick = TimeSource.Monotonic.markNow()
         playing = true
-        MusicStore.savePlaying(true)
         refreshNowPlaying()
     }
 
@@ -719,7 +717,6 @@ class MusicController(
     fun dispose() {
         playbackRequest++
         MusicStore.savePosition(position)
-        MusicStore.savePlaying(playing)
         scopeJob.cancel()
         player.stop()
         playing = false
@@ -733,7 +730,6 @@ class MusicController(
         playing = false
         lastSavedPosition = position
         MusicStore.savePosition(position)
-        MusicStore.savePlaying(false)
         refreshNowPlaying()
     }
 }

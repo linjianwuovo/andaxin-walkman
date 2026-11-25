@@ -99,14 +99,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.andaxin.ios
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        # 跟安卓那份 app/build.gradle.kts 的 versionName/versionCode 同步抬（这轮合到 0.8.49 / 91）：
-        # 两端是同一套业务，版本号各走各的会让"这版有什么"对不上。
-        # iOS 这边 build 号单独再抬：修 RSA 那发（92）和「先不登录逛逛」那发（93）、深夜自查批次（94）同为 0.8.49，
-        # 真机崩溃报告与「关于」页只带这个号，不抬就没法分清他手机上装的到底是哪一发。
-        # 10-26 深夜补一句：我在聊天里报的 105/106 一直没落到这一行（plist 从头到尾是 104），
-        # 所以那两发的崩溃报告里看到的号是 104 —— 从现在起这一行跟着聊天的号一起抬，别再两套号。
         MARKETING_VERSION: "0.9.35"
-        CURRENT_PROJECT_VERSION: "186"
+        CURRENT_PROJECT_VERSION: "187"
     preBuildScripts:
       - name: BuildSharedFramework
         script: |
@@ -121,12 +115,29 @@ targets:
           rm -rf shared/build/xcodeFrameworks/shared.framework
           cp -R "shared/build/bin/${T}/${DIR}/shared.framework" shared/build/xcodeFrameworks/shared.framework
 
+  AndaXinUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: AndaXin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.andaxin.ios.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
+
 schemes:
   AndaXin:
     build:
       targets:
         AndaXin: all
+        AndaXinUITests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - AndaXinUITests
     archive:
       config: Release

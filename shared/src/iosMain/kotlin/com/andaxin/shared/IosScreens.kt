@@ -308,6 +308,7 @@ internal fun IosAppGraph.routeOf(host: UIViewController?, key: String): IosRoute
     val detailId = if (key.endsWith("/form") || !key.contains("/detail/")) "" else decodeUrl(key.substringAfter("/detail/"))
     return when {
         key == "more" -> IosRoute("更多功能") { MoreScreen(open = open, onBack = {}) }
+        key == "music" -> IosRoute("音乐") { MusicScreen() }
 
         key == "profile" -> IosRoute("个人信息") {
             ProfileScreen(

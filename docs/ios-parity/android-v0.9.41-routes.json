@@ -1,0 +1,829 @@
+{
+  "baselineTag": "v0.9.41",
+  "baselineCommit": "7dbd5e6f21ed82ce122d32370eca257f0c1d9dc9",
+  "apkSha256": "159132c9c78bd6e60be237b9e1009cb0b9bbb04fe8a1500fb31b283f4e8d489f",
+  "apkBytes": 54154884,
+  "iosStartCommit": "1dbc2d4b8818d5b0a9ba012bb4777a7615211216",
+  "note": "Source route declarations are discovery inventory, not evidence that a feature ships or works; beta-only and test routes require filtering against the stable artifact. No row is accepted by route count.",
+  "routes": [
+    {
+      "module": "host",
+      "name": "SHELF",
+      "route": "shelf",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:181",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "THEME",
+      "route": "theme",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:182",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "ABOUT",
+      "route": "about",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:183",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "LICENSES",
+      "route": "licenses",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:185",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "PROFILE",
+      "route": "profile",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:187",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "SPORT",
+      "route": "sport",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:188",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "SPORT_RUN",
+      "route": "sport/run",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:189",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "SPORT_RECORDS",
+      "route": "sport/records",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:190",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "SPORT_MAINTAIN",
+      "route": "sport/maintain",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:191",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "SPORT_PLANNER",
+      "route": "sport/planner",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:192",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "SPORT_DETAIL",
+      "route": "sport/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:193",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "WELCOME",
+      "route": "gate",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:195",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "MORE",
+      "route": "more",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:196",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "MUSIC",
+      "route": "music",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:198",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "MUSIC_PLAYER_ARG",
+      "route": "openPlayer",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:200",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "NOTIFY",
+      "route": "notify",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:201",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "CARD",
+      "route": "card",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:202",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "CARD_FLOWS",
+      "route": "card/flows",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:203",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "LOGIN",
+      "route": "login",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:204",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "DORM",
+      "route": "dorm",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:205",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "DORM_DETAIL",
+      "route": "dorm/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:206",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "DORM_TASK",
+      "route": "dorm/task/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:207",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "EXAM",
+      "route": "exam",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:208",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "EXAM_DETAIL",
+      "route": "exam/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:209",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "CREDIT",
+      "route": "credit",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:210",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "CREDIT_DETAIL",
+      "route": "credit/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:211",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "LABOR",
+      "route": "labor",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:212",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "LABOR_DETAIL",
+      "route": "labor/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:213",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "HOLIDAY",
+      "route": "holiday",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:214",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "HOLIDAY_DETAIL",
+      "route": "holiday/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:215",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "HOLIDAY_FORM",
+      "route": "holiday/form",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:216",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "REPAIR",
+      "route": "repair",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:217",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "REPAIR_DETAIL",
+      "route": "repair/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:218",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "REPAIR_FORM",
+      "route": "repair/form",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:219",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "AFFAIR",
+      "route": "affair",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:220",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "AFFAIR_TAB",
+      "route": "affair/tab/{tab}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:222",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "AFFAIR_DETAIL",
+      "route": "affair/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:223",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "AFFAIR_FORM",
+      "route": "affair/form",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:224",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "DEKT",
+      "route": "dekt",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:226",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "AICLASS",
+      "route": "aiclass",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:227",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "AICLASS_DETAIL",
+      "route": "aiclass/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:228",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "AICLASS_SCAN",
+      "route": "aiclass/scan",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:229",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "AICLASS_SIGN_QR",
+      "route": "aiclass/signqr/{u}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:232",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "AICLASS_PAPER",
+      "route": "aiclass/paper/{r}/{c}/{t}?title={title}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:234",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "AICLASS_PLAY",
+      "route": "aiclass/play/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:235",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "OPEN_COURSE",
+      "route": "opencourse",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:236",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "OPEN_COURSE_DETAIL",
+      "route": "opencourse/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:237",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "GROUP",
+      "route": "group",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:238",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "NOTICE_DETAIL",
+      "route": "notice/detail/{id}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:240",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "WEB",
+      "route": "web/{u}",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:247",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "ID_ARG",
+      "route": "id",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:254",
+      "declaredOnly": true
+    },
+    {
+      "module": "host",
+      "name": "TAB_ARG",
+      "route": "tab",
+      "source": "app/src/main/java/com/andaxin/shell/RootShell.kt:256",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "Home",
+      "route": "home",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:10",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "Library",
+      "route": "library",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:11",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "LibraryCategory",
+      "route": "library_category",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:12",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "FindMusic",
+      "route": "find_music",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:13",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "PlaylistCategory",
+      "route": "playlist_category",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:14",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SearchResult",
+      "route": "search_result",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:15",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "PlayList",
+      "route": "playlist",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:16",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "Setting",
+      "route": "setting",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:17",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "ContentSettings",
+      "route": "setting/content",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:18",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "NeteaseLogin",
+      "route": "account/login",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:19",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "NeteaseWebLogin",
+      "route": "account/web_login",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:20",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "PcQrLogin",
+      "route": "account/pc_qr_login",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:21",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "AccountHome",
+      "route": "account/home",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:22",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "NeteaseMusician",
+      "route": "account/musician",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:23",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "AccountSecurity",
+      "route": "account/security",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:24",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "AccountBindings",
+      "route": "account/security/bindings",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:25",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "AccountDevices",
+      "route": "account/security/devices",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:26",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "AccountAuthorizations",
+      "route": "account/security/authorizations",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:27",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "AccountWeb",
+      "route": "account/security/web",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:28",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "AccountConnections",
+      "route": "account/connections",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:29",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "AccountListeningRank",
+      "route": "account/listening_rank",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:30",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "ListeningStats",
+      "route": "account/listening_stats",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:31",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "AppearanceSettings",
+      "route": "setting/appearance",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:32",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "GeneralSettings",
+      "route": "setting/general",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:33",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "LocalMcpSettings",
+      "route": "setting/general/local-mcp",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:34",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "LyricsSettings",
+      "route": "setting/lyrics",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:35",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "PlaySettings",
+      "route": "setting/play",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:36",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "EqualizerSettings",
+      "route": "setting/equalizer",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:37",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "DownloadSettings",
+      "route": "setting/download",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:38",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "StorageManagement",
+      "route": "setting/storage",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:39",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SourceManagement",
+      "route": "setting/sources",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:40",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SourceMarket",
+      "route": "setting/sources/market",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:41",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SourcePluginSettings",
+      "route": "setting/sources/plugin",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:42",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SourceContent",
+      "route": "source/content",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:43",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SourceArtistSongs",
+      "route": "source/artist/songs",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:44",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SourceArtistAlbums",
+      "route": "source/artist/albums",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:45",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SourceAccount",
+      "route": "source/account",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:46",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SourcePlaylistCreate",
+      "route": "source/playlist/create",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:47",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SourcePlaylistEdit",
+      "route": "source/playlist/edit",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:48",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SourcePlaylistPicker",
+      "route": "source/playlist/picker",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:49",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "DownloadManage",
+      "route": "download_manage",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:50",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "LocalMusic",
+      "route": "local_music",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:51",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "LocalSongList",
+      "route": "local_songs",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:52",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "EveryDay",
+      "route": "everyday",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:53",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "Album",
+      "route": "album",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:54",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "Artist",
+      "route": "artist",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:55",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "ArtistInfo",
+      "route": "artist-info",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:56",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "ArtistSongs",
+      "route": "artist-songs",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:57",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "ArtistAlbums",
+      "route": "artist-albums",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:58",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "History",
+      "route": "history",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:59",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "Podcasts",
+      "route": "podcasts",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:60",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "PodcastDetail",
+      "route": "podcast",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:61",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "CloudMusic",
+      "route": "cloud_music",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:62",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "Search",
+      "route": "search",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:63",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "PrivateMessages",
+      "route": "private_messages",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:64",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "OfficialMessages",
+      "route": "official_messages",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:65",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "PrivateConversation",
+      "route": "private_message",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:66",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "MessageContacts",
+      "route": "message_contacts",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:67",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "ListenTogether",
+      "route": "listen_together",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:68",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SongRecognition",
+      "route": "song_recognition",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:69",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "Comment",
+      "route": "comment",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:70",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "SongWiki",
+      "route": "song_wiki",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:71",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "Test",
+      "route": "test",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:72",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "About",
+      "route": "about",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:73",
+      "declaredOnly": true
+    },
+    {
+      "module": "music",
+      "name": "Log",
+      "route": "log",
+      "source": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt:74",
+      "declaredOnly": true
+    }
+  ]
+}
