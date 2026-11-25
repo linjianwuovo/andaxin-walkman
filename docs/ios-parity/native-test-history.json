@@ -1,11 +1,33 @@
-{
-  "workflow_run": 45518859583,
-  "tested_commit": "8dc7f84a16bb84cd66cb3ef64db8ef66caef556b",
-  "result": "failure",
-  "evidence_artifact": "ios-music-ui / 14981337397",
-  "observed_failure": "All three UI tests timed out waiting for Switch.value == '1' (value remained empty); native Accessibility tree represented the checked Compose Switch with the Selected trait.",
-  "diagnosis": "Test observation mismatch; not evidence that the app preference toggle failed.",
-  "correction": "Use XCUIElement.isSelected and seed a fresh simulator app container before each independent test case.",
-  "corrected_run": "pending",
-  "acceptance": "not accepted"
-}
+[
+  {
+    "workflow_run": 45518859583,
+    "tested_commit": "8dc7f84a16bb84cd66cb3ef64db8ef66caef556b",
+    "result": "failure",
+    "evidence_artifact": "ios-music-ui / 14981337397",
+    "observed_failure": "All three UI tests timed out waiting for Switch.value == '1' (value remained empty); native Accessibility tree represented the checked Compose Switch with the Selected trait.",
+    "diagnosis": "Test observation mismatch; not evidence that the app preference toggle failed.",
+    "correction": "Use XCUIElement.isSelected and seed a fresh simulator app container before each independent test case.",
+    "corrected_run": "pending",
+    "acceptance": "not accepted"
+  },
+  {
+    "workflow_run": 45535253853,
+    "tested_commit": "ed0c1b34f3010e9727ebd0985bed342825857bef",
+    "result": "failure",
+    "observed_failure": "Every queue/restore test failed 'Restored the wrong song' with mini player showing Restore check A at 0:42 / 0:00 (index ignored), and the translation chip test failed because the tapped FilterChip lost the Selected trait mid-wait.",
+    "diagnosis": "Two root causes: (1) launch-argument queue value contained raw tab/newline characters; on the runner's simulator the argv path mangled them so decodeQueue saw fewer fields and the third line failed to parse, and integerForKey/doubleForKey converted the string-typed '-music.index'/'-music.position' values unreliably (index stayed 0). (2) FilterChip selected state is not a stable accessibility trait under this harness; proven tappable control is Switch (music-restore-position).",
+    "correction": "Added -music.queueSeed: argv carries backslash-escaped text decoded by commonMain unescapeQueueSeed into the native codec; MusicStore reads NSNumber/NSString itself (longDefault/doubleDefault/boolDefault) instead of integerForKey/doubleForKey; translation/romanization/visibility toggles now use Switch with the same testTags. Committed 5fbc5a6, JVM 76 pass, production dry-run passed (1577 files, c0ecf959).",
+    "corrected_run": "dispatching",
+    "acceptance": "not accepted"
+  },
+  {
+    "workflow_run": 45557142086,
+    "tested_commit": "f4227a9e8180d1d2aa5c65f1a230eae2d550a2b0",
+    "result": "failure",
+    "observed_failure": "Same step 19 failure family: 7 tests 'Restored the wrong song' plus translation-chip state wait timeout.",
+    "diagnosis": "Same two causes as run 2 (raw-control-char argv queue + string-typed index; FilterChip trait). Romanization/queue source fixes themselves never reached a render assertion because setUp failed first.",
+    "correction": "Covered by the 5fbc5a6 fix above; romanization cases rerun there.",
+    "corrected_run": "pending",
+    "acceptance": "not accepted"
+  }
+]
