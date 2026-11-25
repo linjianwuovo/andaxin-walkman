@@ -37,7 +37,17 @@
     "observed_failure": "10 of 11 native music UI cases passed: the queueSeed escape fix, typed NSNumber/NSString reads and Switch toggles all held. Only testMusicPageReorderControlsPersistAcrossRelaunch failed: music-tab-order-up-播客 reported frame {{285,669},{40,40}} with isHittable=false — the 40pt arrow's center sat under the mini player/tab-bar zone.",
     "diagnosis": "Scroll helper only waited for exists, and openSettingsTab scrolled the ROW into view, not the small arrow button itself; the floating tab bar plus mini player cover roughly the bottom 170pt on this device size.",
     "correction": "scrollTo now proves hittableCenter (frame center inside screen and above a 170pt bottom reserve) with 8 swipes; the reorder case scrolls to the up-arrow element itself before tapping. Committed together with the class-reminder batch; rerun pending.",
-    "corrected_run": "pending",
+    "corrected_run": 45627514269,
     "acceptance": "10/11 evidence captured, not accepted until full green + physical-device notice delivery check"
+  },
+  {
+    "workflow_run": 45627514269,
+    "tested_commit": "eefd3dcac5263b2dce2e3457a8d5870d8c35d767",
+    "result": "failure",
+    "observed_failure": "Three native UI failures in step 19: page reorder row-0 snapshot missing; romanization switch frame {{325,-683.7},{52,32}} not hittable; equalizer switch frame {{325,-26.3},{52,32}} not hittable. Failed log retained outside the repository.",
+    "diagnosis": "The scroll helper always swiped up even after overshooting above the viewport. Reorder assertions read rows without bringing them back into view and expected a single up-arrow press to move the third tab directly to first. The equalizer persistence assertion checked an unchanged preamp label instead of the adjusted band gain.",
+    "correction": "Use bounded bidirectional, shorter content drags and verify both viewport limits; scroll each asserted reorder row into view and expect [首页,播客,发现] after one move; compare the actual band slider value before and after relaunch. Native rerun required.",
+    "corrected_run": "pending",
+    "acceptance": "not accepted"
   }
 ]

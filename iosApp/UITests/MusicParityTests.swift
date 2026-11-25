@@ -69,12 +69,19 @@ final class MusicParityTests: XCTestCase {
     }
 
     private func scrollTo(_ control: XCUIElement) {
-        for _ in 0..<8 {
+        for _ in 0..<16 {
             if hittableCenter(control) != nil { return }
-            app.swipeUp()
+            let above = control.exists && control.frame.midY < app.frame.minY + 140
+            let upper = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+            let lower = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.60))
+            if above {
+                upper.press(forDuration: 0.05, thenDragTo: lower)
+            } else {
+                lower.press(forDuration: 0.05, thenDragTo: upper)
+            }
         }
         waitFor(control)
-        XCTAssertTrue(control.isHittable, "Still not hittable after scrolling: \(control.debugDescription)")
+        XCTAssertNotNil(hittableCenter(control), "Still outside the usable viewport: \(control.debugDescription)")
     }
 
     /**
@@ -91,8 +98,17 @@ final class MusicParityTests: XCTestCase {
         let center = CGPoint(x: frame.midX, y: frame.midY)
         let screen = app.frame
         // 底部预留 170pt：悬浮底栏约 83 + 迷你播放器约 76（带内边距），中心点必须整颗露在这两样之上。
-        guard screen.contains(center), center.y < screen.maxY - 170 else { return nil }
+        guard screen.contains(center), center.y >= screen.minY + 140, center.y < screen.maxY - 170 else { return nil }
         return control.isHittable ? center : nil
+    }
+
+    private func assertPageOrder(_ labels: [String]) {
+        for (index, label) in labels.enumerated() {
+            let row = element("music-tab-order-row-\(index)")
+            scrollTo(row)
+            XCTAssertTrue(row.label.contains(label) || row.staticTexts[label].exists,
+                          "Unexpected page at index \(index): \(row.debugDescription)")
+        }
     }
 
     private func assertPaused(position: String, song: String = "Restore check B") {
@@ -311,15 +327,12 @@ final class MusicParityTests: XCTestCase {
         let upPodcast = element("music-tab-order-up-播客")
         scrollTo(upPodcast)
         upPodcast.tap()
-        XCTAssertTrue(element("music-tab-order-row-0").label.contains("播客"))
-        XCTAssertTrue(element("music-tab-order-row-1").label.contains("首页"))
-        XCTAssertTrue(element("music-tab-order-row-2").label.contains("发现"))
+        assertPageOrder(["首页", "播客", "发现"])
         app.terminate()
         app.launch()
         musicTab()
         openSettingsTab()
-        XCTAssertTrue(element("music-tab-order-row-0").label.contains("播客"))
-        XCTAssertTrue(element("music-tab-order-row-1").label.contains("首页"))
+        assertPageOrder(["首页", "播客", "发现"])
         capture("music-page-order-persisted")
     }
 
@@ -356,7 +369,13 @@ final class MusicParityTests: XCTestCase {
         // 拖第 0 段：预设应当自己变成「自定义」
         let band0 = element("music-eq-band-0")
         scrollTo(band0)
+        let originalGain = band0.value as? String
         band0.adjust(toNormalizedSliderPosition: 0.85)
+        guard let savedGain = band0.value as? String, !savedGain.isEmpty else {
+            XCTFail("均衡器滑杆没有可读取的增益")
+            return
+        }
+        XCTAssertNotEqual(savedGain, originalGain, "拖动没有改变增益")
         capture("music-equalizer-rock-band0")
         app.terminate()
         app.launch()
@@ -365,10 +384,9 @@ final class MusicParityTests: XCTestCase {
         let toggle2 = element("music-eq-switch")
         scrollTo(toggle2)
         assertSelected(toggle2, true)
-        // 拨过的增益要能读回来：第 0 段那行右边的读数不该还是 +0.0
-        let preamp = element("music-eq-preamp")
-        waitFor(preamp)
-        XCTAssertTrue(preamp.label.contains("dB"), "前置读数丢了：\(preamp.label)")
+        let restoredBand = element("music-eq-band-0")
+        scrollTo(restoredBand)
+        XCTAssertEqual(restoredBand.value as? String, savedGain, "重启后增益没有保留")
     }
 
     func testRomanizationIsEnabledByDefaultAndIndependentFromTranslation() {
