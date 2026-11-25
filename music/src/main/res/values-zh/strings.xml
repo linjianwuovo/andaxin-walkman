@@ -1148,4 +1148,5 @@
     <string name="widget_universal">万能小组件</string>
     <string name="widget_universal_description">选择在桌面显示的音乐内容或快捷入口。</string>
     <string name="widget_universal_playlists">发现歌单</string>
+    <string name="player_media_volume">媒体音量</string>
 </resources>

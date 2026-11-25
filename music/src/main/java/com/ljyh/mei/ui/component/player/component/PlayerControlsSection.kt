@@ -85,9 +85,18 @@ fun PlayerControlsSection(
             )
         }
 
+        Spacer(Modifier.height(if (isCompact) 8.dp else spacerHeight))
+        PlayerVolumeSection(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = if (playerStyle == PlayerStyle.AppleMusic) {
+                    AppleMusicDimensions.progressInset
+                } else PlayerHorizontalPadding),
+        )
+
         // 紧凑模式下可能需要隐藏底部 Toolbar 或者减小间距
         if (!isCompact) {
-            Spacer(Modifier.height(spacerHeight))
+            Spacer(Modifier.height(8.dp))
             PlayerActionToolbar(
                 modifier = Modifier.padding(horizontal = PlayerHorizontalPadding).playerAdditiveBlend(),
                 lyricsVisible = lyricsVisible,

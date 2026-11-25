@@ -270,7 +270,7 @@ fun AppleMusicPlayer(
         val statusBarTop = with(density) { WindowInsets.statusBars.getTop(this).toFloat() }
         val topSafeArea = (statusBarTop - (playerBoundsInRoot?.top ?: 0f)).coerceAtLeast(0f)
 
-        val bottomControlsHeightDp = if (isCompactHeight || isLandscape) 220.dp else 300.dp
+        val bottomControlsHeightDp = if (isCompactHeight || isLandscape) 280.dp else 360.dp
         val bottomControlsHeight = with(density) { bottomControlsHeightDp.toPx() }
         var controlsBaselineHeightPx by remember(screenWidth, maxHeightPx) { mutableIntStateOf(0) }
         var albumRowSize by remember { mutableStateOf(IntSize.Zero) }
