@@ -71,3 +71,12 @@ MeiloX 最终固定提交时间为 2026-11-25 14:20:36 UTC；Glasmio 提交时�
 - iOS 对齐账本仍为 279 项、0 项已验收。测试包上传采用 Release 草稿，不发布正式版；iOS 流水线继续使用 `publish=false`。
 
 调试证书 SHA-256 与发布的 v0.9.41 不同，不能覆盖现有安装；已核对原发布密钥库证书与 v0.9.41 一致，另行构建相同发布签名的测试包。密钥与口令不进入仓库。
+
+### 2026-11-25 签名测试包与关于页清理
+
+- 源码提交：`eb3fb6b118f77fe8adc3f5483bd0091b669c916b`。删除 Android 与共享关于页中位于更新卡片下方的“边界：不代你提交申请……”说明，更新通道名称及更新操作保留。
+- 本轮 `:app:testStableDebugUnitTest --rerun :shared:jvmTest --rerun :shared:compileKotlinIosSimulatorArm64 :app:assembleStableRelease` 通过，耗时 7 分 19 秒；宿主 6 项、共享逻辑 134 项单测，失败／错误／跳过均为 0。Windows 上的 iOS 编译不作为原生运行或界面验收。
+- 签名测试 APK：`AndaXin-music-volume-20261125-eb3fb6b1-release-test.apk`，54,200,192 字节。SHA-256：`e0e13dac3c02249bf3c9ef7ebe4532dacef12c5d4ddf25be8d915b28ab72477d`。本地交付目录：`D:/gongzuoqu/交付`。
+- 已通过 `apksigner verify`，证书 SHA-256：`40ee7baae7f57b53feb94f2cb0a47e210fec1e458073a2b6bbd2a551e5bcf9ef`，与已发布 v0.9.41 一致；包名 `com.andaxin`、版本 `0.9.41`、versionCode `180`、arm64。临时签名配置已清理，密钥和口令未进入仓库。实际覆盖安装仍待设备检查。
+- 源码已通过 GitHub 的 SSH 443 端口推送，并核对远程分支提交。GitHub API 的直连 TLS 连接失败，本机既有代理端口未监听；APK 上传和新的 iOS 工作流派发尚未完成，不能表述为已推送测试包或已启动原生验证。
+- 音量条拖动、硬件键同步和实际声音仍待设备验收；完整 iOS 对齐账本保持 279 项、0 项已验收。
