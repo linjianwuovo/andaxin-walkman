@@ -58,7 +58,17 @@
     "observed_failure": "10 of 12 cases passed. Reorder failed reading the first row title; equalizer failed finding music-eq-preset-Rock. Packaging was skipped; ios-artifacts contains no IPA.",
     "diagnosis": "Native AX tree flattens row-0 and its title into siblings: row bounds {{16,241.7},{361,48}}, title 首页 at {{16,257.3},{265,16.7}}. The Rock preset was at x=632.3 outside the 393pt screen; vertical-only scrolling pushed it to y=26.7. The reorder failure dump still showed canonical order after the tap; a new native run must prove the movement, not just the title lookup.",
     "correction": "Locate a global native title inside each indexed row bounds and wait for recomposition; tap the verified arrow center. Scroll the preset strip horizontally from Flat before selecting Rock. Retain all reordering/relaunch and gain/relaunch assertions.",
-    "corrected_run": "pending",
+    "corrected_run": 45668485018,
     "acceptance": "not accepted; native rerun, calendar/notification/audio and sandbox flows remain unverified"
+  },
+  {
+    "workflow_run": 45668485018,
+    "tested_commit": "4b95e6ded6b008e5c982ca4ab5cf5cfb0a115bba",
+    "result": "failure",
+    "observed_failure": "10 of 12 native cases passed. Page reordering timed out at row 1 after a coordinate tap; the accessibility title lookup retried stale duplicate static-text matches. Equalizer horizontal navigation reached Rock and band 0 reported value 5.0, but XCTest rejected adjust(toNormalizedSliderPosition:) because Compose exports the slider as Other, not Slider. No IPA was packaged.",
+    "diagnosis": "The current evidence does not prove page-order mutation or persistence. Labels are duplicated in the page navigation, and reorder rows were keyed by composition position. The equalizer value is readable and requires a pointer drag instead of a native Slider-only XCTest method.",
+    "correction": "Give reorder rows stable page keys and each visible title a unique test tag; verify the initial order, tap the live arrow element, and retain immediate and relaunch order checks. Drag the real equalizer control and retain a bounded wait for changed numeric gain plus relaunch persistence. Native rerun pending; neither interaction is accepted yet.",
+    "corrected_run": "pending",
+    "acceptance": "Not accepted. Requires all 12 native cases and an actual unsigned device IPA; physical-device audio and broader parity remain unverified."
   }
 ]

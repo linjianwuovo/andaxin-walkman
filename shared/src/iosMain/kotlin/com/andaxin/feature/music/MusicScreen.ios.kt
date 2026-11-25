@@ -517,15 +517,17 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
         SectionTitle("页面与切换")
         SectionTitle("页面顺序")
         controller.tabOrder.forEachIndexed { index, label ->
-            Row(
-                Modifier.fillMaxWidth().testTag("music-tab-order-row-$index"),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(label, modifier = Modifier.weight(1f))
-                val upEnabled = index > 0
-                val downEnabled = index < controller.tabOrder.size - 1
-                IconButton(onClick = { controller.moveTabOrder(label, index - 1) }, enabled = upEnabled, modifier = Modifier.testTag("music-tab-order-up-$label")) { Text("↑") }
-                IconButton(onClick = { controller.moveTabOrder(label, index + 1) }, enabled = downEnabled, modifier = Modifier.testTag("music-tab-order-down-$label")) { Text("↓") }
+            key(label) {
+                Row(
+                    Modifier.fillMaxWidth().testTag("music-tab-order-row-$index"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(label, modifier = Modifier.weight(1f).testTag("music-tab-order-label-$label"))
+                    val upEnabled = index > 0
+                    val downEnabled = index < controller.tabOrder.size - 1
+                    IconButton(onClick = { controller.moveTabOrder(label, index - 1) }, enabled = upEnabled, modifier = Modifier.testTag("music-tab-order-up-$label")) { Text("↑") }
+                    IconButton(onClick = { controller.moveTabOrder(label, index + 1) }, enabled = downEnabled, modifier = Modifier.testTag("music-tab-order-down-$label")) { Text("↓") }
+                }
             }
         }
         Text("上下箭头调整音乐页顺序，顺序与可见状态分开保存。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

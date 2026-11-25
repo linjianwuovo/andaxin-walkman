@@ -121,13 +121,11 @@ final class MusicParityTests: XCTestCase {
         for (index, label) in labels.enumerated() {
             let row = element("music-tab-order-row-\(index)")
             scrollTo(row)
-            // Compose exposes the title beside the row, rather than as its AX child.
+            let title = element("music-tab-order-label-\(label)")
             let matchesRow = NSPredicate { _, _ in
-                let bounds = row.frame
-                return self.app.staticTexts.matching(identifier: label).allElementsBoundByIndex.contains { title in
-                    let frame = title.frame
-                    return bounds.contains(CGPoint(x: frame.midX, y: frame.midY))
-                }
+                guard title.exists, title.label == label else { return false }
+                let frame = title.frame
+                return row.frame.contains(CGPoint(x: frame.midX, y: frame.midY))
             }
             let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: matchesRow, object: row)], timeout: 5)
             XCTAssertEqual(result, .completed, "Unexpected page at index \(index): \(row.debugDescription)")
@@ -346,16 +344,12 @@ final class MusicParityTests: XCTestCase {
         app.launch()
         musicTab()
         openSettingsTab()
-        // 箭头那颗要单独滚进视野再点：row 露出来了不代表 40pt 的按钮也没被底栏压住。
+        assertPageOrder(["首页", "发现", "播客"])
+        // 按钮自身重新解析点击位置，避免滚动后的绝对坐标失效。
         let upPodcast = element("music-tab-order-up-播客")
         scrollTo(upPodcast)
-        guard let center = hittableCenter(upPodcast) else {
-            XCTFail("Page reorder arrow is not visible")
-            return
-        }
-        let screen = app.frame
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-            .withOffset(CGVector(dx: center.x - screen.minX, dy: center.y - screen.minY)).tap()
+        XCTAssertTrue(upPodcast.isEnabled)
+        upPodcast.tap()
         assertPageOrder(["首页", "播客", "发现"])
         app.terminate()
         app.launch()
@@ -398,8 +392,18 @@ final class MusicParityTests: XCTestCase {
         // 拖第 0 段：预设应当自己变成「自定义」
         let band0 = element("music-eq-band-0")
         scrollTo(band0)
-        let originalGain = band0.value as? String
-        band0.adjust(toNormalizedSliderPosition: 0.85)
+        guard let originalGain = band0.value as? String, !originalGain.isEmpty else {
+            XCTFail("均衡器滑杆没有可读取的初始增益")
+            return
+        }
+        let start = band0.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let target = band0.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: target)
+        let gainChanged = NSPredicate { _, _ in
+            guard let value = band0.value as? String else { return false }
+            return !value.isEmpty && value != originalGain
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: gainChanged, object: band0)], timeout: 5), .completed)
         guard let savedGain = band0.value as? String, !savedGain.isEmpty else {
             XCTFail("均衡器滑杆没有可读取的增益")
             return
