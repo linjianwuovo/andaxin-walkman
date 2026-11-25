@@ -102,12 +102,35 @@ final class MusicParityTests: XCTestCase {
         return control.isHittable ? center : nil
     }
 
+    private func scrollPresetIntoView(_ preset: XCUIElement) {
+        let firstPreset = element("music-eq-preset-Flat")
+        scrollTo(firstPreset)
+        let screen = app.frame
+        let origin = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let y = firstPreset.frame.midY - screen.minY
+        let start = origin.withOffset(CGVector(dx: screen.width * 0.85, dy: y))
+        let end = origin.withOffset(CGVector(dx: screen.width * 0.15, dy: y))
+        for _ in 0..<8 {
+            if hittableCenter(preset) != nil { return }
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        XCTAssertNotNil(hittableCenter(preset), "Preset remains outside the horizontal viewport")
+    }
+
     private func assertPageOrder(_ labels: [String]) {
         for (index, label) in labels.enumerated() {
             let row = element("music-tab-order-row-\(index)")
             scrollTo(row)
-            XCTAssertTrue(row.label.contains(label) || row.staticTexts[label].exists,
-                          "Unexpected page at index \(index): \(row.debugDescription)")
+            // Compose exposes the title beside the row, rather than as its AX child.
+            let matchesRow = NSPredicate { _, _ in
+                let bounds = row.frame
+                return self.app.staticTexts.matching(identifier: label).allElementsBoundByIndex.contains { title in
+                    let frame = title.frame
+                    return bounds.contains(CGPoint(x: frame.midX, y: frame.midY))
+                }
+            }
+            let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: matchesRow, object: row)], timeout: 5)
+            XCTAssertEqual(result, .completed, "Unexpected page at index \(index): \(row.debugDescription)")
         }
     }
 
@@ -326,7 +349,13 @@ final class MusicParityTests: XCTestCase {
         // 箭头那颗要单独滚进视野再点：row 露出来了不代表 40pt 的按钮也没被底栏压住。
         let upPodcast = element("music-tab-order-up-播客")
         scrollTo(upPodcast)
-        upPodcast.tap()
+        guard let center = hittableCenter(upPodcast) else {
+            XCTFail("Page reorder arrow is not visible")
+            return
+        }
+        let screen = app.frame
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            .withOffset(CGVector(dx: center.x - screen.minX, dy: center.y - screen.minY)).tap()
         assertPageOrder(["首页", "播客", "发现"])
         app.terminate()
         app.launch()
@@ -364,7 +393,7 @@ final class MusicParityTests: XCTestCase {
         toggle.tap()
         assertSelected(toggle, true)
         let rock = element("music-eq-preset-Rock")
-        scrollTo(rock)
+        scrollPresetIntoView(rock)
         rock.tap()
         // 拖第 0 段：预设应当自己变成「自定义」
         let band0 = element("music-eq-band-0")

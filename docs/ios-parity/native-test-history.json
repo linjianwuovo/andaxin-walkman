@@ -49,5 +49,16 @@
     "correction": "Use bounded bidirectional, shorter content drags and verify both viewport limits; scroll each asserted reorder row into view and expect [首页,播客,发现] after one move; compare the actual band slider value before and after relaunch. Native rerun required.",
     "corrected_run": "pending",
     "acceptance": "not accepted"
+  },
+  {
+    "workflow_run": 45652802198,
+    "tested_commit": "81414d62baded60748575b15718505ebd153ed90",
+    "result": "failure",
+    "evidence_artifact": "ios-music-ui / 15046062141",
+    "observed_failure": "10 of 12 cases passed. Reorder failed reading the first row title; equalizer failed finding music-eq-preset-Rock. Packaging was skipped; ios-artifacts contains no IPA.",
+    "diagnosis": "Native AX tree flattens row-0 and its title into siblings: row bounds {{16,241.7},{361,48}}, title 首页 at {{16,257.3},{265,16.7}}. The Rock preset was at x=632.3 outside the 393pt screen; vertical-only scrolling pushed it to y=26.7. The reorder failure dump still showed canonical order after the tap; a new native run must prove the movement, not just the title lookup.",
+    "correction": "Locate a global native title inside each indexed row bounds and wait for recomposition; tap the verified arrow center. Scroll the preset strip horizontally from Flat before selecting Rock. Retain all reordering/relaunch and gain/relaunch assertions.",
+    "corrected_run": "pending",
+    "acceptance": "not accepted; native rerun, calendar/notification/audio and sandbox flows remain unverified"
   }
 ]
