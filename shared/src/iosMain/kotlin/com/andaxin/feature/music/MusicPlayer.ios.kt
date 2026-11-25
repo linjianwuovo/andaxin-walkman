@@ -56,7 +56,11 @@ class MusicPlayer {
         wantsPlayback = true
         seeking = false
         activate()
-        player.replaceCurrentItemWithPlayerItem(AVPlayerItem(uRL = nsUrl))
+        val item = AVPlayerItem(uRL = nsUrl)
+        player.replaceCurrentItemWithPlayerItem(item)
+        // 均衡器挂在 item 上（tap 是跟着 item 走的，换歌就要重挂）。
+        // 关着时 attach 内部直接把 audioMix 摘掉，等于零开销。
+        IosEqualizerTap.attach(item, com.andaxin.feature.music.IosEqualizerSettings.current())
         if (startAt > 0.5) {
             seek(startAt)
         } else {

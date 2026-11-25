@@ -317,6 +317,7 @@ jobs:
             testMusicPageVisibilityControlsToggle
             testPlaybackPreferencesPersistAndTranslationDefaultsEnabled
             testRomanizationIsEnabledByDefaultAndIndependentFromTranslation
+            testEqualizerSettingsPersistAcrossRelaunch
           )
           status=0
           for test in "${tests[@]}"; do

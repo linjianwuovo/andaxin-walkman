@@ -571,7 +571,7 @@ private fun SettingTab(controller: MusicController, onLogin: () -> Unit) {
         }
         Text("译文和音译分别显示接口提供的文本；接口未返回时不自动生成。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SectionTitle("均衡器")
-        Text("均衡器：原生 DSP 不在当前 iOS 工程能力内；这里只保留设备音效说明，不假装有可调音效。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        EqualizerSection()
         SettingRow("网易云账号") {
             if (controller.musicU == null) TextButton(onClick = onLogin) { Text("网页登录") }
             else {

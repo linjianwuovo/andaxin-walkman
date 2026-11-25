@@ -55,6 +55,21 @@ No item is accepted yet. Missing items include real DSP equalization, script-sou
 - JVM coverage includes timestamp boundary, non-reuse, malformed-safe behavior, independent visibility, YRC preservation and default-on ordering. Isolated lyrics fixtures add romanized-on/romanized-off render cases; XCUITest adds default/independence/persistence checks.
 - This batch is pending native compile/UI evidence. Broader lyric format capabilities and physical/live-service acceptance remain unaccepted.
 
+## 均衡器批次（v0.9.41 对齐）— 待真机听感验收
+- 口径与安卓 `music/.../TenBandEqualizer.kt` 逐项对齐，写进 `logicMain/EqualizerModel.kt`：
+  十段中心频率（31.25 Hz…16 kHz）、14 个预设的 preamp/gains、每段 ±12 dB、前置 −12..+6 dB、
+  Q=1.4、CSV 序列化、以及"前置非 0 不旁路"这条容易漏的条件。
+- 逐样本内核进 `logicMain/TenBandEqualizerKernel.kt`（纯 Kotlin，可 JVM 对拍）：
+  双二阶 RBJ peaking、前置乘一次、交错/非交错两种排布同一结果、换配置清历史。
+- iOS 落点 `iosMain/IosEqualizerTap.kt`：AVPlayer 没有 media3 那种 AudioProcessor 口，
+  所以走 `AVMutableAudioMix → AVMutableAudioMixInputParameters → MTAudioProcessingTap`；
+  回调跑在音频线程，处理缓冲复用、格式认不出就原样放行。
+- 设置页那块占位说明（"原生 DSP 不在能力内"）已换成真控件：总开关、预设一排、十段滑杆、复位，
+  全部带 testTag；存取走 `IosEqualizerSettings`（objectForKey 自判类型，XCUITest 喂字符串也读得对）。
+- JVM 证据：`EqualizerModelTest` 12 条 + `TenBandEqualizerKernelTest` 9 条，全绿（总计 123 tests）。
+- **未计 accepted**：这条链的最终判据是"声音真的按曲线变"，只能在物理 iPhone 上听；
+  模拟器 UI 测试只证明控件能拨、能存住、重启后还在。
+
 ## 上课提醒批次（v0.9.41 对齐）— 待原生验证
 - 排程口径进 logicMain `ClassReminderPlan.kt`（一份两端共用）：catchUp 优先、两周窗口、startPeriod<1 跳过、
   提前量 5..30 档、每分钟一档向上取整到"现在上课"，12 条 JVM 钉子全绿（103 tests 无失败）。

@@ -20,81 +20,135 @@
       "kind": "route",
       "title": "shelf",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:181",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS native shell",
+        "evidence": "iosApp/Sources/SceneDelegate.swift",
+        "date": "2026-11-25"
+      },
+      "note": "iOS 的底栏是 UITabBarController 五格（SceneDelegate.makeTabs），不是 routeOf 的 key；安卓的 shelf 是底栏本身。实现存在，切格/红点/安全区已有截图证据，其余待原生逐项。"
     },
     {
       "id": "host.route.THEME",
       "kind": "route",
       "title": "theme",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:182",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"theme\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.ABOUT",
       "kind": "route",
       "title": "about",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:183",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"about\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.LICENSES",
       "kind": "route",
       "title": "licenses",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:185",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"licenses\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.PROFILE",
       "kind": "route",
       "title": "profile",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:187",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"profile\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.SPORT",
       "kind": "route",
       "title": "sport",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:188",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"sport\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.SPORT_RUN",
       "kind": "route",
       "title": "sport/run",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:189",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"sport/run\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.SPORT_RECORDS",
       "kind": "route",
       "title": "sport/records",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:190",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"sport/records\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.SPORT_MAINTAIN",
       "kind": "route",
       "title": "sport/maintain",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:191",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"sport/maintain\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.SPORT_PLANNER",
@@ -111,27 +165,45 @@
       "kind": "route",
       "title": "sport/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:193",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"sport/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.WELCOME",
       "kind": "route",
       "title": "gate",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:195",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS native shell",
+        "evidence": "iosApp/Sources/SceneDelegate.swift",
+        "date": "2026-11-25"
+      },
+      "note": "安卓 gate 在 iOS 对应「登录页 / 五格」换根（showingTabs + swap(toTabs:)），没有同名 route。"
     },
     {
       "id": "host.route.MORE",
       "kind": "route",
       "title": "more",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:196",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"more\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.MUSIC",
@@ -165,315 +237,525 @@
       "kind": "route",
       "title": "notify",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:201",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"notify\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.CARD",
       "kind": "route",
       "title": "card",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:202",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"card\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.CARD_FLOWS",
       "kind": "route",
       "title": "card/flows",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:203",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"card/flows\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.LOGIN",
       "kind": "route",
       "title": "login",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:204",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS native shell",
+        "evidence": "shared/src/iosMain/kotlin/com/andaxin/shared/IosScreens.kt",
+        "date": "2026-11-25"
+      },
+      "note": "登录页是 IosAppGraph.loginViewController(onDone:) 建的独立根，不走 routeOf 表。"
     },
     {
       "id": "host.route.DORM",
       "kind": "route",
       "title": "dorm",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:205",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"dorm\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.DORM_DETAIL",
       "kind": "route",
       "title": "dorm/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:206",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"dorm/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.DORM_TASK",
       "kind": "route",
       "title": "dorm/task/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:207",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"dorm/task/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.EXAM",
       "kind": "route",
       "title": "exam",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:208",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"exam\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.EXAM_DETAIL",
       "kind": "route",
       "title": "exam/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:209",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"exam/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.CREDIT",
       "kind": "route",
       "title": "credit",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:210",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"credit\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.CREDIT_DETAIL",
       "kind": "route",
       "title": "credit/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:211",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"credit/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.LABOR",
       "kind": "route",
       "title": "labor",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:212",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"labor\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.LABOR_DETAIL",
       "kind": "route",
       "title": "labor/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:213",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"labor/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.HOLIDAY",
       "kind": "route",
       "title": "holiday",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:214",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"holiday\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.HOLIDAY_DETAIL",
       "kind": "route",
       "title": "holiday/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:215",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"holiday/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.HOLIDAY_FORM",
       "kind": "route",
       "title": "holiday/form",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:216",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"holiday/form\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.REPAIR",
       "kind": "route",
       "title": "repair",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:217",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"repair\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.REPAIR_DETAIL",
       "kind": "route",
       "title": "repair/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:218",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"repair/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.REPAIR_FORM",
       "kind": "route",
       "title": "repair/form",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:219",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"repair/form\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.AFFAIR",
       "kind": "route",
       "title": "affair",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:220",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"affair\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.AFFAIR_TAB",
       "kind": "route",
       "title": "affair/tab/{tab}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:222",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"affair/tab/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.AFFAIR_DETAIL",
       "kind": "route",
       "title": "affair/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:223",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"affair/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.AFFAIR_FORM",
       "kind": "route",
       "title": "affair/form",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:224",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"affair/form\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.DEKT",
       "kind": "route",
       "title": "dekt",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:226",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"dekt\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.AICLASS",
       "kind": "route",
       "title": "aiclass",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:227",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"aiclass\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.AICLASS_DETAIL",
       "kind": "route",
       "title": "aiclass/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:228",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"aiclass/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.AICLASS_SCAN",
       "kind": "route",
       "title": "aiclass/scan",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:229",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"aiclass/scan\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.AICLASS_SIGN_QR",
       "kind": "route",
       "title": "aiclass/signqr/{u}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:232",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"aiclass/signqr/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.AICLASS_PAPER",
       "kind": "route",
       "title": "aiclass/paper/{r}/{c}/{t}?title={title}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:234",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"aiclass/paper/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.AICLASS_PLAY",
       "kind": "route",
       "title": "aiclass/play/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:235",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"aiclass/play/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.OPEN_COURSE",
       "kind": "route",
       "title": "opencourse",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:236",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"opencourse\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.OPEN_COURSE_DETAIL",
       "kind": "route",
       "title": "opencourse/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:237",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"opencourse/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.GROUP",
       "kind": "route",
       "title": "group",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:238",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key == \"group\"",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.NOTICE_DETAIL",
       "kind": "route",
       "title": "notice/detail/{id}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:240",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"notice/detail/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.WEB",
       "kind": "route",
       "title": "web/{u}",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt:247",
-      "status": "needs_audit",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [],
+      "audit": {
+        "method": "code-cross-check v0.9.41 vs iOS routeOf",
+        "evidence": "routeOf: key.startsWith(\"web/\")",
+        "date": "2026-11-25"
+      },
+      "note": ""
     },
     {
       "id": "host.route.ID_ARG",
@@ -2402,10 +2684,23 @@
       "kind": "behavior",
       "title": "可实际调节并生效的均衡器",
       "android": "music/src/main/java/com/ljyh/mei/ui/screen/setting/EqualizerSettings.kt",
-      "ios": [],
-      "status": "missing",
+      "ios": [
+        "shared/src/logicMain/kotlin/com/andaxin/feature/music/EqualizerModel.kt",
+        "shared/src/logicMain/kotlin/com/andaxin/feature/music/TenBandEqualizerKernel.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/IosEqualizerTap.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/IosEqualizerSettings.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicEqualizerScreen.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicPlayer.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/EqualizerModelTest.kt",
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/TenBandEqualizerKernelTest.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "口径与安卓 TenBandEqualizer 逐项对齐（十段频率、14 预设、±12/−12..+6 夹取、Q=1.4、CSV 格式、旁路条件含\"前置非 0 不旁路\"），21 条 JVM 钉子全绿。iOS 落点是 MTAudioProcessingTap（AVPlayer 不给 media3 那种 AudioProcessor 口）。**声音是否真的按曲线变化必须在真机听**：模拟器截图只能证明控件能拨、能存住、重启后还在，因此不计 accepted。"
     },
     {
       "id": "music.widget.families",

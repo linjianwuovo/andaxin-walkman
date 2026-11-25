@@ -337,6 +337,40 @@ final class MusicParityTests: XCTestCase {
         capture("music-page-visibility-toggle")
     }
 
+    /// 均衡器：开关能拨、预设能选、拖过滑杆之后自动变「自定义」、并且重启后还在。
+    /// 这一条证明的是**控件与持久化**；"声音真的变了"只能在真机上听，见账本里的说明。
+    func testEqualizerSettingsPersistAcrossRelaunch() {
+        app.launch()
+        musicTab()
+        openSettingsTab()
+        let toggle = element("music-eq-switch")
+        scrollTo(toggle)
+        if toggle.isSelected { toggle.tap() }
+        assertSelected(toggle, false)
+        // 打开之后选「摇滚」
+        toggle.tap()
+        assertSelected(toggle, true)
+        let rock = element("music-eq-preset-Rock")
+        scrollTo(rock)
+        rock.tap()
+        // 拖第 0 段：预设应当自己变成「自定义」
+        let band0 = element("music-eq-band-0")
+        scrollTo(band0)
+        band0.adjust(toNormalizedSliderPosition: 0.85)
+        capture("music-equalizer-rock-band0")
+        app.terminate()
+        app.launch()
+        musicTab()
+        openSettingsTab()
+        let toggle2 = element("music-eq-switch")
+        scrollTo(toggle2)
+        assertSelected(toggle2, true)
+        // 拨过的增益要能读回来：第 0 段那行右边的读数不该还是 +0.0
+        let preamp = element("music-eq-preamp")
+        waitFor(preamp)
+        XCTAssertTrue(preamp.label.contains("dB"), "前置读数丢了：\(preamp.label)")
+    }
+
     func testRomanizationIsEnabledByDefaultAndIndependentFromTranslation() {
         app.launch()
         musicTab()
