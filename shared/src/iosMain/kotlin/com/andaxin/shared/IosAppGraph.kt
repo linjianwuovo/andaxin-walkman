@@ -131,6 +131,10 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         // 「上课提醒」这一端的落点（系统日历触发器，见 IosClassReminder）：链由共享层的
         // planClassReminder 算，这里只给"把链交给系统"这台机器。
         it.reminder = com.andaxin.feature.notify.IosReminderHost
+        // 「导入到日程」：EventKit 写进用户自己的默认日历（安卓那条缝今天没人插，所以只有 iOS 有）。
+        it.addToCalendar = { events, onResult ->
+            com.andaxin.core.schedule.IosCalendarExport.import(events, onResult)
+        }
     }
 
     // PhotoHost 那三根插槽，iOS 只插第一根：正文附图交 IosImages（NSURLSession 取、Skia 解）。

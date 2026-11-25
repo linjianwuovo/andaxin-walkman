@@ -39,6 +39,11 @@ targets:
         # 带 location，见下面 capability 那段；Apple 明说 allowsBackgroundLocationUpdates=true
         # 而 plist 没这个模式 = 直接终止进程，所以两样要一起给）。
         NSLocationWhenInUseUsageDescription: 记录你跑出去的路线和配速，只在 App 开着的时候取。
+        # 日历：课程表那一屏的「导入到日程」要往他默认日历里写这周的课（EventKit）。
+        # 缺这个键 requestWriteOnlyAccessToEvents 不会弹框、直接回 false —— 表现是"点了没反应"，
+        # 跟相机那个坑一模一样。只写不读，所以文案说的是"写进你的日历"。
+        NSCalendarsWriteOnlyAccessUsageDescription: 把这周的课写进你的日历一次，之后随时能在日历里删。
+        NSCalendarsUsageDescription: 把这周的课写进你的日历一次，之后随时能在日历里删。
         # 版本号要真落到 plist 里才算：MARKETING_VERSION / CURRENT_PROJECT_VERSION 只是构建设定，
         # 这份 Info.plist 由 XcodeGen 现生成、里面没有这两个键，Xcode 就不会替我展开 ——
         # 结果 60c026a 那发的崩溃报告里 app_version 是 1.0 / build 1（系统默认值），

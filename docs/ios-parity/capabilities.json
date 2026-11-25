@@ -2761,11 +2761,18 @@
       "title": "课程导出/日历授权与提醒",
       "android": "app/src/main/java/com/andaxin/shell/RootShell.kt",
       "ios": [
-        "shared/src/iosMain/kotlin/com/andaxin/shared/IosCalendar.kt"
+        "shared/src/logicMain/kotlin/com/andaxin/core/schedule/TimetableIcs.kt",
+        "shared/src/logicMain/kotlin/com/andaxin/core/schedule/CalendarImport.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/core/schedule/IosCalendarExport.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/shared/IosAppGraph.kt",
+        "iosApp/project.yml"
       ],
-      "status": "partial_unverified",
+      "status": "implemented_pending_native",
       "accepted": false,
-      "evidence": []
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/core/schedule/CalendarImportTest.kt"
+      ],
+      "note": "课程表那屏的两条路都通了：①「导出这份课表（.ics）」走 BriefEnv.shareFile（tmp + 系统分享面板）；②「导入到日程」走 BriefEnv.addToCalendar → EventKit（只写不读，iOS 17 起 write-only 就够）。去重按 uid（写进 notes 的 #andaxin:<uid>，读回来按前缀捞），点两次不会变成两条；不删用户已有的日历条目。Info.plist 补了 NSCalendarsWriteOnlyAccessUsageDescription + NSCalendarsUsageDescription，少了它们授权回调直接回 false（跟相机那个坑同一类）。**未计 accepted**：真机上的授权弹框、写进哪个日历、跨版本行为都要在物理 iPhone 上验一次。"
     },
     {
       "id": "host.camera",

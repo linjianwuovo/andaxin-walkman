@@ -55,6 +55,20 @@ No item is accepted yet. Missing items include real DSP equalization, script-sou
 - JVM coverage includes timestamp boundary, non-reuse, malformed-safe behavior, independent visibility, YRC preservation and default-on ordering. Isolated lyrics fixtures add romanized-on/romanized-off render cases; XCUITest adds default/independence/persistence checks.
 - This batch is pending native compile/UI evidence. Broader lyric format capabilities and physical/live-service acceptance remain unaccepted.
 
+## 课程导入日历批次（v0.9.41 对齐）— 待真机授权验收
+- 共享层早就备好了两条路的两半：`.ics` 文本（`TimetableIcs.build`）和「要写进日历的那批课」
+  （`TimetableIcs.events`），缺的是 iOS 侧的落点。界面上「导入到日程」那一行只在
+  `BriefEnv.addToCalendar` 被插上时才画——之前 iOS 没插，所以他看不到这一行。
+- 这轮补上：`CalendarImport.kt`（去重口径，平台无关）+ `IosCalendarExport.kt`（EventKit）。
+  授权先要 write-only（我们只写不读），全拒时说清楚去系统设置开。
+- 去重：uid 写进 notes 的 `#andaxin:<uid>` 行，导入前按这批课的时间跨度把已有事件读回来认前缀，
+  只补新的。**不删用户已有的日历条目**；同一批里重复的 uid 只写一条。
+- `iosApp/project.yml` 补 `NSCalendarsWriteOnlyAccessUsageDescription` 与
+  `NSCalendarsUsageDescription`——缺了它们授权回调直接回 false，表现是「点了没反应」。
+- JVM 证据：`CalendarImportTest` 7 条（标记往返、认不出的不误判、去重、三种提示语），
+  总计 130 tests 全绿。
+- **未计 accepted**：授权弹框、真写进哪个日历、重复点两次的实际效果，都要在物理 iPhone 上验。
+
 ## 均衡器批次（v0.9.41 对齐）— 待真机听感验收
 - 口径与安卓 `music/.../TenBandEqualizer.kt` 逐项对齐，写进 `logicMain/EqualizerModel.kt`：
   十段中心频率（31.25 Hz…16 kHz）、14 个预设的 preamp/gains、每段 ±12 dB、前置 −12..+6 dB、
