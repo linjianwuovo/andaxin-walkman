@@ -131,6 +131,8 @@ class MusicController(
         scope.launch { ticker() }
     }
 
+    val currentQueueIndex: Int get() = index
+
     fun queueIndexOf(song: MusicSong): Int = queue.indexOfFirst { it.id == song.id }
 
     fun setMusicU(value: String?) {
@@ -204,18 +206,15 @@ class MusicController(
         message = if (playNext) "已插播到下一首" else "已加入播放队列"
     }
 
-    fun removeFromQueue(songId: Long) {
-        val target = queue.indexOfFirst { it.id == songId }
-        if (target < 0) return
+    fun removeQueueItemAt(target: Int) {
+        val edit = removeMusicQueueItem(queue, index, target) ?: run {
+            if (queue.size == 1 && target == 0) message = "至少保留一首歌曲"
+            return
+        }
         val removingCurrent = target == index
         val wasPlaying = playing
-        queue = queue.toMutableList().also { it.removeAt(target) }
-        index = when {
-            queue.isEmpty() -> -1
-            target < index -> index - 1
-            removingCurrent -> index.coerceAtMost(queue.lastIndex)
-            else -> index
-        }
+        queue = edit.queue
+        index = edit.index
         if (removingCurrent) {
             playbackRequest++
             lyricRequest++
@@ -243,18 +242,10 @@ class MusicController(
     }
 
     fun moveQueueItem(from: Int, to: Int) {
-        if (from !in queue.indices || to !in queue.indices || from == to) return
-        val mutable = queue.toMutableList()
-        val item = mutable.removeAt(from)
-        mutable.add(to, item)
-        queue = mutable
-        index = when (index) {
-            from -> to
-            in (from + 1)..to -> index - 1
-            in to until from -> index + 1
-            else -> index
-        }
-        MusicStore.saveQueue(queue, index.coerceAtLeast(0))
+        val edit = moveMusicQueueItem(queue, index, from, to) ?: return
+        queue = edit.queue
+        index = edit.index
+        MusicStore.saveQueue(queue, index)
     }
 
     fun setSleepMinutes(value: Int) {

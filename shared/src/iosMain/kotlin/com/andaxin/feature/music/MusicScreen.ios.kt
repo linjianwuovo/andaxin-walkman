@@ -43,6 +43,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButton
@@ -863,10 +865,10 @@ private fun PlayerPanel(
         if (showLyrics) LyricsBackdrop(artwork, Modifier.matchParentSize())
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onBack, colors = actionColors) { Text("← 收起") }
+                TextButton(onClick = onBack, colors = actionColors, modifier = Modifier.testTag("music-player-collapse")) { Text("← 收起") }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = { showLyrics = !showLyrics; controller.setLyricsVisible(showLyrics) }, colors = actionColors) { Text(if (showLyrics) "歌词" else "封面") }
-                TextButton(onClick = onQueue, colors = actionColors) { Text("队列") }
+                TextButton(onClick = onQueue, colors = actionColors, modifier = Modifier.testTag("music-player-queue")) { Text("队列") }
             }
             Spacer(Modifier.height(10.dp))
             if (showLyrics) {
@@ -1043,13 +1045,16 @@ private fun QueueSheet(controller: MusicController, onClose: () -> Unit) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("播放队列", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                TextButton(onClick = onClose) { Text("关闭") }
+                TextButton(onClick = onClose, modifier = Modifier.testTag("music-queue-close")) { Text("关闭") }
             }
+            Text("可调整顺序、移除歌曲；至少保留一首歌曲。", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 itemsIndexed(controller.queue) { index, song ->
-                    val currentRow = song.id == controller.current?.id
+                    val currentRow = index == controller.currentQueueIndex
+                    var menuOpen by remember(index, song) { mutableStateOf(false) }
                     Row(
-                        Modifier.fillMaxWidth().clickable { controller.playQueueAt(index) }
+                        Modifier.fillMaxWidth().testTag("music-queue-row-$index").clickable { controller.playQueueAt(index) }
                             .background(if (currentRow) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
                             .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1060,6 +1065,21 @@ private fun QueueSheet(controller: MusicController, onClose: () -> Unit) {
                             Text(song.artist, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (currentRow) Text("♪", color = MaterialTheme.colorScheme.primary)
+                        Box {
+                            TextButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("music-queue-actions-$index")
+                                .semantics { contentDescription = "${song.name}的队列操作" }) { Text("更多") }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(text = { Text("上移") }, enabled = index > 0,
+                                    modifier = Modifier.testTag("music-queue-up-$index"),
+                                    onClick = { menuOpen = false; controller.moveQueueItem(index, index - 1) })
+                                DropdownMenuItem(text = { Text("下移") }, enabled = index < controller.queue.lastIndex,
+                                    modifier = Modifier.testTag("music-queue-down-$index"),
+                                    onClick = { menuOpen = false; controller.moveQueueItem(index, index + 1) })
+                                DropdownMenuItem(text = { Text("移除") }, enabled = controller.queue.size > 1,
+                                    modifier = Modifier.testTag("music-queue-remove-$index"),
+                                    onClick = { menuOpen = false; controller.removeQueueItemAt(index) })
+                            }
+                        }
                     }
                 }
             }

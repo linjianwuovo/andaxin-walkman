@@ -28,3 +28,9 @@ No item is accepted yet. Missing items include real DSP equalization, script-sou
 - Native test target: `iosApp/UITests/MusicParityTests.swift`; three tests exercise My → Music → native Back, the legacy playing flag across relaunches, and the persisted restore-position switch. Test queues are injected into simulator launch preferences; no remote playback or service submission is performed.
 - The simulator assertions are not physical playback, persisted real-audio, or full-parity acceptance. The initial iOS candidate is 0.9.35 (187); macOS compilation and the new UI suite are still pending.
 - No service writes were submitted. No iPhone or new native CI evidence yet.
+
+## Queue editing batch — implemented, not accepted
+- Added an ordinary queue-row menu with up/down/remove actions. Current selection follows its queue occurrence, not the first matching song ID; the final item cannot be removed.
+- Shared helpers preserve the active item through every reorder; removing an earlier item keeps position, while removing the current item resets position and selects the next item (or preceding item at the end). Existing playing-state continuation is retained but has not been audio-verified.
+- Seven new `MusicQueueEditTest` cases cover last-item/invalid guards, index transitions, duplicate IDs, all valid moves and persisted paused restore. JVM suite: 39 tests, zero failures/errors/skips; log `D:/gongzuoqu/andaxin-work/tmp/ios-parity-v0941-20261125/queue-edit/gradle-test.log`.
+- Three additional native tests exercise up/down and saved order after relaunch, removal before current, current removal and disabled single-item actions. Native execution is still pending; this does not establish actual audio behavior or full parity.

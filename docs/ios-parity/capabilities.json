@@ -2541,6 +2541,78 @@
       "status": "blocked_sandbox",
       "accepted": false,
       "evidence": []
+    },
+    {
+      "id": "music.queue.reorder",
+      "kind": "behavior",
+      "title": "播放队列上移/下移并保留当前歌曲与暂停位置",
+      "android": "music/src/main/java/com/ljyh/mei/ui/component/player/component/applemusic/PlayerQueuePage.kt:1003-1017",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicQueueEdit.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicQueueEditTest.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "JVM logic tests passed; native UI tests added but not executed yet. Actual playing audio and physical-device checks remain pending."
+    },
+    {
+      "id": "music.queue.remove",
+      "kind": "behavior",
+      "title": "按队列位置移除；移除当前歌曲后选邻近曲目",
+      "android": "music/src/main/java/com/ljyh/mei/ui/component/player/component/applemusic/PlayerQueuePage.kt:1676-1687",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicQueueEdit.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicQueueEditTest.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "JVM logic tests passed; native UI tests added but not executed yet. Actual playing audio and physical-device checks remain pending."
+    },
+    {
+      "id": "music.queue.keep_last",
+      "kind": "behavior",
+      "title": "保留最后一首歌曲，禁用无效移动和移除",
+      "android": "music/src/main/java/com/ljyh/mei/ui/component/player/component/applemusic/PlayerQueuePage.kt:1676-1687",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicQueueEdit.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicQueueEditTest.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "JVM logic tests passed; native UI tests added but not executed yet. Actual playing audio and physical-device checks remain pending."
+    },
+    {
+      "id": "music.queue.persist",
+      "kind": "behavior",
+      "title": "队列编辑结果与当前索引持久化，重启仍暂停",
+      "android": "music/src/main/java/com/ljyh/mei/playback/PlaybackPersistence.kt:72-76",
+      "ios": [
+        "shared/src/commonMain/kotlin/com/andaxin/feature/music/MusicQueueEdit.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicController.ios.kt",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicScreen.ios.kt"
+      ],
+      "status": "implemented_pending_native",
+      "accepted": false,
+      "evidence": [
+        "shared/src/jvmTest/kotlin/com/andaxin/feature/music/MusicQueueEditTest.kt",
+        "iosApp/UITests/MusicParityTests.swift"
+      ],
+      "note": "JVM logic tests passed; native UI tests added but not executed yet. Actual playing audio and physical-device checks remain pending."
     }
   ]
 }
