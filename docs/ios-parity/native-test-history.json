@@ -129,5 +129,75 @@
       "unsigned": true
     },
     "acceptance": "Automated gates and the unsigned relative-drag/thicker-track package verified for this source. The newer animated volume changes use separate run 45744871942/build 190. Physical volume/touch/audio, calendar/notifications, sandbox flows and full Android v0.9.41 parity remain unaccepted."
+  },
+  {
+    "workflow_run": 45744871942,
+    "tested_commit": "c8213c26e5a8a0d4a4ff6a71c91d412b2969bd4e",
+    "result": "failure",
+    "observed_failure": "Guest entry wrote browsing successfully and switched to tabs at 03:22:14.302006; an older flow snapshot (loggedIn=false, browsing=false) arrived at 03:22:14.628243 and switched back to login. Music UI could not find the music tab; no IPA was delivered.",
+    "diagnosis": "The root callback trusted a delayed session-flow snapshot. The one-shot gate also checked only the token instead of the persisted guest flag. Guest writes and root reads/callbacks were not serialized.",
+    "correction": "SessionRootGate serializes guest persistence with fresh current-session reads and root callbacks. Flow emissions trigger a fresh read; failed guest writes cannot open tabs. Login completion uses the same Swift swap bookkeeping. Five deterministic concurrency and failure-path regressions were added in 09c458b7880cd3dae4b496035ac5c5f72e6c1f34.",
+    "corrected_run": 45768381521,
+    "acceptance": "The corrected source passed the local scheduling regressions and its native workflow. Physical device and full feature parity acceptance remain pending."
+  },
+  {
+    "workflow_run": 45749349455,
+    "tested_commit": "f93bc7a83dade3b9e07c22eb96f6f260d8dde466",
+    "result": "success",
+    "evidence_artifacts": {
+      "ios-artifacts": 15086289464,
+      "ios-music-ui": 15086572586,
+      "ios-lyrics-visual": 15087560316
+    },
+    "verified_checks": "Independently checked all twelve native music UI result bundles, all seven lyrics PNG dimensions/digests/readiness markers, required workflow gates, artifact digest and the actual unsigned ARM64 IPA. Thirty-six zero-failure log summaries represent twelve cases at three suite levels, not thirty-six tests.",
+    "package": {
+      "version": "0.9.35",
+      "build": "191",
+      "bytes": 17300800,
+      "sha256": "8b9dd2814402fb3792db81601d6085a581b34f6fa2c80b6f2e1d1ad82423b67e",
+      "unsigned": true
+    },
+    "acceptance": "Independent review accepted the automated gates and package bytes for the icon source. The startup source was identical to failed build 190; this passing schedule did not fix the known race, which is addressed separately in build 192. Physical volume/touch/audio and full parity remain pending."
+  },
+  {
+    "workflow_run": 45768381521,
+    "tested_commit": "09c458b7880cd3dae4b496035ac5c5f72e6c1f34",
+    "result": "success",
+    "evidence_artifacts": {
+      "ios-artifacts": 15095893187,
+      "ios-lyrics-visual": 15095837145,
+      "ios-music-ui": 15095626051,
+      "ios-parity-visual": 15094526474
+    },
+    "verified_checks": "Five new concurrency/failure regressions and 145 total local unit tests passed. The native source retained all twelve music UI cases, all seven lyrics captures, fixture parser tests and production source guards. Required native steps, result bundles, lyrics PNGs and the actual unsigned device IPA were independently checked.",
+    "package": {
+      "version": "0.9.35",
+      "build": "192",
+      "bytes": 17305191,
+      "sha256": "f3dc7c6d5be04eca2239ee6b8fa86cfae4079def81cb0287fc3d0dc412bbd923",
+      "unsigned": true
+    },
+    "acceptance": "Automated root-ordering regressions, native gates and unsigned ARM64 package verified. This includes the independent volume icon animation. Physical volume/touch/audio, calendar/notifications, sandbox flows and complete Android v0.9.41 parity remain unaccepted. No formal iOS publication."
+  },
+  {
+    "workflow_run": 45771517618,
+    "tested_commit": "14c6e71669e83dc9ec10d55747447cdfd8edfbaf",
+    "result": "success",
+    "evidence_artifacts": {
+      "ios-lyrics-visual": 15097325938,
+      "ios-artifacts": 15096509890,
+      "ios-music-ui": 15096444303,
+      "ios-parity-visual": 15095079652
+    },
+    "verified_checks": "All twelve native music UI cases, seven lyrics captures and required production/package gates independently verified. Shared root ordering regressions, 145 local unit tests, 56 relative-drag/endpoint checks and the real Compose spring probe passed.",
+    "package": {
+      "version": "0.9.35",
+      "build": "193",
+      "bytes": 17305186,
+      "sha256": "25ab31f1eb44b4a8e8d3b4a371196453dd09a94d806b854bf61f49ad458c4e38",
+      "unsigned": true
+    },
+    "correction": "Endpoint icon return damping changed from 0.25 to 1.0 on both platforms. The real Compose curve now settles without negative undershoot or a second positive peak; initial expansion and 50 ms wave staggering remain. Includes build 192 root serialization.",
+    "acceptance": "Native gates and unsigned ARM64 package accepted; physical gesture/system-volume/audio and full Android parity still pending. No formal iOS publication."
   }
 ]
