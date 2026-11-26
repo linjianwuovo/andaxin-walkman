@@ -1,5 +1,6 @@
 package com.andaxin.data.local
 
+import com.andaxin.data.brief.ChoiceGroup
 import com.andaxin.data.brief.BriefDetail
 import com.andaxin.data.brief.BriefRow
 import com.andaxin.data.brief.DetailSource
@@ -136,7 +137,17 @@ object Repair {
         FormSpec(
             "新建报修",
             listOf(
-                Field.Choice("type", "故障类型", options = listOf("水暖", "电", "家具", "网络", "空调")),
+                Field.Choice(
+                    "type", "故障类型",
+                    options = listOf("水暖 · 水龙头漏水", "水暖 · 下水堵塞", "电 · 灯具故障", "电 · 插座故障", "家具 · 门锁故障", "家具 · 桌椅损坏", "网络 · 无法连接", "空调 · 不制冷"),
+                    groups = listOf(
+                        ChoiceGroup("水暖", listOf("水暖 · 水龙头漏水", "水暖 · 下水堵塞")),
+                        ChoiceGroup("电", listOf("电 · 灯具故障", "电 · 插座故障")),
+                        ChoiceGroup("家具", listOf("家具 · 门锁故障", "家具 · 桌椅损坏")),
+                        ChoiceGroup("网络", listOf("网络 · 无法连接")),
+                        ChoiceGroup("空调", listOf("空调 · 不制冷")),
+                    ),
+                ),
                 Field.Person("dorm", "宿舍"),
                 Field.Text("detail", "问题描述", hint = "越具体越好，比如哪个龙头、什么时候开始"),
             ),

@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
+import io.github.neoruaa.glasmio.glass.progressiveBlurBackdrop
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -828,6 +832,7 @@ private fun ShelfHost(
     // 首次打开后保留音乐模块的 coverOnly 层；收回只回到它自己的收起态，
     // 不再卸载过渡层再重新放置宿主胶囊，避免最后一帧发生玻璃/内容层跳变。
     var coverLayerMounted by remember { mutableStateOf(false) }
+    var noticeTopBlurProgress by remember { mutableStateOf(0f) }
 
     // 曲目连接与胶囊布局保留在宿主，首次切入音乐层后由音乐模块接管胶囊。
     val musicBarState = com.andaxin.feature.music.rememberMusicBarState()
@@ -981,7 +986,7 @@ private fun ShelfHost(
                                     Shelf.Home -> HomeScreen(open = open)
                                     Shelf.Timetable -> TimetableScreen()
                                     Shelf.Message -> MessageScreen()
-                                    Shelf.Notice -> NoticeScreen(open = open)
+                                    Shelf.Notice -> NoticeScreen(open = open, onTopBlurProgress = { noticeTopBlurProgress = it })
                                     Shelf.Me -> MeScreen(open = open)
                                 }
                             }
@@ -989,6 +994,14 @@ private fun ShelfHost(
                     }
                     }
                 }
+            }
+
+            if (!wideLayout && Shelf.entries[pager.currentPage] == Shelf.Notice) {
+                Box(
+                    Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                        .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 32.dp)
+                        .progressiveBlurBackdrop(backdrop = shelfBackdrop, progress = noticeTopBlurProgress),
+                )
             }
 
             // 底栏与它上面那条播放条一起收进一个底部 Column：

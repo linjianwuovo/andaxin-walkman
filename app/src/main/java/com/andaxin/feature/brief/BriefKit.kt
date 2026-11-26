@@ -77,6 +77,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -454,7 +458,7 @@ fun BriefFormPage(
              * 外层的 Gate 看见"没登录又不在逛"就把登录那一屏端上来（和「我的」里那颗「去登录」同一条路）。
              */
             Text(
-                text = "登录后才能填这张表。",
+                text = if (state.spec?.title == "新建报修") "报修演示 · 可试填，不会提交" else "登录后才能填这张表。",
                 fontSize = Type.title,
                 color = ink.strong,
                 fontWeight = FontWeight.Medium,
@@ -481,7 +485,7 @@ fun BriefFormPage(
             }
             Spacer(Modifier.height(Gap.md))
         }
-        if (!sample) state.spec?.fields?.forEach { field ->
+        if (!sample || state.spec?.title == "新建报修") state.spec?.fields?.forEach { field ->
             FieldRow(
                 field,
                 get = { values[it].orEmpty() },
@@ -797,10 +801,17 @@ private fun FieldRow(
                  */
                 val cur = get(field.key)
                 var open by remember(field.key) { mutableStateOf(false) }
+                var sourceBounds by remember(field.key) { mutableStateOf(Rect.Zero) }
                 Column(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
+                        .onGloballyPositioned { coordinates ->
+                            val origin = coordinates.localToScreen(Offset.Zero)
+                            sourceBounds = Rect(origin, androidx.compose.ui.geometry.Size(
+                                coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))
+                        }
+                        .graphicsLayer { alpha = if (open) 0f else 1f }
                         .safeGlassSurface(Radius.field)
                         .pressClick(shrink = false) { open = true }
                         .padding(Gap.md),
@@ -816,7 +827,7 @@ private fun FieldRow(
                     )
                 }
                 if (open) PickDialog(
-                    field, cur,
+                    field, cur, sourceBounds,
                     onPick = { put(field.key, it); open = false },
                     onDismiss = { open = false },
                 )
@@ -835,6 +846,7 @@ private fun FieldRow(
 private fun PickDialog(
     field: Field.Choice,
     cur: String,
+    sourceBounds: Rect,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -854,7 +866,7 @@ private fun PickDialog(
     val sheetShape = RoundedCornerShape(24.dp)
     val shellTint = glass.elevatedBackground.copy(alpha = if (ink.dark) 0.86f else 0.90f)
     val blurPx = with(LocalDensity.current) { 24.dp.toPx() }
-    Dialog(onDismissRequest = onDismiss) {
+    ExpandingChoiceDialog(sourceBounds = sourceBounds, onDismiss = onDismiss) { close, contentAlpha ->
         Column(
             Modifier
                 .fillMaxWidth()
@@ -873,9 +885,11 @@ private fun PickDialog(
                 fontSize = Type.title,
                 fontWeight = FontWeight.SemiBold,
                 color = ink.strong,
-                modifier = Modifier.padding(horizontal = Gap.md, vertical = Gap.xs),
+                modifier = Modifier.graphicsLayer { alpha = contentAlpha }
+                    .padding(horizontal = Gap.md, vertical = Gap.xs),
             )
-            Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 460.dp)
+                .graphicsLayer { alpha = contentAlpha }.verticalScroll(rememberScrollState())) {
                 field.groups.forEach { g ->
                     Text(
                         g.name,
@@ -889,7 +903,7 @@ private fun PickDialog(
                                 .fillMaxWidth()
                                 .heightIn(min = 48.dp)
                                 .then(if (o == cur) Modifier.safeGlassSurface(Radius.field, selected = true) else Modifier)
-                                .pressClick(shrink = false) { onPick(o) }
+                                .pressClick(shrink = false) { close { onPick(o) } }
                                 .padding(horizontal = Gap.md, vertical = Gap.sm),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {

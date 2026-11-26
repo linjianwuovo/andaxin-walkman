@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.app.LocalAppGraph
@@ -54,15 +55,25 @@ import com.andaxin.shell.Refreshable
 const val NOTICE_ROUTE = "notice/detail/"
 
 @Composable
-fun NoticeScreen(open: (String) -> Unit = {}, modifier: Modifier = Modifier) {
+fun NoticeScreen(
+    open: (String) -> Unit = {},
+    modifier: Modifier = Modifier,
+    onTopBlurProgress: (Float) -> Unit = {},
+) {
     val model = adxViewModel { NoticeModel(it.notices) }
     val state by model.state.collectAsStateWithLifecycle()
     // 换分类不重新发请求：数据本来就是一次全拉的，这一层只是筛
     var picked by remember { mutableStateOf<String?>(null) }
 
+    val scroll = rememberScrollState()
+    val fadeDistance = with(androidx.compose.ui.platform.LocalDensity.current) { 12.dp.toPx() }
+    val reportBlur by androidx.compose.runtime.rememberUpdatedState(onTopBlurProgress)
+    LaunchedEffect(scroll, fadeDistance) {
+        androidx.compose.runtime.snapshotFlow { (scroll.value / fadeDistance).coerceIn(0f, 1f) }
+            .collect { reportBlur(it) }
+    }
     // 只有列表这一支需要下拉刷新，详情那一屏没什么可刷的
     Refreshable({ model.refresh() }, modifier.fillMaxSize()) {
-        val scroll = rememberScrollState()
         // 把这一屏的滚动范围报给底栏，收起/展开才有判据（见 ShelfPageViewport.kt）。
         registerShelfNavigationViewport(scroll)
         Column(
