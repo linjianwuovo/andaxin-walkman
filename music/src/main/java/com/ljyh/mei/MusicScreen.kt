@@ -345,6 +345,8 @@ fun MusicScreen(
     coverOnly: Boolean = false,
     coverCompactProgress: State<Float>? = null,
     onCoverBack: (() -> Unit)? = null,
+    coverBackdrop: Backdrop? = null,
+    inheritTextSelectionHost: Boolean = false,
 ) {
     val activity = LocalActivity.current as? ComponentActivity
         ?: error("MusicScreen 需要一个 ComponentActivity 宿主")
@@ -619,7 +621,11 @@ fun MusicScreen(
         // Popups are hosted in a separate Android window. Wrap the recorded page layer
         // before combining it so its sample coordinates use the popup's real screen
         // position rather than the popup-local overshoot origin.
-        val bottomControlsBackdrop = rememberSharedGlassBackdrop(glassBackdrop, bottomControlsSource)
+        val bottomControlsBackdrop = if (coverOnly && coverBackdrop != null) {
+            coverBackdrop
+        } else {
+            rememberSharedGlassBackdrop(glassBackdrop, bottomControlsSource)
+        }
         CompositionLocalProvider(
             com.ljyh.mei.ui.local.LocalAppPreferences provides navigationPreferences,
             LocalGlassBackdrop provides glassBackdrop,
@@ -630,17 +636,9 @@ fun MusicScreen(
             LocalPageAppearance provides registerPageAppearance,
             LocalColorfulPageBackgrounds provides colorfulPageBackgrounds,
         ) {
-            GlasmioTextSelectionHost(
+            MusicTextSelectionHost(
                 backdrop = bottomControlsBackdrop,
-                labels = GlasmioTextSelectionLabels(
-                    cut = stringResource(android.R.string.cut),
-                    copy = stringResource(android.R.string.copy),
-                    paste = stringResource(android.R.string.paste),
-                    selectAll = stringResource(android.R.string.selectAll),
-                    more = stringResource(R.string.more_actions_title),
-                    expanded = stringResource(R.string.menu_expanded),
-                    collapsed = stringResource(R.string.menu_collapsed),
-                ),
+                inheritHost = inheritTextSelectionHost,
             ) {
     BoxWithConstraints(
         modifier = modifier
@@ -1756,6 +1754,31 @@ private val searchControlSpacing = 8.dp
 
 private fun Scene<NavKey>.currentRoute(): String? =
     entries.lastOrNull()?.contentKey as? String
+
+@Composable
+fun MusicTextSelectionHost(
+    backdrop: Backdrop,
+    inheritHost: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    if (inheritHost) {
+        content()
+    } else {
+        GlasmioTextSelectionHost(
+            backdrop = backdrop,
+            labels = GlasmioTextSelectionLabels(
+                    cut = stringResource(android.R.string.cut),
+                    copy = stringResource(android.R.string.copy),
+                    paste = stringResource(android.R.string.paste),
+                    selectAll = stringResource(android.R.string.selectAll),
+                    more = stringResource(R.string.more_actions_title),
+                    expanded = stringResource(R.string.menu_expanded),
+                    collapsed = stringResource(R.string.menu_collapsed),
+                ),
+            content = content,
+        )
+    }
+}
 
 @Composable
 private fun BoxScope.AnimatedMiniPlayerLayer(

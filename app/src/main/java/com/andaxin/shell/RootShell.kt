@@ -825,9 +825,11 @@ private fun ShelfHost(
     // 播放器封面不开新路由，直接叠在这一屏上面（见下面 MusicBar 的 open）。
     // 走 Navigation 的话转场结束会把首页从组合里拆掉，涨封面的过程底下露出 NavHost 的纯色底，
     // 用户看到的就是"先进了音乐界面、再弹出封面"两段动作。
-    var coverOpen by remember { mutableStateOf(false) }
+    // 首次打开后保留音乐模块的 coverOnly 层；收回只回到它自己的收起态，
+    // 不再卸载过渡层再重新放置宿主胶囊，避免最后一帧发生玻璃/内容层跳变。
+    var coverLayerMounted by remember { mutableStateOf(false) }
 
-    // 曲目连接与胶囊布局保留在宿主，封面收回时直接接回同一状态。
+    // 曲目连接与胶囊布局保留在宿主，首次切入音乐层后由音乐模块接管胶囊。
     val musicBarState = com.andaxin.feature.music.rememberMusicBarState()
 
     // 点通知进来要落的那一格：RootShell 那层负责退回底栏这一屏，这儿负责把格子滚到位
@@ -901,6 +903,7 @@ private fun ShelfHost(
     }
     val headerSpecs = remember(labels) { labels.map { GlasmioHeaderSpec(title = it) } }
 
+    com.ljyh.mei.MusicTextSelectionHost(backdrop = shelfBackdrop) {
     Box(modifier = Modifier.fillMaxSize()) {
             GlasmioNavigationScaffold(
                 motion = headerMotion,
@@ -1001,7 +1004,7 @@ private fun ShelfHost(
                     modifier = Modifier.layout { measurable, constraints ->
                         val placeable = measurable.measure(constraints)
                         layout(placeable.width, placeable.height) {
-                            if (!coverOpen) placeable.placeRelative(0, 0)
+                            if (!coverLayerMounted) placeable.placeRelative(0, 0)
                         }
                     },
                 ) {
@@ -1024,7 +1027,7 @@ private fun ShelfHost(
                             // 封面不开新页面：Navigation 的转场会把上一页拆掉，涨封面的过程中
                             // 底下露出的是 NavHost 的纯色底，看起来就是"先进音乐界面再弹封面"。
                             // 这里改成叠一层 overlay，首页始终在组合里，胶囊从原位涨起来。
-                            open = { coverOpen = true },
+                            open = { coverLayerMounted = true },
                             // 与底栏共用同一个手势进度：下滑收球时音乐条同步收成胶囊
                             // （MeiloXNavigationScrollState 的 animateFloatAsState 已经带弹簧，这里不再插值）。
                             compactProgress = navScroll.compactProgress,
@@ -1080,13 +1083,15 @@ private fun ShelfHost(
         // 播放器封面：直接叠在首页这一屏上，只渲染封面（coverOnly）。
         // 这样"涨起来"的那一帧底下就是首页本身和它那条胶囊，跟 MeiloX 里
         // 胶囊原地长成封面的手感一致；返回键也回到这里，而不是落进音乐主页。
-        if (coverOpen) {
+        if (coverLayerMounted) {
             com.ljyh.mei.MusicScreen(
                 openInPlayer = true,
                 coverOnly = true,
                 coverCompactProgress = navScroll.compactProgress,
-                onCoverBack = { coverOpen = false },
+                coverBackdrop = shelfBackdrop,
+                inheritTextSelectionHost = true,
             )
         }
+    }
     }
 }
