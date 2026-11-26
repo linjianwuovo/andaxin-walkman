@@ -252,7 +252,7 @@ private fun volumeEndpointPulses(trigger: Int, layers: Int): List<Float> {
                 launch {
                     delay(index * 50L)
                     pulse.animateTo(1f, tween(durationMillis = 70))
-                    pulse.animateTo(0f, spring(dampingRatio = 0.25f, stiffness = 360f))
+                    pulse.animateTo(0f, spring(dampingRatio = 1f, stiffness = 360f))
                 }
             }
         }
