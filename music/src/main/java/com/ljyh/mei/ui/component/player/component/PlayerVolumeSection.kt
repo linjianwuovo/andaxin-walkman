@@ -8,16 +8,19 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.Slider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,9 +29,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -73,6 +86,17 @@ internal fun PlayerVolumeSection(modifier: Modifier = Modifier) {
 
     val label = stringResource(R.string.player_media_volume)
     val ltr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val currentVolume by rememberUpdatedState(volume)
+    val drag = remember { RelativeVolumeDrag() }
+    val setVolume by rememberUpdatedState { requested: Float ->
+        val current = currentVolume
+        if (audio != null && current.adjustable) {
+            val next = (current.minimum + requested.coerceIn(0f, 1f) * (current.maximum - current.minimum))
+                .roundToInt().coerceIn(current.minimum, current.maximum)
+            if (next != current.level) audio.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
+            refresh()
+        }
+    }
     val opacity = if (volume.adjustable) 1f else 0.45f
     val tint = Color.White.copy(alpha = 0.55f * opacity)
     Row(
@@ -81,34 +105,58 @@ internal fun PlayerVolumeSection(modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SfIcon("speaker.fill", contentDescription = null, tint = tint, size = 18.dp)
-        Slider(
-            value = volume.normalized,
-            onValueChange = { requested ->
-                if (audio != null && volume.adjustable) {
-                    val next = (volume.minimum + requested * (volume.maximum - volume.minimum))
-                        .roundToInt().coerceIn(volume.minimum, volume.maximum)
-                    if (next != volume.level) audio.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
-                    refresh()
-                }
-            },
-            onValueChangeFinished = refresh,
-            enabled = volume.adjustable,
+        Box(
             modifier = Modifier.weight(1f).height(48.dp).testTag("music-volume-slider")
-                .semantics { contentDescription = label },
-            thumb = {},
-            track = { slider ->
-                Canvas(Modifier.fillMaxWidth().height(4.dp)) {
-                    val inset = size.height / 2f
-                    val start = Offset(if (ltr) inset else size.width - inset, size.height / 2f)
-                    val end = Offset(if (ltr) size.width - inset else inset, size.height / 2f)
-                    drawLine(Color.White.copy(alpha = 0.22f * opacity), start, end, size.height, StrokeCap.Round)
-                    if (slider.value > 0f) {
-                        val filled = Offset(start.x + (end.x - start.x) * slider.value, start.y)
-                        drawLine(Color.White.copy(alpha = 0.58f * opacity), start, filled, size.height, StrokeCap.Round)
+                .semantics {
+                    contentDescription = label
+                    progressBarRangeInfo = ProgressBarRangeInfo(volume.normalized, 0f..1f,
+                        (volume.maximum - volume.minimum - 1).coerceAtLeast(0))
+                    if (volume.adjustable) setProgress { requested -> setVolume(requested); true }
+                    else disabled()
+                }
+                .onKeyEvent { event ->
+                    if (!currentVolume.adjustable || event.type != KeyEventType.KeyDown) false
+                    else {
+                        val step = 1f / (currentVolume.maximum - currentVolume.minimum)
+                        val direction = if (ltr) 1f else -1f
+                        val next = when (event.key) {
+                            Key.DirectionLeft -> currentVolume.normalized - step * direction
+                            Key.DirectionRight -> currentVolume.normalized + step * direction
+                            Key.MoveHome -> 0f
+                            Key.MoveEnd -> 1f
+                            else -> return@onKeyEvent false
+                        }
+                        setVolume(next)
+                        true
                     }
                 }
-            },
-        )
+                .focusable(enabled = volume.adjustable)
+                .pointerInput(audio, volume.adjustable, ltr) {
+                    if (!volume.adjustable) return@pointerInput
+                    detectHorizontalDragGestures(
+                        onDragStart = { drag.start(currentVolume.normalized) },
+                        onHorizontalDrag = { change, delta ->
+                            change.consume()
+                            val width = (size.width - 6.dp.toPx()).coerceAtLeast(1f)
+                            setVolume(drag.move(delta / width * if (ltr) 1f else -1f))
+                        },
+                        onDragEnd = refresh,
+                        onDragCancel = refresh,
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.fillMaxWidth().height(6.dp)) {
+                val inset = size.height / 2f
+                val start = Offset(if (ltr) inset else size.width - inset, size.height / 2f)
+                val end = Offset(if (ltr) size.width - inset else inset, size.height / 2f)
+                drawLine(Color.White.copy(alpha = 0.22f * opacity), start, end, size.height, StrokeCap.Round)
+                if (volume.normalized > 0f) {
+                    val filled = Offset(start.x + (end.x - start.x) * volume.normalized, start.y)
+                    drawLine(Color.White.copy(alpha = 0.58f * opacity), start, filled, size.height, StrokeCap.Round)
+                }
+            }
+        }
         SfIcon("speaker.wave.3.fill", contentDescription = null, tint = tint, size = 22.dp)
     }
 }
@@ -135,4 +183,15 @@ private fun readMediaVolume(audio: AudioManager?): MediaVolume {
         level = audio.getStreamVolume(AudioManager.STREAM_MUSIC),
         adjustable = !audio.isVolumeFixed && maximum > minimum,
     )
+}
+
+private class RelativeVolumeDrag {
+    private var value = 0f
+
+    fun start(current: Float) { value = current.coerceIn(0f, 1f) }
+
+    fun move(delta: Float): Float {
+        value = (value + delta).coerceIn(0f, 1f)
+        return value
+    }
 }

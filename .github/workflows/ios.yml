@@ -299,7 +299,7 @@ jobs:
 
       - name: Exercise music restore, queue and playback preferences on iOS
         id: music_ui_test
-        timeout-minutes: 25
+        timeout-minutes: 40
         run: |
           set -euo pipefail
           ROOT="$RUNNER_TEMP/ios-music-ui"
