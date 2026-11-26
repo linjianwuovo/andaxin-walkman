@@ -102,5 +102,32 @@
       "unsigned": true
     },
     "acceptance": "Automated gates and unsigned package verified for this source. The newer screenshot-style volume changes require their own native run; physical-device audio/volume, calendar/notifications, sandbox flows and complete Android v0.9.41 parity remain unaccepted."
+  },
+  {
+    "workflow_run": 45730577539,
+    "tested_commit": "3206a35d46a1358d91eea0834451c76f54a341f4",
+    "result": "failure",
+    "observed_failure": "The action 'Exercise music restore, queue and playback preferences on iOS' has timed out after 25 minutes. All twelve individual cases reported zero failures before the aggregate timeout; lyrics and device IPA packaging were skipped.",
+    "diagnosis": "Aggregate wall-clock budget expired after the final individual test, not an observed assertion failure.",
+    "correction": "Raised only the music UI aggregate timeout to 40 minutes. Retained all twelve cases, per-case clean installation, assertions and failure propagation.",
+    "corrected_run": 45738127430,
+    "acceptance": "No build 188 IPA was produced. Full parity and physical-device acceptance remain pending."
+  },
+  {
+    "workflow_run": 45738127430,
+    "tested_commit": "6592bfc4caf866940430274edfc70be2dce49c05",
+    "result": "success",
+    "evidence_artifacts": {
+      "ios-artifacts": 15082821724
+    },
+    "verified_checks": "Fixture parser tests, shared tests, production source guards, all twelve native music UI cases, all seven deterministic lyrics captures and actual unsigned ARM64 device packaging succeeded. Independently verified Actions archive SHA-256 and the IPA CRC, bundle/version/build, executable and resources.",
+    "package": {
+      "version": "0.9.35",
+      "build": "189",
+      "bytes": 17283471,
+      "sha256": "aebfee290798245c09da0f8e882ac9d1d62d5830688d15a66a97456dcfccbb1d",
+      "unsigned": true
+    },
+    "acceptance": "Automated gates and the unsigned relative-drag/thicker-track package verified for this source. The newer animated volume changes use separate run 45744871942/build 190. Physical volume/touch/audio, calendar/notifications, sandbox flows and full Android v0.9.41 parity remain unaccepted."
   }
 ]

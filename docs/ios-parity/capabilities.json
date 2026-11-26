@@ -2738,9 +2738,18 @@
       "title": "设备音频导入、分类、标签和持久授权",
       "android": "music/src/main/java/com/ljyh/mei/ui/screen/Screen.kt",
       "ios": [],
-      "status": "needs_audit",
+      "status": "missing",
       "accepted": false,
-      "evidence": []
+      "evidence": [
+        "music/src/main/java/com/ljyh/mei/ui/screen/local/LocalLibraryScanner.kt (v0.9.41): MediaStore enumeration and metadata extraction",
+        "shared/src/iosMain/kotlin/com/andaxin/feature/music/MusicLibraryScreens.ios.kt:140-195"
+      ],
+      "audit": {
+        "method": "Stable Android v0.9.41 scanner and iOS library-entry/native API cross-check",
+        "date": "2026-11-26",
+        "baseline": "7dbd5e6f21ed82ce122d32370eca257f0c1d9dc9"
+      },
+      "note": "基线安卓已有 MediaStore 音频枚举与标签读取。iOS 音乐库目前只提供最近播放、喜欢、队列和本地歌单；下载文件不等于设备音频导入。检查 shared/src/iosMain Kotlin 与 iosApp Swift 源码，未找到 UIDocumentPicker、持久安全作用域访问或原生媒体库查询入口，因此将待审计更正为缺失；accepted 仍为 false。"
     },
     {
       "id": "music.audio.background",
