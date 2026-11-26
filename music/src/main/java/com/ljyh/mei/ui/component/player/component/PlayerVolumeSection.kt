@@ -7,6 +7,8 @@ import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -20,6 +22,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +36,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -58,6 +65,9 @@ import com.ljyh.mei.R
 import io.github.neoruaa.glasmio.core.swipeBackExcluded
 import io.github.neoruaa.glasmio.icons.SfIcon
 import kotlin.math.roundToInt
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun PlayerVolumeSection(modifier: Modifier = Modifier) {
@@ -105,6 +115,10 @@ internal fun PlayerVolumeSection(modifier: Modifier = Modifier) {
     }
     var pressed by remember { mutableStateOf(false) }
     var pull by remember { mutableStateOf(0f) }
+    var minimumHit by remember { mutableIntStateOf(0) }
+    var maximumHit by remember { mutableIntStateOf(0) }
+    val minimumPulse = volumeEndpointPulses(minimumHit, 1).first()
+    val maximumPulses = volumeEndpointPulses(maximumHit, 4)
     val emphasis by animateFloatAsState(
         if (pressed && volume.adjustable) 1f else 0f,
         spring(dampingRatio = 0.72f, stiffness = 320f), label = "volumePress",
@@ -118,6 +132,9 @@ internal fun PlayerVolumeSection(modifier: Modifier = Modifier) {
     val trackScale = 1f + emphasis * 0.05f + stretch * 0.025f
     val physicalPull = elastic * if (ltr) 1f else -1f
     val iconScale = 1f + emphasis * 0.1f
+    val direction = if (ltr) 1f else -1f
+    val minimumOffset = -8f * emphasis * direction + physicalPull * if (elastic < 0f) 10f else 3.5f
+    val maximumOffset = 8f * emphasis * direction + physicalPull * if (elastic > 0f) 10f else 3.5f
     val opacity = if (volume.adjustable) 1f else 0.45f
     val tint = Color.White.copy(alpha = ((0.55f + emphasis * 0.4f) * opacity).coerceIn(0f, 1f))
     Row(
@@ -127,8 +144,9 @@ internal fun PlayerVolumeSection(modifier: Modifier = Modifier) {
     ) {
         SfIcon("speaker.fill", contentDescription = null, tint = tint, size = 18.dp,
             modifier = Modifier.graphicsLayer {
-                scaleX = iconScale; scaleY = iconScale
-                translationX = (-4f * emphasis + physicalPull * 6f).dp.toPx()
+                scaleX = iconScale * (1f + minimumPulse * 0.2f)
+                scaleY = iconScale * (1f + minimumPulse * 0.2f)
+                translationX = minimumOffset.dp.toPx()
             })
         Box(
             modifier = Modifier.weight(1f).height(48.dp).testTag("music-volume-slider")
@@ -180,6 +198,10 @@ internal fun PlayerVolumeSection(modifier: Modifier = Modifier) {
                             val width = (size.width - 6.dp.toPx()).coerceAtLeast(1f)
                             setVolume(drag.move(delta / width * if (ltr) 1f else -1f))
                             pull = drag.overflow
+                            when (drag.endpointHit) {
+                                -1 -> minimumHit++
+                                1 -> maximumHit++
+                            }
                         },
                         onDragEnd = { pull = 0f; refresh() },
                         onDragCancel = { pull = 0f; refresh() },
@@ -205,7 +227,24 @@ internal fun PlayerVolumeSection(modifier: Modifier = Modifier) {
         SfIcon("speaker.wave.3.fill", contentDescription = null, tint = tint, size = 22.dp,
             modifier = Modifier.graphicsLayer {
                 scaleX = iconScale; scaleY = iconScale
-                translationX = (4f * emphasis + physicalPull * 6f).dp.toPx()
+                translationX = maximumOffset.dp.toPx()
+            }.drawWithContent {
+                if (maximumPulses.all { kotlin.math.abs(it) < 0.0001f }) drawContent()
+                else {
+                    val bands = listOf(0f, 0.48f, 0.65f, 0.80f, 1f)
+                    maximumPulses.forEachIndexed { index, pulse ->
+                        val left = size.width * bands[index]
+                        val right = size.width * bands[index + 1]
+                        val horizontal = if (index == 0) 0.2f else 0.16f
+                        val vertical = if (index == 0) 0.2f else 0.26f
+                        scale(1f + pulse * horizontal, 1f + pulse * vertical,
+                            pivot = Offset((left + right) / 2f, size.height / 2f)) {
+                            clipRect(left, -size.height, right, size.height * 2f) {
+                                this@drawWithContent.drawContent()
+                            }
+                        }
+                    }
+                }
             })
     }
 }
@@ -234,22 +273,52 @@ private fun readMediaVolume(audio: AudioManager?): MediaVolume {
     )
 }
 
+@Composable
+private fun volumeEndpointPulses(trigger: Int, layers: Int): List<Float> {
+    val pulses = remember(layers) { List(layers) { Animatable(0f) } }
+    LaunchedEffect(trigger) {
+        if (trigger > 0) coroutineScope {
+            pulses.forEachIndexed { index, pulse ->
+                launch {
+                    delay(index * 50L)
+                    pulse.animateTo(1f, tween(durationMillis = 70))
+                    pulse.animateTo(0f, spring(dampingRatio = 0.25f, stiffness = 360f))
+                }
+            }
+        }
+    }
+    return pulses.map { it.value }
+}
+
 private class RelativeVolumeDrag {
     private var value = 0f
     var overflow = 0f
+        private set
+    var endpointHit = 0
         private set
 
     fun start(current: Float) {
         value = current.coerceIn(0f, 1f)
         overflow = 0f
+        endpointHit = 0
     }
 
     fun move(delta: Float): Float {
+        if (delta == 0f) {
+            endpointHit = 0
+            return value
+        }
+        val previousOverflow = overflow
         val requested = value + delta
         value = requested.coerceIn(0f, 1f)
         overflow = if (requested < 0f || requested > 1f) {
             (overflow + requested - value).coerceIn(-0.5f, 0.5f)
         } else 0f
+        endpointHit = when {
+            overflow < 0f && previousOverflow >= 0f -> -1
+            overflow > 0f && previousOverflow <= 0f -> 1
+            else -> 0
+        }
         return value
     }
 }
