@@ -89,3 +89,12 @@ MeiloX 最终固定提交时间为 2026-11-25 14:20:36 UTC；Glasmio 提交时�
 - 远程三项附件的 GitHub digest 与本地一致；正式 tag 指向上述提交，latest 为 v0.9.42，公开更新订阅首项为 v0.9.42；公开 APK 下载返回 HTTP 206，ZIP 文件头与总大小均正确。
 - 大文件直传两次遇到连接重置，每次重试前均确认草稿附件状态；限速重传成功后才将草稿转为正式版。没有全局代理变更、重复 Release 或密钥入库。
 - iOS 原生验证已另行派发 run `45652802198`，`publish=false`，当前记录为 `in_progress`／`None`；不计作功能已验收，279 项账本未改。
+
+
+## Android 0.9.43 publication — 2026-11-26
+
+- Published stable [v0.9.43](https://github.com/linjianwuovo/andaxin-walkman/releases/tag/v0.9.43) at `2026-11-26T00:57:40Z` from `1eeed1e06ece93177589bf498f1554cc42a08c10`; version `0.9.43` / code `182`. This includes the reference-style thin volume track and speaker icons from `3206a35d46a1358d91eea0834451c76f54a341f4`.
+- The [canonical APK](https://github.com/linjianwuovo/andaxin-walkman/releases/download/v0.9.43/app-stable-release.apk) is `54192444` bytes, SHA-256 `ab7e155d24a0f7f19d608cafa27ffabfd63bc73c7b4d14f730a17cd1b1f987cd`. APK, checksum and verification JSON were uploaded and independently matched against GitHub asset sizes and SHA-256 digests before publication.
+- Original release signing certificate `40ee7baae7f57b53feb94f2cb0a47e210fec1e458073a2b6bbd2a551e5bcf9ef` matches. The fresh build completed successfully; host `6` and shared `134` tests passed with no failures, errors or skips.
+- Public delivery verification: releases Atom HTTP `200`, first entry `v0.9.43`; APK range request HTTP `206`, `bytes 0-63/54192444`, valid ZIP header. The release tag resolves to the exact source commit above.
+- Native iOS build `188` remains separate: run [45730577539](https://github.com/linjianwuovo/andaxin-walkman/actions/runs/45730577539), source `3206a35d46a1358d91eea0834451c76f54a341f4`, `publish=false`. No iOS release or full parity acceptance is claimed. Physical volume dragging, hardware-key synchronization and listening remain unverified.
