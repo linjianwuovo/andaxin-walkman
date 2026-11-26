@@ -60,7 +60,7 @@ val LandscapeMiniPlayerHeight = 64.dp
 internal val MiniPlayerInlineHeight = CompactBottomControlSize
 internal val MiniPlayerInlineHorizontalPadding = BottomBarHorizontalPadding +
     (NavigationBarSurfaceHeight + CompactBottomControlSize) / 2 + 14.dp
-internal val MiniPlayerInlineVerticalTravel = NavigationBarSurfaceHeight / 2 +
+val MiniPlayerInlineVerticalTravel = NavigationBarSurfaceHeight / 2 +
     NavigationBarBottomMargin + MiniPlayerHeight / 2
 val QueuePeekHeight = 64.dp
 val AppBarHeight = 64.dp

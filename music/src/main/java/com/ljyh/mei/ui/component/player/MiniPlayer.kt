@@ -93,7 +93,7 @@ import kotlin.math.roundToInt
 
 internal val LocalMiniPlayerAppearance = staticCompositionLocalOf<Boolean?> { null }
 
-private fun Modifier.compactMiniPlayerHorizontalPadding(
+internal fun Modifier.compactMiniPlayerHorizontalPadding(
     compactProgress: State<Float>,
 ): Modifier = layout { measurable, constraints ->
     val progress = compactProgress.value
@@ -113,7 +113,7 @@ private fun Modifier.compactMiniPlayerHorizontalPadding(
     }
 }
 
-private fun Modifier.compactMiniPlayerHeight(compactProgress: State<Float>): Modifier =
+internal fun Modifier.compactMiniPlayerHeight(compactProgress: State<Float>): Modifier =
     layout { measurable, constraints ->
         val progress = compactProgress.value
         val height = constraints.constrainHeight(

@@ -40,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -826,8 +827,7 @@ private fun ShelfHost(
     // 用户看到的就是"先进了音乐界面、再弹出封面"两段动作。
     var coverOpen by remember { mutableStateOf(false) }
 
-    // 曲目状态挂在这一层：封面叠上去时首页那条胶囊会离开组合，
-    // 状态若跟着走，收合回来要重新 bindService 才拿得到标题 —— 中间几帧是空的。
+    // 曲目连接与胶囊布局保留在宿主，封面收回时直接接回同一状态。
     val musicBarState = com.andaxin.feature.music.rememberMusicBarState()
 
     // 点通知进来要落的那一格：RootShell 那层负责退回底栏这一屏，这儿负责把格子滚到位
@@ -996,10 +996,15 @@ private fun ShelfHost(
             ) {
                 // 播放条还是音乐模块那套 Kyant0 玻璃（MiniPlayerBar 读的是它自己那份 CompositionLocal，
                 // 默认值就是 error(...)），所以 provider 只包住它这一块，不和底栏混用。
-                // 封面叠上来时把首页那条胶囊让给 overlay 里的同一个（位置/材质同源），
-                // 否则两枚胶囊会在同一处重叠一帧。
-                // 每一格都挂：用户要求课程表/消息/公告/我的都有这条胶囊，上游也是全局一层。
-                if (!coverOpen) {
+                // 与音乐内的隐藏层一样保留测量，仅停止放置，避免重复绘制与隐藏控件接收触摸。
+                Box(
+                    modifier = Modifier.layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        layout(placeable.width, placeable.height) {
+                            if (!coverOpen) placeable.placeRelative(0, 0)
+                        }
+                    },
+                ) {
                     androidx.compose.runtime.CompositionLocalProvider(
                         // 播放条那一块仍是音乐模块那份 Kyant 玻璃，配色也取它自己那套
                         // （与本屏底栏的 glasmio 配色互不影响）。
@@ -1029,7 +1034,7 @@ private fun ShelfHost(
                             // 这里必须乘连续值：早前 roundToInt() 把 progress 压成 0/1 两档，
                             // 竖向位移只会在过半那一刻整段跳一下，横向却跟着手指连续变 —— 就是"不跟手"。
                             modifier = Modifier.offset {
-                                IntOffset(0, ((NavigationBarHeight - 16.dp).toPx() * navScroll.compactProgress.value).roundToInt())
+                                IntOffset(0, (com.ljyh.mei.constants.MiniPlayerInlineVerticalTravel.toPx() * navScroll.compactProgress.value).roundToInt())
                             },
                         )
                     }
@@ -1079,6 +1084,7 @@ private fun ShelfHost(
             com.ljyh.mei.MusicScreen(
                 openInPlayer = true,
                 coverOnly = true,
+                coverCompactProgress = navScroll.compactProgress,
                 onCoverBack = { coverOpen = false },
             )
         }

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.IconButton
@@ -32,8 +31,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.kyant.capsule.ContinuousRoundedRectangle
 import com.kyant.shapes.Capsule
-import com.ljyh.mei.constants.MiniPlayerHeight
-import com.ljyh.mei.constants.NavigationBarHeight
+import com.ljyh.mei.constants.MiniPlayerInlineVerticalTravel
 import com.ljyh.mei.constants.ThumbnailCornerRadius
 import io.github.neoruaa.glasmio.core.LocalGlassColors
 import io.github.neoruaa.glasmio.glass.GlassSurface
@@ -42,29 +40,6 @@ import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
 import io.github.neoruaa.glasmio.icons.SfIcon
 import io.github.neoruaa.glasmio.icons.SfSymbol
 import kotlin.math.roundToInt
-
-/**
- * 收成胶囊时两侧多出来的留白：0dp → 60dp（宿主外面已经垫了 20dp，合起来 80dp，和 MeiloX
- * MiniPlayer.kt:83 的 20dp + 60dp 落点一致）。
- */
-private fun Modifier.compactMiniPlayerHorizontalPadding(
-    compactProgress: State<Float>,
-): Modifier = layout { measurable, constraints ->
-    val progress = compactProgress.value.coerceIn(0f, 1f)
-    val horizontalPadding = (60.dp * progress).roundToPx()
-    val totalPadding = horizontalPadding * 2
-    val childConstraints = constraints.copy(
-        minWidth = (constraints.minWidth - totalPadding).coerceAtLeast(0),
-        maxWidth = (constraints.maxWidth - totalPadding).coerceAtLeast(0),
-    )
-    val placeable = measurable.measure(childConstraints)
-    val width = (placeable.width + totalPadding)
-        .coerceIn(constraints.minWidth, constraints.maxWidth)
-    val height = placeable.height.coerceIn(constraints.minHeight, constraints.maxHeight)
-    layout(width, height) {
-        placeable.placeRelative(horizontalPadding, 0)
-    }
-}
 
 /** 下一首按钮随收胶囊一起把宽度让出去（40dp → 0dp），否则文字会被它挤成一条缝。 */
 private fun Modifier.compactNextButtonWidth(
@@ -131,7 +106,7 @@ fun MiniPlayerBar(
     GlassSurface(
         modifier = modifier
             .fillMaxWidth()
-            .height(MiniPlayerHeight)
+            .compactMiniPlayerHeight(compactProgress)
             .compactMiniPlayerHorizontalPadding(compactProgress),
         backdrop = LocalGlassBackdrop.current,
         shape = Capsule(),
@@ -140,7 +115,7 @@ fun MiniPlayerBar(
         // GlassMorphRenderer 那条离屏捕获路径，morphVerticalTravel 让捕获带跟着往下让，
         // 否则球下方的内容会被采样成横条形状的一整块。数值与 MiniPlayer.kt:176-177 一致。
         morphProgress = morphProgress,
-        morphVerticalTravel = NavigationBarHeight - 16.dp,
+        morphVerticalTravel = MiniPlayerInlineVerticalTravel,
         onClick = onClick,
     ) {
         Row(

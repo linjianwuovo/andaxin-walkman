@@ -92,16 +92,16 @@ private class MiniPlayerChromeChannel(initialValue: Float) {
 }
 
 @Stable
-internal class MiniPlayerChromeMotion(compact: Boolean) {
-    private val initialProgress = if (compact) 1f else 0f
+internal class MiniPlayerChromeMotion(compact: Boolean, externalProgress: State<Float>? = null) {
+    private val initialProgress = externalProgress?.value ?: if (compact) 1f else 0f
     private val horizontal = MiniPlayerChromeChannel(initialProgress)
     private val vertical = MiniPlayerChromeChannel(initialProgress)
     private val content = MiniPlayerChromeChannel(initialProgress)
     private var modelFrame = MiniPlayerChromeFrame(initialProgress, initialProgress)
 
-    val horizontalProgress: State<Float> = horizontal.animation.asState()
-    val verticalProgress: State<Float> = vertical.animation.asState()
-    val contentProgress: State<Float> = content.animation.asState()
+    val horizontalProgress: State<Float> = externalProgress ?: horizontal.animation.asState()
+    val verticalProgress: State<Float> = externalProgress ?: vertical.animation.asState()
+    val contentProgress: State<Float> = externalProgress ?: content.animation.asState()
 
     internal suspend fun update(compact: Boolean, playerVisible: Boolean, centerTravel: Dp) {
         val target = if (compact) 1f else 0f
@@ -152,11 +152,12 @@ internal fun rememberMiniPlayerChromeMotion(
     compact: Boolean,
     sheet: GlasmioBottomSheetState,
     centerTravel: Dp,
+    externalProgress: State<Float>? = null,
 ): MiniPlayerChromeMotion {
-    val motion = remember { MiniPlayerChromeMotion(compact) }
+    val motion = remember(externalProgress) { MiniPlayerChromeMotion(compact, externalProgress) }
     val playerVisible by remember(sheet) { derivedStateOf { sheet.isContentVisible } }
-    LaunchedEffect(compact, playerVisible, centerTravel) {
-        motion.update(compact, playerVisible, centerTravel)
+    LaunchedEffect(compact, playerVisible, centerTravel, externalProgress) {
+        if (externalProgress == null) motion.update(compact, playerVisible, centerTravel)
     }
     return motion
 }

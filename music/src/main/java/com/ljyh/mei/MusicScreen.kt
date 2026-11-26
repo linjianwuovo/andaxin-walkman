@@ -343,6 +343,7 @@ fun MusicScreen(
     modifier: Modifier = Modifier,
     openInPlayer: Boolean = false,
     coverOnly: Boolean = false,
+    coverCompactProgress: State<Float>? = null,
     onCoverBack: (() -> Unit)? = null,
 ) {
     val activity = LocalActivity.current as? ComponentActivity
@@ -862,6 +863,7 @@ fun MusicScreen(
                 compact = shouldCompactMiniPlayer,
                 sheet = playerBottomSheetState,
                 centerTravel = miniPlayerCenterTravel,
+                externalProgress = if (coverOnly) coverCompactProgress else null,
             )
             val chromeHintProgress = navigationScroll.scrollHintProgress
             // UIKit's hint wrapper retains the regular accessory reservation even

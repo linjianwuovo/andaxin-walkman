@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -17,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
+import com.ljyh.mei.constants.MiniPlayerHeight
 import com.ljyh.mei.playback.MusicService
 import com.ljyh.mei.playback.shouldPauseOnToggle
 import com.ljyh.mei.ui.component.player.MiniPlayerBar
@@ -126,16 +129,17 @@ fun MusicBar(
 ) {
     val title = state.title ?: return
 
-    MiniPlayerBar(
-        title = title,
-        artist = state.artist,
-        coverUrl = state.coverUrl,
-        playing = state.playing,
-        canSkipNext = state.canSkipNext,
-        onTogglePlay = state::togglePlay,
-        onNext = state::next,
-        onClick = open,
-        compactProgress = compactProgress,
-        modifier = modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp),
-    )
+    Box(modifier = modifier.padding(bottom = 8.dp).height(MiniPlayerHeight)) {
+        MiniPlayerBar(
+            title = title,
+            artist = state.artist,
+            coverUrl = state.coverUrl,
+            playing = state.playing,
+            canSkipNext = state.canSkipNext,
+            onTogglePlay = state::togglePlay,
+            onNext = state::next,
+            onClick = open,
+            compactProgress = compactProgress,
+        )
+    }
 }
