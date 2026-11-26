@@ -7,6 +7,10 @@ import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -27,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.input.key.Key
@@ -97,14 +103,33 @@ internal fun PlayerVolumeSection(modifier: Modifier = Modifier) {
             refresh()
         }
     }
+    var pressed by remember { mutableStateOf(false) }
+    var pull by remember { mutableStateOf(0f) }
+    val emphasis by animateFloatAsState(
+        if (pressed && volume.adjustable) 1f else 0f,
+        spring(dampingRatio = 0.72f, stiffness = 320f), label = "volumePress",
+    )
+    val elastic by animateFloatAsState(
+        pull / (kotlin.math.abs(pull) + 0.08f),
+        spring(dampingRatio = 0.65f, stiffness = 300f), label = "volumeElastic",
+    )
+    val stretch = kotlin.math.abs(elastic)
+    val trackHeight = 6f + emphasis * 10f - stretch * 2f
+    val trackScale = 1f + emphasis * 0.05f + stretch * 0.025f
+    val physicalPull = elastic * if (ltr) 1f else -1f
+    val iconScale = 1f + emphasis * 0.1f
     val opacity = if (volume.adjustable) 1f else 0.45f
-    val tint = Color.White.copy(alpha = 0.55f * opacity)
+    val tint = Color.White.copy(alpha = ((0.55f + emphasis * 0.4f) * opacity).coerceIn(0f, 1f))
     Row(
         modifier = modifier.fillMaxWidth().height(52.dp).swipeBackExcluded(volume.adjustable),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        SfIcon("speaker.fill", contentDescription = null, tint = tint, size = 18.dp)
+        SfIcon("speaker.fill", contentDescription = null, tint = tint, size = 18.dp,
+            modifier = Modifier.graphicsLayer {
+                scaleX = iconScale; scaleY = iconScale
+                translationX = (-4f * emphasis + physicalPull * 6f).dp.toPx()
+            })
         Box(
             modifier = Modifier.weight(1f).height(48.dp).testTag("music-volume-slider")
                 .semantics {
@@ -131,33 +156,57 @@ internal fun PlayerVolumeSection(modifier: Modifier = Modifier) {
                     }
                 }
                 .focusable(enabled = volume.adjustable)
+                .pointerInput(audio, volume.adjustable) {
+                    if (!volume.adjustable) return@pointerInput
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        pressed = true
+                        try {
+                            do {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                            } while (event.changes.any { it.pressed })
+                        } finally {
+                            pressed = false
+                            pull = 0f
+                        }
+                    }
+                }
                 .pointerInput(audio, volume.adjustable, ltr) {
                     if (!volume.adjustable) return@pointerInput
                     detectHorizontalDragGestures(
-                        onDragStart = { drag.start(currentVolume.normalized) },
+                        onDragStart = { drag.start(currentVolume.normalized); pull = 0f },
                         onHorizontalDrag = { change, delta ->
                             change.consume()
                             val width = (size.width - 6.dp.toPx()).coerceAtLeast(1f)
                             setVolume(drag.move(delta / width * if (ltr) 1f else -1f))
+                            pull = drag.overflow
                         },
-                        onDragEnd = refresh,
-                        onDragCancel = refresh,
+                        onDragEnd = { pull = 0f; refresh() },
+                        onDragCancel = { pull = 0f; refresh() },
                     )
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Canvas(Modifier.fillMaxWidth().height(6.dp)) {
+            Canvas(Modifier.fillMaxWidth().height(trackHeight.coerceAtLeast(1f).dp)
+                .graphicsLayer {
+                    scaleX = trackScale
+                    translationX = (physicalPull * 8f).dp.toPx()
+                }) {
                 val inset = size.height / 2f
                 val start = Offset(if (ltr) inset else size.width - inset, size.height / 2f)
                 val end = Offset(if (ltr) size.width - inset else inset, size.height / 2f)
-                drawLine(Color.White.copy(alpha = 0.22f * opacity), start, end, size.height, StrokeCap.Round)
+                drawLine(Color.White.copy(alpha = ((0.22f + emphasis * 0.08f) * opacity).coerceIn(0f, 1f)), start, end, size.height, StrokeCap.Round)
                 if (volume.normalized > 0f) {
                     val filled = Offset(start.x + (end.x - start.x) * volume.normalized, start.y)
-                    drawLine(Color.White.copy(alpha = 0.58f * opacity), start, filled, size.height, StrokeCap.Round)
+                    drawLine(Color.White.copy(alpha = ((0.58f + emphasis * 0.24f) * opacity).coerceIn(0f, 1f)), start, filled, size.height, StrokeCap.Round)
                 }
             }
         }
-        SfIcon("speaker.wave.3.fill", contentDescription = null, tint = tint, size = 22.dp)
+        SfIcon("speaker.wave.3.fill", contentDescription = null, tint = tint, size = 22.dp,
+            modifier = Modifier.graphicsLayer {
+                scaleX = iconScale; scaleY = iconScale
+                translationX = (4f * emphasis + physicalPull * 6f).dp.toPx()
+            })
     }
 }
 
@@ -187,11 +236,20 @@ private fun readMediaVolume(audio: AudioManager?): MediaVolume {
 
 private class RelativeVolumeDrag {
     private var value = 0f
+    var overflow = 0f
+        private set
 
-    fun start(current: Float) { value = current.coerceIn(0f, 1f) }
+    fun start(current: Float) {
+        value = current.coerceIn(0f, 1f)
+        overflow = 0f
+    }
 
     fun move(delta: Float): Float {
-        value = (value + delta).coerceIn(0f, 1f)
+        val requested = value + delta
+        value = requested.coerceIn(0f, 1f)
+        overflow = if (requested < 0f || requested > 1f) {
+            (overflow + requested - value).coerceIn(-0.5f, 0.5f)
+        } else 0f
         return value
     }
 }
