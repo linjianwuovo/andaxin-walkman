@@ -184,7 +184,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// 登录页：成功 onDone 换五格底栏
     private func makeLogin(_ g: IosAppGraph) -> UIViewController {
         g.loginViewController { [weak self] in
-            self?.window?.rootViewController = self?.makeTabs(g)
+            g.resolveGate { [weak self] showTabs in
+                self?.swap(toTabs: showTabs.boolValue, g)
+            }
         }
     }
 

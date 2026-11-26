@@ -3,6 +3,7 @@ package com.andaxin.shared
 import androidx.compose.runtime.Composable
 import com.andaxin.core.store.Store
 import com.andaxin.core.store.SessionStore
+import com.andaxin.core.store.SessionRootGate
 import com.andaxin.core.store.WhoIs
 import com.andaxin.core.store.createVault
 import com.andaxin.data.brief.DetailSource
@@ -71,6 +72,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -105,6 +107,13 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
 
     override val store: Store = Store(documentsPath + "/andaxin.preferences_pb")
     val session: SessionStore = SessionStore(store)
+    private val rootGate = SessionRootGate(
+        readCurrent = {
+            val current = session.state.first()
+            current.loggedIn || current.browsing
+        },
+        writeGuest = { session.browseWithoutLogin() },
+    )
     val vault = createVault()
     val auth: AuthFeed = AuthFeed()
     val school: School = School(session)
@@ -390,41 +399,25 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
         scope.launch { block() }
     }
 
-    /**
-     * 启动期那一次换根：挂起查完登录态，回主线程告诉 Swift（isSignedIn 是普通 Boolean）。
-     *
-     * 94 那发我把启动换根也交给 watchRoot，结果模拟器里进程活着、界面却压根没上前台，
-     * 而这条命令式的路是 93 验证过能画出登录页的 —— 所以首帧回到它，watchRoot 只管之后的变化。
-     */
+    /** 首帧读取当前会话，已持久化的访客状态同样进入五格。 */
     fun resolveGate(onResolved: (isSignedIn: Boolean) -> Unit) {
-        scope.launch {
-            val signed = session.signedIn()
-            onResolved(signed)
-        }
+        scope.launch { rootGate.resolve(onResolved) }
     }
 
     /**
-     * 反应式 Gate：启动之后，登录态或"逛逛"标志一变就回主线程让 Swift 换根。
-     *
-     * 安卓那边 Gate 本来就是响应式的，iOS 之前只有"登录成功"一条命令式换根，
-     * 所以「先不登录逛逛」「我的 → 去登录」「退出登录」这三格点了都只震一下：
-     * 标志写进去了，根没人换。
-     *
-     * 去重自己做（`last`），不用 distinctUntilChanged：那样每次原始 emission 都能打出一行，
-     * 把"流根本没再发"和"发了但派生值没变"这两种情况分开。101 那发的现场就是靠这个才看清的 ——
-     * 上一版我拿 `drop(1)` 解释"逛逛没换根"，删了 drop 重跑，日志里仍然只有
-     * `Gate 变了 showTabs=false` 一行，写完标志之后再没有第二次 emission —— 那个解释是错的。
-     * 换根本身幂等（SceneDelegate.swap 存着 showingTabs，同值直接 return），首帧重复一次没副作用。
+     * Flow 的通知可能携带访客写入前的旧快照；它只触发重读，不直接决定根页面。
+     * 重读、回调与访客写入共用一把锁，旧读数要么先交付，要么在写入后重读为新值。
      */
     fun watchRoot(onChange: (showTabs: Boolean) -> Unit) {
         scope.launch {
             var last: Boolean? = null
-            session.state.collect { s ->
-                val show = s.loggedIn || s.browsing
-                NSLog("AndaXin 图：Gate 发 loggedIn=" + s.loggedIn + " browsing=" + s.browsing + " → showTabs=" + show)
-                if (show != last) {
-                    last = show
-                    onChange(show)
+            session.state.collect { emitted ->
+                rootGate.resolve { show ->
+                    NSLog("AndaXin 图：Gate 通知 loggedIn=" + emitted.loggedIn + " browsing=" + emitted.browsing + " → 当前 showTabs=" + show)
+                    if (show != last) {
+                        last = show
+                        onChange(show)
+                    }
                 }
             }
         }
@@ -483,10 +476,10 @@ class IosAppGraph(documentsPath: String) : com.andaxin.feature.brief.BriefGraph 
             // 走 NSLog 而不是 println —— CI 那几趟是 `simctl launch --console`，stderr 收进
             // console2/console3.txt，上一发就是因为把兜底写成 println 又恰好崩在排版里，日志一个字没多。
             NSLog(com.andaxin.feature.sport.sportNumberSelfCheck())
-            val why = runCatching { session.browseWithoutLogin() }
-                .exceptionOrNull()?.let { "失败：" + it } ?: "成功"
-            NSLog("AndaXin 图：逛逛标志写盘" + why + "，换根直接交 onGuest 那个回调")
-            guestHook?.invoke()
+            rootGate.enterGuest {
+                NSLog("AndaXin 图：逛逛标志写盘成功，换根直接交 onGuest 那个回调")
+                guestHook?.invoke()
+            }
         }
     }
 }
