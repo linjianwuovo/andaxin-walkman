@@ -82,7 +82,25 @@
     "observed_failure": "All 12 music UI cases passed, including immediate/relaunch page order and actual equalizer gain persistence. Six of seven lyrics captures passed; romanized-off timed out with only FOLLOW_SETTLED parsed. Device IPA packaging was skipped.",
     "diagnosis": "The configured layout phonetic-hidden cannot be recognized by fixture_markers final [a-z]+ token. A local wait_ready regression reproduces the same timeout even with the correct emitted marker; the remaining six configured layout tokens parse correctly.",
     "correction": "Allow hyphens in the layout token while retaining exact expected-case/layout and follow-settled validation. Add parser/readiness regression tests for every configured fixture plus rejected wrong cases/layouts, premature readiness, and embedded tokens; run them before native builds. Native capture and device packaging rerun pending.",
-    "corrected_run": "pending",
+    "corrected_run": 45693957518,
     "acceptance": "Twelve native music UI cases verified. No IPA or full parity acceptance yet; all seven fixture captures, package validation and physical-device/sandbox checks remain required."
+  },
+  {
+    "workflow_run": 45693957518,
+    "tested_commit": "4f640d3c1813d1ff4c48c8b4d5c11e013f78ddc8",
+    "result": "success",
+    "evidence_artifacts": {
+      "ios-artifacts": 15064452340,
+      "ios-lyrics-visual": 15065255243
+    },
+    "verified_checks": "Four fixture parser tests, production source guards, shared tests, all twelve music UI cases, all seven lyrics captures, and unsigned device packaging succeeded. Independently verified the artifact digest and actual IPA payload, bundle, version, ARM64 executable and resources.",
+    "package": {
+      "version": "0.9.35",
+      "build": "187",
+      "bytes": 17267274,
+      "sha256": "c57fb5b3a129974809fdc7e61f0abbcc38ad77132a4c779357d5c13683d29911",
+      "unsigned": true
+    },
+    "acceptance": "Automated gates and unsigned package verified for this source. The newer screenshot-style volume changes require their own native run; physical-device audio/volume, calendar/notifications, sandbox flows and complete Android v0.9.41 parity remain unaccepted."
   }
 ]

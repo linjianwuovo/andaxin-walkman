@@ -936,6 +936,8 @@ private fun PlayerPanel(
                 TransportIcon(Transport.Queue, foreground, Modifier.size(30.dp), onClick = onQueue)
             }
             Text(controller.playModeLabel(), style = MaterialTheme.typography.labelSmall, color = secondary, modifier = Modifier.padding(top = 4.dp).testTag("music-play-mode-label"))
+            Spacer(Modifier.height(12.dp))
+            PlayerVolumeSection(foreground)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (controller.musicU == null) "未登录" else "已登录", style = MaterialTheme.typography.labelSmall, color = secondary, modifier = Modifier.weight(1f))
                 TextButton(onClick = if (controller.musicU == null) onLogin else onLogout, colors = actionColors) { Text(if (controller.musicU == null) "登录" else "退出") }
