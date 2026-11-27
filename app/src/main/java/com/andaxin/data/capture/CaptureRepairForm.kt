@@ -91,8 +91,7 @@ class CaptureRepairForm(private val school: School, private val context: Context
             add(Field.Choice(KEY_PLACE, "报修地点", placeId.keys.toList(), placeGroups))
             add(Field.Text(KEY_ADDR, "详细地址", hint = "门牌/房间号，自由文本"))
             if (times.isNotEmpty()) {
-                add(Field.Choice(KEY_START, "期望上门·开始", times))
-                add(Field.Choice(KEY_END, "期望上门·结束", times))
+                add(Field.TimeRange(KEY_START, KEY_END, "期望上门", times))
             }
             add(Field.Text(KEY_DESC, "问题描述", hint = "哪里坏了、什么时候开始的，越具体越好"))
             add(Field.Photos(KEY_PHOTOS, "现场照片", RepairPhotos.MAX_COUNT))

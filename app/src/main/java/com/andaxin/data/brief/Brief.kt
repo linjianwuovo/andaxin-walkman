@@ -127,6 +127,12 @@ sealed class Field {
         val options: List<String>,
         val groups: List<ChoiceGroup> = emptyList(),
     ) : Field()
+    data class TimeRange(
+        override val key: String,
+        val endKey: String,
+        override val label: String,
+        val options: List<String>,
+    ) : Field()
     data class Date(override val key: String, override val label: String) : Field()
     data class Person(override val key: String, override val label: String) : Field()
     /**

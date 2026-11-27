@@ -2,6 +2,7 @@ package com.andaxin.feature.schedule
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,14 +17,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,24 +33,25 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.andaxin.app.LocalAppGraph
 import com.andaxin.core.design.Gap
 import com.andaxin.core.design.LocalInk
-import com.andaxin.core.design.Palette
 import com.andaxin.core.design.Radius
 import com.andaxin.core.design.Type
 import com.andaxin.core.schedule.Periods
@@ -62,13 +63,15 @@ import com.andaxin.shell.Hairline
 import com.andaxin.shell.RowLine
 import com.andaxin.shell.Refreshable
 import com.andaxin.shell.Sheet
-import com.andaxin.shell.enterFade
 import com.andaxin.shell.pressClick
 import com.andaxin.shell.adxViewModel
 import com.andaxin.shell.ErrorLine
 import com.andaxin.shell.ShelfTail
 import com.andaxin.shell.registerShelfNavigationViewport
 import com.andaxin.state.TimetableModel
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 import kotlinx.coroutines.delay
 
 private val DAYS = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
@@ -86,29 +89,9 @@ private const val GUTTER = 28
 /** 星期头那一行的高度：左列也要垫同样高，不然时间轴和格子对不齐。 */
 private const val HEADER_HEIGHT = 36
 
-/**
- * 一格多高：**放得下就把行拉开，放不下就还是 44dp 让它滚**。
- *
- * 原来写死 44dp，12 节一共 528dp；在 411×914dp 这块屏上第 12 节底下会空出 100dp 出头一条白，
- * 而他一眼看见的就是那条白（10-21 早上他说的就是这句"底下留了一大块白"）。
- *
- * 减数 138dp 是**在这台机器上量出来的**（1440×3200 / density 3.5，App 内容区 783dp 高）：
- * 节次区从内容区 y=130dp 起，目标是让最后一行收在 775dp（离内容区底 8dp）。
- * 于是 `(783 − 138) / 10 = 64.5dp` 一行；这 138 就是"网格以上的固定高度"（标题 + 周次芯片 +
- * 表头 + 几处行距），和行高无关，所以只从视口里减一次。
- * **底栏那条玻璃画在内容区之外**（上沿在屏幕 818dp，内容区到 816dp 就完了），
- * 肉眼上看是网格离底栏约 43dp 的一段呼吸。
- *
- * 上限 66dp：再往上拉，一格空格子会显得比课本身还重。
- * 换了字号或改了标题区，这 138dp 会跟着变，偏了的表现是"底下多一条窄白"或"贴住底栏"，
- * 都不是错位；真要跟着变，量一次这个数就行。
- *
- * `extraRows` 是网格顶上「早」那一行占几格（校方 `ksjc=0` 那几条：晨跑、早自习，
- * 没节次也没时间，不能塞进第 1 节）。占几格就从行数里多减几格，十节课加一行就是除以 11。
- */
-private fun rowHeightFor(viewport: Dp, extraRows: Int = 0): Dp {
-    val gridRoom = viewport - 138.dp
-    return (gridRoom / (PERIOD_TIMES.size + extraRows).toFloat()).coerceIn(ROW_HEIGHT.dp, 66.dp)
+private fun rowHeightFor(viewport: Dp, extraRows: Int): Dp {
+    return ((viewport - 164.dp) / (PERIOD_TIMES.size + extraRows).toFloat())
+        .coerceIn(ROW_HEIGHT.dp, 66.dp)
 }
 
 @Composable
@@ -130,195 +113,280 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
             minute++
         }
     }
-    val today = remember(minute) { Periods.today() }
-    val periodNow = remember(minute) { Periods.periodNow() }
-    var showDayMode by remember { mutableStateOf(false) }
+    val clock = remember(minute) { Calendar.getInstance() }
+    val today = Periods.today(clock)
+    val weekOffset = state.loadingWeekOffset ?: state.weekOffset
+    val todayInWeek = today.takeIf { weekOffset == 0 }
+    val periodNow = todayInWeek?.let { Periods.periodNow(clock) }
+    val shownWeek = if (state.now > 0) state.now + weekOffset else 0
+    val showSlots = state.slotsWeekOffset == weekOffset
+    val slots = if (showSlots) state.slots else emptyList()
+    val loading = state.loadingWeekOffset != null || (state.firstLoad && slots.isEmpty())
+    val error = state.error.takeUnless { loading }
+    val weekOffsets = remember(state.weeks, state.now) {
+        if (state.now > 0 && state.weeks.isNotEmpty()) {
+            state.weeks.map { it - state.now }.plus(0).distinct().sorted()
+        } else listOf(0, 1)
+    }
+    val monday = remember(clock, weekOffset) { Periods.weekMonday(clock, weekOffset) }
+    val dates = remember(monday) {
+        val format = SimpleDateFormat("M/d", Locale.US)
+        DAYS.indices.map { delta ->
+            val date = (monday.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, delta) }
+            format.format(date.time)
+        }
+    }
+    var dayOverride by rememberSaveable { mutableIntStateOf(0) }
+    var showDayMode by rememberSaveable { mutableStateOf(false) }
+    val day = dayOverride.takeIf { it in 1..7 } ?: today
+    val pickDay: (Int) -> Unit = {
+        dayOverride = it
+        showDayMode = true
+    }
     val fontScale = LocalDensity.current.fontScale
 
-    // 这一屏也支持下拉：整周没拿到时，下面会给一条「重试」，但用户更习惯直接拽一下
     Refreshable({ model.refresh() }, modifier.fillMaxSize()) {
-        /*
-         * 要一层 `BoxWithConstraints` 只是为了拿到"这一屏有多高"：格子铺不满时把行高拉开，
-         * 别在 19:55 那一行底下留一条白。里面的 Column 照样滚动 —— 行高只在"能放下"的时候变大，
-         * 放不下（节数多、字号大）时仍是 44dp 往下滚，不会把内容裁掉。
-         */
         BoxWithConstraints(Modifier.fillMaxSize()) {
-        val viewport = maxHeight
-        val scroll = rememberScrollState()
-        // 把这一屏的滚动范围报给底栏，收起/展开才有判据（见 ShelfPageViewport.kt）。
-        registerShelfNavigationViewport(scroll)
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scroll)
-                .padding(horizontal = Gap.screen),
-        ) {
-            Spacer(Modifier.height(Gap.md))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Gap.sm),
-                verticalAlignment = Alignment.CenterVertically,
+            val viewport = maxHeight
+            val scroll = rememberScrollState()
+            registerShelfNavigationViewport(scroll)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scroll)
+                    .padding(horizontal = Gap.screen),
             ) {
-                Text(
-                    "课程表", fontSize = Type.display, fontWeight = FontWeight.SemiBold,
-                    color = ink.strong, modifier = Modifier.weight(1f),
+                Spacer(Modifier.height(Gap.md))
+                WeekNavigation(
+                    offset = weekOffset,
+                    offsets = weekOffsets,
+                    currentWeek = state.now,
+                    onWeek = { if (it != weekOffset) model.load(it) },
+                    onToday = {
+                        dayOverride = 0
+                        showDayMode = true
+                        if (weekOffset != 0 || error != null) model.load(0)
+                    },
                 )
-                Text(
-                    text = if (showDayMode) "看整周" else "只看今天",
-                    fontSize = Type.meta,
-                    lineHeight = Type.metaLine,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.pressClick(shrink = false) { showDayMode = !showDayMode }
-                        .heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically)
-                        .padding(horizontal = Gap.sm),
-                )
-            }
-
-            /*
-             * 周次那一排。原来是「本周 / 下周」两颗 —— 只能往前看一周，第 9 周想调课表就得退出重进。
-             * 现在照校方那张周次表（`selectZcList.do` 的 `rows`）排成一横行「第一周…第N周」，
-             * 学校给几周就排几格，点哪格看哪周；进屏先滚到本周那一格，不让人自己找。
-             */
-            Spacer(Modifier.height(Gap.xxs))
-            val shownWeek = if (state.now == 0) 0 else state.now + state.weekOffset
-            if (state.weeks.isEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                    Chip("本周", state.weekOffset == 0) { model.load(0) }
-                    Chip("下周", state.weekOffset == 1) { model.load(1) }
+                if (showDayMode || slots.isEmpty()) {
+                    WeekDateStrip(dates, todayInWeek, day.takeIf { showDayMode }, slots, pickDay)
                 }
-            } else {
-                val weekList = rememberLazyListState()
-                LazyRow(state = weekList, horizontalArrangement = Arrangement.spacedBy(Gap.sm)) {
-                    items(state.weeks, key = { it }) { w ->
-                        Chip(cnWeek(w), w == shownWeek) { model.load(w - state.now) }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Gap.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (showDayMode) "${DAYS[day - 1]} · ${dates[day - 1]}"
+                        else "${dates.first()} – ${dates.last()}",
+                        fontSize = Type.meta,
+                        color = ink.muted,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Chip("单日", showDayMode, Modifier.semantics { selected = showDayMode }) { showDayMode = true }
+                    Chip("整周", !showDayMode, Modifier.semantics { selected = !showDayMode }) { showDayMode = false }
+                }
+
+                /*
+                 * 导出这一周的课表（他 10-28 那句「能不能给个导出课程表的功能」）。
+                 * 只导这一周：校方那条接口是按周给表的，每条课里没有"1-16周"这种范围，编一个就是假数据，
+                 * 所以文件名带周次，想整学期就每周各导一份（这句也写在提示里，不装全）。
+                 * 落 cache/export/ 再交给系统分享面板 —— 不申请任何存储权限，存哪儿、发给谁他自己定。
+                 */
+                if (!loading && slots.any { it.startPeriod >= 1 }) {
+                    val ctx = LocalContext.current
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Text(
+                            text = "导出这份课表（.ics）",
+                            fontSize = Type.meta,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .pressClick(shrink = false) {
+                                    runCatching {
+                                        val dir = java.io.File(ctx.cacheDir, "export").apply { mkdirs() }
+                                        val f = java.io.File(dir, TimetableIcs.fileName(shownWeek, weekOffset))
+                                        f.writeText(TimetableIcs.build(slots, weekOffset, shownWeek))
+                                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                                            ctx, ctx.packageName + ".fileprovider", f,
+                                        )
+                                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                            type = "text/calendar"
+                                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                            putExtra(android.content.Intent.EXTRA_SUBJECT, f.name)
+                                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        ctx.startActivity(
+                                            android.content.Intent.createChooser(send, "导出课表")
+                                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                        )
+                                    }
+                                }
+                                .padding(vertical = Gap.sm),
+                        )
                     }
                 }
-                LaunchedEffect(state.weeks, state.now) {
-                    val i = state.weeks.indexOf(state.now)
-                    if (i > 0) weekList.scrollToItem(i)
+
+                Spacer(Modifier.height(Gap.md))
+
+                val lessons = slots.filter { it.startPeriod >= 1 }
+                val mornings = slots.filter { it.startPeriod < 1 }
+                val morningRows = mornings.groupingBy { it.day }.eachCount().values.maxOrNull() ?: 0
+                when {
+                    loading && slots.isEmpty() -> Sheet { com.andaxin.shell.EmptyState("正在加载课表…") }
+                    error != null && slots.isEmpty() -> Unit
+                    showDayMode -> {
+                        val dayLessons = lessons.filter { it.day == day }
+                        val dayMornings = mornings.filter { it.day == day }
+                        if (dayLessons.isEmpty() && dayMornings.isEmpty()) {
+                            Sheet { com.andaxin.shell.EmptyState("${DAYS[day - 1]}没有课") }
+                        } else {
+                            DayList(dayLessons, dayMornings)
+                        }
+                    }
+                    slots.isEmpty() -> Sheet { com.andaxin.shell.EmptyState("这一周没有课") }
+                    else -> {
+                        if (lessons.isEmpty()) {
+                            Text(
+                                "这一周没有普通课程，仅有早间活动",
+                                fontSize = Type.meta,
+                                color = ink.muted,
+                                modifier = Modifier.padding(bottom = Gap.sm, start = Gap.xxs),
+                            )
+                        }
+                        Grid(
+                            lessons, mornings, todayInWeek, periodNow,
+                            rowHeightFor(viewport, morningRows)
+                                .coerceAtLeast(ROW_HEIGHT.dp * fontScale),
+                            dates, state.courseColors, pickDay,
+                        )
+                    }
                 }
+                Spacer(Modifier.height(Gap.lg))
+                error?.let { ErrorLine(it, retry = { model.load(weekOffset) }) }
+                ShelfTail()
             }
-
-            /*
-             * 导出这一周的课表（他 10-28 那句「能不能给个导出课程表的功能」）。
-             * 只导这一周：校方那条接口是按周给表的，每条课里没有"1-16周"这种范围，编一个就是假数据，
-             * 所以文件名带周次，想整学期就每周各导一份（这句也写在提示里，不装全）。
-             * 落 cache/export/ 再交给系统分享面板 —— 不申请任何存储权限，存哪儿、发给谁他自己定。
-             */
-            if (state.slots.any { it.startPeriod >= 1 }) {
-                val ctx = LocalContext.current
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    Text(
-                        text = "导出这份课表（.ics）",
-                        fontSize = Type.meta,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .pressClick(shrink = false) {
-                                runCatching {
-                                    val dir = java.io.File(ctx.cacheDir, "export").apply { mkdirs() }
-                                    val f = java.io.File(dir, TimetableIcs.fileName(shownWeek, state.weekOffset))
-                                    f.writeText(TimetableIcs.build(state.slots, state.weekOffset, shownWeek))
-                                    val uri = androidx.core.content.FileProvider.getUriForFile(
-                                        ctx, ctx.packageName + ".fileprovider", f,
-                                    )
-                                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                        type = "text/calendar"
-                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                        putExtra(android.content.Intent.EXTRA_SUBJECT, f.name)
-                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    ctx.startActivity(
-                                        android.content.Intent.createChooser(send, "导出课表")
-                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                                    )
-                                }
-                            }
-                            .padding(vertical = Gap.sm),
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(Gap.md))
-
-            /*
-             * 校方课表里除了课还挂着 `ksjc=0 / jsjc=0` 的那几条：第 8 周实测周二周四各一条
-             * 「阳光晨跑 / 体育场」，10-26 他说"其实还有早自习"。它们没有节次也没有时间，
-             * 塞进第 1 节就是凭空多出一门 08:30 的课（早期真就这么错，首页"今天几节"跟着翻倍、
-             * 上课提醒还给晨跑排了闹钟）。
-             *
-             * 摆法照官方那一版：网格顶上单独一行「早」，左边那一格只有"早"、没有钟点 ——
-             * 校方没给时间，我们就不编。原先是网格上面一条「晨跑活动」的横杠，那有两个毛病：
-             * 名字是写死的，早自习进来会被念成晨跑；而且它把好几条并成一句，只剩第一个地点。
-             * 现在一条一格，名字用校方给的那条 `kcmc` 原文。课表上真正的课仍从 `startPeriod >= 1` 起算。
-             */
-            val lessons = state.slots.filter { it.startPeriod >= 1 }
-            val mornings = state.slots.filter { it.startPeriod < 1 }
-            val todayMornings = mornings.filter { it.day == today }
-            val morningRows = mornings.groupBy { it.day }.values.maxOfOrNull { it.size }?.coerceAtMost(2) ?: 0
-
-            if (state.slots.isEmpty() && state.firstLoad) {
-                Sheet { com.andaxin.shell.EmptyState("正在加载课表…") }
-            } else if (state.slots.isEmpty() && state.error == null) {
-                Sheet { com.andaxin.shell.EmptyState("这一周没有课") }
-            } else if (state.slots.isNotEmpty() && showDayMode) {
-                val todayLessons = lessons.filter { it.day == today }
-                if (todayLessons.isNotEmpty() || todayMornings.isNotEmpty()) {
-                    DayList(todayLessons, today, todayMornings)
-                } else {
-                    Sheet { com.andaxin.shell.EmptyState("今天没有课") }
-                }
-            } else if (state.slots.isNotEmpty()) {
-                Grid(
-                    lessons, mornings, today, periodNow,
-                    rowHeightFor(viewport, morningRows).coerceAtLeast(ROW_HEIGHT.dp * fontScale),
-                    state.weekOffset, state.courseColors,
-                )
-            }
-
-            // 原来这里连着摆两遍同一个原因（一行灰字 + 一条 ErrorLine），只留带「重试」的那条
-            Spacer(Modifier.height(Gap.lg))
-            state.error?.let { ErrorLine(it, retry = { model.load(state.weekOffset) }) }
-            ShelfTail()
-        }
         }
     }
 }
 
-/**
- * 周几 × 第几节的网格。
- *
- * 10-20 晚这一版改了三件事，全冲着"格子读不出来"去的：
- * ① **没有课的周末不再占列**。周六周日实测常年空着，却占掉 2/7 的宽度 ——
- *    七列时每列只有约 59dp，10sp 的字一行放不下五个字，「高等数学I（1）」被断成四行；
- *    五列时每列约 86dp，一行八个字，课名两行就够。
- * ② 行高 58→44，11 节一共 484dp，一屏装得下，不用滚；
- * ③ 色块左边那根独立的小竖杠改成**整块描边**：那根杠要吃掉 5dp 内容宽度，
- *    而"哪块是哪门课"的辨识作用和描边是一样的。
- *
- * 每一列自己按 startPeriod 排，块高 = 连排节数 × 行高，块与块之间用空行垫。
- * 再往前一版不是这么排的：它把课塞进 `byCell[day*100+startPeriod]` 那张表里，
- * 每格固定一格高 —— 于是"第 1-2 节"的课只占第 1 节那一行，块的下沿停在 08:55
- * 而不是 09:55，整张表看着就是"区块没对准"。
- *
- * [mornings] 是校方那些没有节次的早上条目（晨跑、早自习），占顶上「早」那一行；
- * 哪天一条都没有也得把这一行的高度垫出来，不然各列的第 1 节对不齐。
- */
+@Composable
+private fun WeekNavigation(
+    offset: Int,
+    offsets: List<Int>,
+    currentWeek: Int,
+    onWeek: (Int) -> Unit,
+    onToday: () -> Unit,
+) {
+    val ink = LocalInk.current
+    var expanded by remember { mutableStateOf(false) }
+    val previous = offsets.lastOrNull { it < offset }
+    val next = offsets.firstOrNull { it > offset }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) {
+            Text(
+                weekLabel(currentWeek, offset),
+                fontSize = Type.title,
+                fontWeight = FontWeight.SemiBold,
+                color = ink.strong,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .heightIn(min = 48.dp).wrapContentHeight(Alignment.CenterVertically)
+                    .semantics { contentDescription = "选择周次" }
+                    .pressClick(enabled = offsets.size > 1, shrink = false) { expanded = true },
+            )
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                offsets.forEach { value ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                weekLabel(currentWeek, value),
+                                color = if (value == offset) MaterialTheme.colorScheme.primary else ink.strong,
+                            )
+                        },
+                        onClick = { expanded = false; onWeek(value) },
+                    )
+                }
+            }
+        }
+        WeekAction("‹", "上一周", previous != null) { previous?.let(onWeek) }
+        WeekAction("回到今天", "回到今天", true, onToday)
+        WeekAction("›", "下一周", next != null) { next?.let(onWeek) }
+    }
+}
+
+@Composable
+private fun WeekAction(text: String, label: String, enabled: Boolean, onClick: () -> Unit) {
+    Text(
+        text,
+        fontSize = if (text == label) Type.meta else Type.title,
+        color = if (enabled) MaterialTheme.colorScheme.primary else LocalInk.current.faint,
+        modifier = Modifier
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .semantics { if (text != label) contentDescription = label }
+            .pressClick(enabled = enabled, shrink = false, onClick = onClick)
+            .wrapContentHeight(Alignment.CenterVertically)
+            .padding(horizontal = Gap.xs),
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+private fun WeekDateStrip(
+    dates: List<String>,
+    today: Int?,
+    day: Int?,
+    slots: List<TimetableSlot>,
+    onPick: (Int) -> Unit,
+) {
+    val counts = remember(slots) { slots.groupingBy { it.day }.eachCount() }
+    val fontScale = LocalDensity.current.fontScale
+    val ink = LocalInk.current
+    val accent = MaterialTheme.colorScheme.primary
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val width = maxOf(maxWidth, 48.dp * DAYS.size * fontScale.coerceAtLeast(1f))
+        Row(Modifier.horizontalScroll(rememberScrollState()).width(width)) {
+            DAYS.forEachIndexed { i, label ->
+                val picked = day == i + 1
+                val current = today == i + 1
+                val fg = if (picked || current) accent else ink.muted
+                Column(
+                    Modifier.weight(1f).padding(horizontal = 1.dp)
+                        .heightIn(min = 58.dp)
+                        .clip(Radius.field)
+                        .then(if (picked) Modifier.background(accent.copy(alpha = 0.12f)) else Modifier)
+                        .semantics { selected = picked; contentDescription = "$label ${dates[i]}" }
+                        .pressClick { onPick(i + 1) }
+                        .padding(vertical = Gap.xs),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(label, color = fg, fontSize = Type.tinier, maxLines = 1)
+                    Text(dates[i], color = fg, fontSize = Type.micro, maxLines = 1)
+                    Box(Modifier.height(5.dp), contentAlignment = Alignment.Center) {
+                        if (counts.getOrDefault(i + 1, 0) > 0) {
+                            Box(Modifier.size(4.dp).background(fg, Radius.tag))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun Grid(
     slots: List<TimetableSlot>,
     mornings: List<TimetableSlot>,
-    today: Int,
+    today: Int?,
     periodNow: Int?,
     rowH: Dp,
-    weekOffset: Int,
+    dates: List<String>,
     courseColors: Map<String, Int>,
+    onPickDay: (Int) -> Unit,
 ) {
     val ink = LocalInk.current
     val accent = MaterialTheme.colorScheme.primary
-    // 表头第二行那个日期：这一周的周一 + (day-1)。官方那一版就是"周一 / 10-19"两行。
-    val monday = remember(weekOffset) { Periods.weekMonday(offset = weekOffset).timeInMillis }
-    val dayFmt = remember { java.text.SimpleDateFormat("M/d", java.util.Locale.US) }
-    // 色号是 model 那边从本机读回来的那张表（一门课一个号，换周不改），这里只对色板取色
     val colors = remember(courseColors) {
         courseColors.mapValues { (_, i) -> COURSE_COLORS[i.mod(COURSE_COLORS.size)] }
     }
@@ -330,142 +398,138 @@ private fun Grid(
     val morningByDay = remember(mornings) {
         mornings.groupBy { it.day }.mapValues { (_, v) -> v.sortedBy { it.course } }
     }
-    // 这一行最高占两格：三格就往第 2 节那边挤得没边了，真排出三条的学期没见过
-    val morningRows = morningByDay.values.maxOfOrNull { it.size }?.coerceAtMost(2) ?: 0
-    // 只留"这周真有课的几天" + 今天（今天没课也要留着，不然高亮没地方放）
-    // 只有早上条目（晨跑/早自习）的那一天也算"有东西"，不然那一格会被整列裁掉
-    val days = remember(slots, mornings, today) {
-        val busy = (slots + mornings).map { it.day }.toSet()
-        (1..7).filter { it in busy || it == today }
-    }
+    val morningRows = morningByDay.values.maxOfOrNull { it.size } ?: 0
+    val days = (1..5).toList() + (6..7).filter { it in byDay || it in morningByDay || it == today }
 
     val fontScale = LocalDensity.current.fontScale
-    val headerHeight = HEADER_HEIGHT.dp * fontScale
+    val headerHeight = maxOf(48.dp, HEADER_HEIGHT.dp * fontScale)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-    val gridWidth = if (fontScale > 1.3f) maxOf(maxWidth, (GUTTER.dp + Gap.xxs + 72.dp * days.size) * fontScale) else maxWidth
-    Row(Modifier.horizontalScroll(rememberScrollState()).width(gridWidth)) {
-        // 左列：先垫一个和星期头等高的占位，节次才对得齐 —— 这一处就是原来错位的根
-        Column(Modifier.width(GUTTER.dp * fontScale)) {
-            Spacer(Modifier.height(headerHeight))
-            // 「早」这一格：只有两个字的位置，没有钟点 —— 校方那几条 `ksjc=0` 本来就没给时间
-            if (morningRows > 0) {
-                Box(
-                    Modifier.height(rowH * morningRows).fillMaxWidth(),
-                    contentAlignment = Alignment.TopCenter,
-                ) {
-                    Text(
-                        "早",
-                        fontSize = Type.micro,
-                        color = ink.muted,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-            }
-            PERIOD_TIMES.forEachIndexed { i, start ->
-                /*
-                 * 左边这格：**节次 + 开始 + 结束三行，全部贴这一格的上沿**。
-                 *
-                 * 他 08:50 那句"时间和色块没对齐、乍一看容易看错位"：原来三行是居中的，
-                 * 64.5dp 一格下 08:30 落在课块的腰部 —— 眼睛对不上"这一块从几点开始"。
-                 * 上沿对齐以后，课块的顶边和"1 / 08:30"是同一条线，跟官方那版一样。
-                 * 也别把结束时刻挪到下沿：那样它会和下一行的节次、开始挤成一小坨，
-                 * 反而更像错位（这一版中间试过，截图里 09:15 / 2 / 09:20 三行挨在一起）。
-                 */
-                Box(Modifier.height(rowH).fillMaxWidth()) {
-                    Column(
-                        Modifier.fillMaxHeight().padding(top = 2.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Top,
+        val gridWidth = if (fontScale > 1.3f) maxOf(maxWidth, (GUTTER.dp + Gap.xxs + 72.dp * days.size) * fontScale) else maxWidth
+        Row(Modifier.horizontalScroll(rememberScrollState()).width(gridWidth)) {
+            // 左列：先垫一个和星期头等高的占位，节次才对得齐 —— 这一处就是原来错位的根
+            Column(Modifier.width(GUTTER.dp * fontScale)) {
+                Spacer(Modifier.height(headerHeight))
+                // 「早」这一格：只有两个字的位置，没有钟点 —— 校方那几条 `ksjc=0` 本来就没给时间
+                if (morningRows > 0) {
+                    Box(
+                        Modifier.height(rowH * morningRows).fillMaxWidth(),
+                        contentAlignment = Alignment.TopCenter,
                     ) {
-                        val on = periodNow == i + 1
-                        Text("${i + 1}", fontSize = Type.micro, color = if (on) accent else ink.faint)
-                        Text(start, fontSize = Type.tinier, color = ink.ghost)
-                        Periods.endAt(i + 1)?.let { end ->
-                            Text(end, fontSize = Type.tinier, color = ink.ghost)
+                        Text(
+                            "早",
+                            fontSize = Type.micro,
+                            color = ink.muted,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                }
+                PERIOD_TIMES.forEachIndexed { i, start ->
+                    /*
+                     * 左边这格：**节次 + 开始 + 结束三行，全部贴这一格的上沿**。
+                     *
+                     * 他 08:50 那句"时间和色块没对齐、乍一看容易看错位"：原来三行是居中的，
+                     * 64.5dp 一格下 08:30 落在课块的腰部 —— 眼睛对不上"这一块从几点开始"。
+                     * 上沿对齐以后，课块的顶边和"1 / 08:30"是同一条线，跟官方那版一样。
+                     * 也别把结束时刻挪到下沿：那样它会和下一行的节次、开始挤成一小坨，
+                     * 反而更像错位（这一版中间试过，截图里 09:15 / 2 / 09:20 三行挨在一起）。
+                     */
+                    Box(Modifier.height(rowH).fillMaxWidth()) {
+                        Column(
+                            Modifier.fillMaxHeight().padding(top = 2.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Top,
+                        ) {
+                            val on = periodNow == i + 1
+                            Text("${i + 1}", fontSize = Type.micro, color = if (on) accent else ink.faint)
+                            Text(start, fontSize = Type.tinier, color = ink.ghost)
+                            Periods.endAt(i + 1)?.let { end ->
+                                Text(end, fontSize = Type.tinier, color = ink.ghost)
+                            }
                         }
                     }
                 }
             }
-        }
-        Spacer(Modifier.width(Gap.xxs))
+            Spacer(Modifier.width(Gap.xxs))
 
-        days.forEach { day ->
-            val isToday = day == today
-            Column(
-                Modifier
-                    .weight(1f)
-                    .padding(horizontal = 1.dp),
-            ) {
-                Column(
-                    Modifier.fillMaxWidth().height(headerHeight),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(
-                        text = DAYS.getOrElse(day - 1) { "周" },
-                        fontSize = Type.micro,
-                        fontWeight = if (isToday) FontWeight.Medium else FontWeight.Normal,
-                        color = if (isToday) accent else ink.muted,
-                    )
-                    // 日期是这一周的，不是今天的 —— 翻到下周时它会跟着走
-                    Text(
-                        text = dayFmt.format(java.util.Date(monday + (day - 1) * 86_400_000L)),
-                        fontSize = Type.tinier,
-                        color = if (isToday) accent.copy(alpha = 0.8f) else ink.faint,
-                    )
-                }
-                // 今天这一列：只在课表格子那一段铺一层淡底，圆角收住，别连星期头一起糊。
-                // 底色走强调色而不是灰底 —— 夜里 `hairline` 是 8% 白，铺在 12 行高的整列上
-                // 就是一块灰板，比课格子本身还抢眼（10-21 凌晨深色扫屏实测）；
-                // 强调色压到百分之几只是"这一列被点了一下"。
+            days.forEach { day ->
+                val isToday = day == today
                 Column(
                     Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (isToday) Modifier.background(
-                                accent.copy(alpha = if (ink.dark) 0.07f else 0.05f),
-                                Radius.tag,
-                            ) else Modifier
-                        ),
+                        .weight(1f)
+                        .padding(horizontal = 1.dp),
                 ) {
-                    // 「早」那一行：一条一格，名字用校方给的 `kcmc` 原文（阳光晨跑 / 早自习…）。
-                    // 这一天一条都没有也要把高度垫满，否则各列的第 1 节就错开了。
-                    val am = morningByDay[day].orEmpty()
-                    am.forEach { slot ->
-                        CourseCell(
-                            slot, 1, false, rowH,
-                            colors[slot.course] ?: COURSE_COLORS[0],
+                    Column(
+                        Modifier.fillMaxWidth().height(headerHeight).clip(Radius.tag)
+                            .semantics { contentDescription = "${DAYS[day - 1]} ${dates[day - 1]}" }
+                            .clickable(onClickLabel = "看${DAYS[day - 1]}日程") { onPickDay(day) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = DAYS.getOrElse(day - 1) { "周" },
+                            fontSize = Type.micro,
+                            fontWeight = if (isToday) FontWeight.Medium else FontWeight.Normal,
+                            color = if (isToday) accent else ink.muted,
+                        )
+                        // 日期是这一周的，不是今天的 —— 翻到下周时它会跟着走
+                        Text(
+                            text = dates[day - 1],
+                            fontSize = Type.tinier,
+                            color = if (isToday) accent.copy(alpha = 0.8f) else ink.faint,
                         )
                     }
-                    if (morningRows > 0 && am.size < morningRows) {
-                        Spacer(Modifier.height(rowH * (morningRows - am.size)))
-                    }
-                    val list = byDay[day].orEmpty()
-                    var cursor = 1
-                    list.forEachIndexed { i, slot ->
-                        if (slot.startPeriod > cursor) {
-                            Spacer(Modifier.height(rowH * (slot.startPeriod - cursor)))
+                    // 今天这一列：只在课表格子那一段铺一层淡底，圆角收住，别连星期头一起糊。
+                    // 底色走强调色而不是灰底 —— 夜里 `hairline` 是 8% 白，铺在 12 行高的整列上
+                    // 就是一块灰板，比课格子本身还抢眼（10-21 凌晨深色扫屏实测）；
+                    // 强调色压到百分之几只是"这一列被点了一下"。
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (isToday) Modifier.background(
+                                    accent.copy(alpha = if (ink.dark) 0.07f else 0.05f),
+                                    Radius.tag,
+                                ) else Modifier
+                            ),
+                    ) {
+                        // 「早」那一行：一条一格，名字用校方给的 `kcmc` 原文（阳光晨跑 / 早自习…）。
+                        // 这一天一条都没有也要把高度垫满，否则各列的第 1 节就错开了。
+                        val am = morningByDay[day].orEmpty()
+                        am.forEach { slot ->
+                            CourseCell(
+                                slot, 1, false, rowH,
+                                colors[slot.course] ?: COURSE_COLORS[0],
+                            )
                         }
-                        // 连排几节就占几行；万一校方排出两门课同一节起，前一门裁到一行，
-                        // 后一门照排 —— 宁可挤，也不许把课藏掉（藏掉看着像没排课）。
-                        val nextStart = list.getOrNull(i + 1)?.startPeriod ?: Int.MAX_VALUE
-                        val span = minOf(slot.periodCount, nextStart - slot.startPeriod).coerceAtLeast(1)
-                        CourseCell(
-                            slot, span,
-                            isToday && periodNow != null &&
-                                periodNow in slot.startPeriod until (slot.startPeriod + span),
-                            rowH,
-                            colors[slot.course] ?: COURSE_COLORS[0],
-                        )
-                        cursor = slot.startPeriod + span
-                    }
-                    // 尾巴补满，几列才一样高
-                    if (cursor <= PERIOD_TIMES.size) {
-                        Spacer(Modifier.height(rowH * (PERIOD_TIMES.size - cursor + 1)))
+                        if (morningRows > 0 && am.size < morningRows) {
+                            Spacer(Modifier.height(rowH * (morningRows - am.size)))
+                        }
+                        val list = byDay[day].orEmpty()
+                        var cursor = 1
+                        list.forEachIndexed { i, slot ->
+                            if (slot.startPeriod > cursor) {
+                                Spacer(Modifier.height(rowH * (slot.startPeriod - cursor)))
+                            }
+                            // 连排几节就占几行；万一校方排出两门课同一节起，前一门裁到一行，
+                            // 后一门照排 —— 宁可挤，也不许把课藏掉（藏掉看着像没排课）。
+                            val nextStart = list.getOrNull(i + 1)?.startPeriod ?: Int.MAX_VALUE
+                            val span = minOf(slot.periodCount, nextStart - slot.startPeriod).coerceAtLeast(1)
+                            CourseCell(
+                                slot, span,
+                                isToday && periodNow != null &&
+                                    periodNow in slot.startPeriod until (slot.startPeriod + span),
+                                rowH,
+                                colors[slot.course] ?: COURSE_COLORS[0],
+                            )
+                            cursor = slot.startPeriod + span
+                        }
+                        // 尾巴补满，几列才一样高
+                        if (cursor <= PERIOD_TIMES.size) {
+                            Spacer(Modifier.height(rowH * (PERIOD_TIMES.size - cursor + 1)))
+                        }
                     }
                 }
             }
-        }
     }
 }
 }
@@ -549,23 +613,21 @@ private val COURSE_COLORS = listOf(
  * 十二颗以内一门一色；真超过十二门，多的按 `mod` 回头重用 —— 那是色板到头，不是算错。
  */
 
-/** 「只看今天」按节次列出课程，并保留清晰的时间和地点副信息。 */
 @Composable
-private fun DayList(slots: List<TimetableSlot>, today: Int, runs: List<TimetableSlot>) {
+private fun DayList(slots: List<TimetableSlot>, mornings: List<TimetableSlot>) {
     val ink = LocalInk.current
     val sorted = slots.sortedBy { it.startPeriod }
     Text(
-        text = DAYS.getOrElse(today - 1) { "周一" } + " · ${sorted.size} 节",
+        text = "${sorted.size} 门课",
         fontSize = Type.meta,
         color = ink.muted,
         modifier = Modifier.padding(bottom = Gap.xs, start = Gap.xxs),
     )
     // 今天有晨跑 / 早自习这种没有节次的条目时，在这一档里也明说一句：它不是"漏了一节"。
     // 一条一句，名字用校方给的那条 —— 以前写死"另有晨跑活动"，早自习进来就被念成晨跑了。
-    runs.groupBy { it.course }.forEach { (name, same) ->
-        val room = same.firstOrNull { it.room.isNotBlank() }?.room.orEmpty()
+    mornings.forEach { slot ->
         Text(
-            text = listOf("早", name, room).filter { it.isNotBlank() }.joinToString(" · "),
+            text = listOf("早", slot.course, slot.room).filter { it.isNotBlank() }.joinToString(" · "),
             fontSize = Type.meta,
             lineHeight = Type.metaLine,
             color = ink.muted,
@@ -596,20 +658,10 @@ private fun DayList(slots: List<TimetableSlot>, today: Int, runs: List<Timetable
     }
 }
 
-/**
- * 周次的中文写法：`7 → 第七周`、`12 → 第十二周`、`21 → 第二十一周`。
- * 校方 `rows` 里给的是"第12周"那种阿拉伯数字，他 10-23 深夜要的是"第一周第二周"这一排，
- * 所以数字在这儿翻成中文；超过 30（没有这种学期）直接回阿拉伯数字，不硬编一套错的读法。
- */
-private fun cnWeek(n: Int): String = "第${cnNum(n)}周"
-
-private fun cnNum(n: Int): String {
-    val d = listOf("", "一", "二", "三", "四", "五", "六", "七", "八", "九")
-    return when {
-        n in 1..10 -> if (n == 10) "十" else d[n]
-        n in 11..19 -> "十" + d[n - 10]
-        n in 20..29 -> d[n / 10] + "十" + d[n % 10]
-        n == 30 -> "三十"
-        else -> n.toString()
-    }
+private fun weekLabel(currentWeek: Int, offset: Int): String = when {
+    currentWeek + offset > 0 && currentWeek > 0 -> "第 ${currentWeek + offset} 周"
+    offset == 0 -> "本周"
+    offset == 1 -> "下周"
+    offset == -1 -> "上周"
+    else -> "${if (offset > 0) "后" else "前"}${kotlin.math.abs(offset)}周"
 }

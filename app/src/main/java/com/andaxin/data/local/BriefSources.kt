@@ -133,6 +133,10 @@ object Repair {
         listOf("类型" to "水暖", "报修时间" to "10-14 19:02", "状态" to "处理中", "维修工" to "—"),
         paragraphs = listOf("师傅已接单，预计 24 小时内上门。"),
     )
+    private val places = listOf(
+        ChoiceGroup("示例教学楼", (1..5).map { "示例教学楼 ${it}层" }),
+        ChoiceGroup("示例宿舍楼", (1..8).map { "示例宿舍楼 ${it}层" }),
+    )
     val form = PlaceholderForm(
         FormSpec(
             "新建报修",
@@ -148,7 +152,9 @@ object Repair {
                         ChoiceGroup("空调", listOf("空调 · 不制冷")),
                     ),
                 ),
-                Field.Person("dorm", "宿舍"),
+                Field.Choice("place", "报修地点", places.flatMap { it.options }, places),
+                Field.Text("address", "详细地址", hint = "门牌/房间号，自由文本"),
+                Field.TimeRange("kssj", "jssj", "期望上门", (9..20).map { "$it:00" }),
                 Field.Text("detail", "问题描述", hint = "越具体越好，比如哪个龙头、什么时候开始"),
             ),
         )

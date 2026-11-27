@@ -111,9 +111,11 @@ class HomeModel(
 data class TimetableUiState(
     val firstLoad: Boolean = true,
     val weekOffset: Int = 0,
+    val loadingWeekOffset: Int? = null,
+    val slotsWeekOffset: Int = 0,
     val slots: List<TimetableSlot> = emptyList(),
     val error: String? = null,
-    /** 校方那一学期的全部周次（`selectZcList.do` 的 `rows`），界面上排成"第一周…第N周"一行。 */
+    /** 校方那一学期给出的周次。 */
     val weeks: List<Int> = emptyList(),
     /** 现在第几周。0 = 还没拿到。 */
     val now: Int = 0,
@@ -164,11 +166,12 @@ class TimetableModel(private val feed: TimetableFeed, private val store: Store) 
 
     fun load(offset: Int) {
         val request = Any().also { latestRequest = it }
+        _state.value = _state.value.copy(loadingWeekOffset = offset)
         viewModelScope.launch { refresh(offset, request) }
     }
 
     /** 挂起版给下拉刷新用：等这一发回来才收指示器。 */
-    suspend fun refresh(offset: Int = _state.value.weekOffset) {
+    suspend fun refresh(offset: Int = _state.value.loadingWeekOffset ?: _state.value.weekOffset) {
         val request = Any().also { latestRequest = it }
         refresh(offset, request)
     }
@@ -198,6 +201,8 @@ class TimetableModel(private val feed: TimetableFeed, private val store: Store) 
         _state.value = _state.value.copy(
             firstLoad = false,
             weekOffset = offset,
+            loadingWeekOffset = null,
+            slotsWeekOffset = if (r.isSuccess) offset else _state.value.slotsWeekOffset,
             slots = slots,
             courseColors = colors,
             error = failure?.message,

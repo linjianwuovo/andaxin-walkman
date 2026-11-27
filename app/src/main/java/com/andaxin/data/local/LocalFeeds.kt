@@ -42,7 +42,12 @@ class LocalMessages : MessageFeed {
                 MessageItem("m2", "查寝提醒", "今晚 22:30 开始查寝", "10-18 21:40", true, MessageCategory.Dorm),
                 MessageItem("m3", "跑步未达标", "本周还差 1.2 公里", "10-18 08:02", false, MessageCategory.Sports),
                 MessageItem("m4", "系统消息", "校园网计费周期调整", "10-17 15:20", false, MessageCategory.System),
-            )
+            ) + List(12) { index ->
+                MessageItem(
+                    "demo-message-${index + 1}", "演示消息 ${index + 1}",
+                    "访客模式示例，不是真实通知", "10-16 10:00", false, MessageCategory.System,
+                )
+            }
         )
     }
 

@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.MutableState
@@ -44,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -832,7 +834,6 @@ private fun ShelfHost(
     // 首次打开后保留音乐模块的 coverOnly 层；收回只回到它自己的收起态，
     // 不再卸载过渡层再重新放置宿主胶囊，避免最后一帧发生玻璃/内容层跳变。
     var coverLayerMounted by remember { mutableStateOf(false) }
-    var noticeTopBlurProgress by remember { mutableStateOf(0f) }
 
     // 曲目连接与胶囊布局保留在宿主，首次切入音乐层后由音乐模块接管胶囊。
     val musicBarState = com.andaxin.feature.music.rememberMusicBarState()
@@ -986,7 +987,7 @@ private fun ShelfHost(
                                     Shelf.Home -> HomeScreen(open = open)
                                     Shelf.Timetable -> TimetableScreen()
                                     Shelf.Message -> MessageScreen()
-                                    Shelf.Notice -> NoticeScreen(open = open, onTopBlurProgress = { noticeTopBlurProgress = it })
+                                    Shelf.Notice -> NoticeScreen(open = open)
                                     Shelf.Me -> MeScreen(open = open)
                                 }
                             }
@@ -996,11 +997,21 @@ private fun ShelfHost(
                 }
             }
 
-            if (!wideLayout && Shelf.entries[pager.currentPage] == Shelf.Notice) {
+            val visibleShelf = Shelf.entries[pager.currentPage]
+            if (!wideLayout && (visibleShelf == Shelf.Message || visibleShelf == Shelf.Notice)) {
+                val viewport = shelfHeaders.entry(visibleShelf).viewport
+                val fadeDistance = with(LocalDensity.current) { 12.dp.toPx() }
+                val blurActive by remember(viewport) {
+                    derivedStateOf { viewport?.atStart == false }
+                }
                 Box(
                     Modifier.align(Alignment.TopCenter).fillMaxWidth()
                         .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 32.dp)
-                        .progressiveBlurBackdrop(backdrop = shelfBackdrop, progress = noticeTopBlurProgress),
+                        .progressiveBlurBackdrop(
+                            backdrop = shelfBackdrop,
+                            active = blurActive,
+                            alpha = { (viewport?.distanceToStartPx ?: 0f) / fadeDistance },
+                        ),
                 )
             }
 

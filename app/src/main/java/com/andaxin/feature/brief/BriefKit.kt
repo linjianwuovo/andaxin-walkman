@@ -1,17 +1,10 @@
 package com.andaxin.feature.brief
 
-import com.andaxin.core.design.LocalSamplingBackdrop
 import com.andaxin.core.design.NoSamplingBackdrop
-import io.github.neoruaa.glasmio.glass.LocalGlassBackdrop
 import com.andaxin.core.design.safeGlassSurface
-import com.andaxin.core.design.glassEdge
 import com.andaxin.core.design.glassPageBackground
-import androidx.compose.material3.HorizontalDivider
 import io.github.neoruaa.glasmio.glass.GlasmioBackdropHost
-import io.github.neoruaa.glasmio.glass.rememberCrossWindowBackdrop
 import io.github.neoruaa.glasmio.glass.progressiveBlurBackdrop
-import io.github.neoruaa.glasmio.glass.render.drawPlainBackdrop
-import io.github.neoruaa.glasmio.glass.render.effects.blur
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.WindowInsets
@@ -41,9 +34,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -77,10 +67,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -793,147 +779,15 @@ private fun FieldRow(
                     }
                 }
             } else {
-                /*
-                 * 57 条、98 条这种东西不该摊在屏上让人一行行扫。这里是一行"点这里选"，
-                 * 点开是一屏列表：按校方字典自己的一级 / 楼栋分节，选中那条右边打个勾，点一下就收起。
-                 * （10-25 他拿别的 App 那种下拉列表问「报修里面为什么不能做成这样选」。）
-                 * 值仍是整条原文 —— 提交时那两张"整条 → id"的对照表一个字没改。
-                 */
-                val cur = get(field.key)
-                var open by remember(field.key) { mutableStateOf(false) }
-                var sourceBounds by remember(field.key) { mutableStateOf(Rect.Zero) }
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .onGloballyPositioned { coordinates ->
-                            val origin = coordinates.localToScreen(Offset.Zero)
-                            sourceBounds = Rect(origin, androidx.compose.ui.geometry.Size(
-                                coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))
-                        }
-                        .graphicsLayer { alpha = if (open) 0f else 1f }
-                        .safeGlassSurface(Radius.field)
-                        .pressClick(shrink = false) { open = true }
-                        .padding(Gap.md),
-                ) {
-                    Text(field.label, fontSize = Type.meta, color = ink.muted)
-                    Spacer(Modifier.height(Gap.xxs))
-                    Text(
-                        text = cur.ifBlank { "点这里选" },
-                        fontSize = Type.title,
-                        color = if (cur.isBlank()) ink.faint else ink.strong,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (open) PickDialog(
-                    field, cur, sourceBounds,
-                    onPick = { put(field.key, it); open = false },
-                    onDismiss = { open = false },
-                )
+                RepairChoiceMenu(field, get(field.key)) { put(field.key, it) }
             }
+        }
+        is Field.TimeRange -> RepairTimeMenu(field, get(field.key), get(field.endKey)) { start, end ->
+            put(field.key, start)
+            put(field.endKey, end)
         }
     }
 }
-
-/**
- * 选项很多时的那一屏列表：分节 + 勾，点一条就收起。
- *
- * 高度封顶 460dp：地点那一族 98 条，不封顶这个弹窗会比屏幕还长，最后几条永远点不到。
- * 单选，所以没有"确定"那颗键；按返回或点外面也一样收起，什么都不改。
- */
-@Composable
-private fun PickDialog(
-    field: Field.Choice,
-    cur: String,
-    sourceBounds: Rect,
-    onPick: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val ink = LocalInk.current
-    val accent = MaterialTheme.colorScheme.primary
-    // 这个弹窗在**独立窗口**里：layerBackdrop 用 localPositionOf 换算坐标，跨 compose owner
-    // 会静默算出错位、玻璃采不到东西。库为此提供了 rememberCrossWindowBackdrop —— 它改走
-    // 屏幕坐标，把两个窗口的变换都算进去。Dialog 里的 LocalGlassBackdrop.current 继承的正是
-    // 调用方那一屏的页面层（ScaffoldPage 的 host），所以这里采到的就是背后那一页。
-    // 这一屏的业务内容在采样层里（NoSamplingBackdrop 把 LocalGlassBackdrop 换成了空层，
-    // 否则玻璃件会采到正在录制的自己 —— 见 GlassSafe.kt）。但 Dialog 开在另一个 window，
-    // 采的是宿主已录好的那一页贴图，不构成递归，所以要拿回被顶掉的那层。
-    val pageBackdrop = rememberCrossWindowBackdrop(
-        LocalSamplingBackdrop.current ?: LocalGlassBackdrop.current
-    )
-    val glass = LocalGlassColors.current
-    val sheetShape = RoundedCornerShape(24.dp)
-    val shellTint = glass.elevatedBackground.copy(alpha = if (ink.dark) 0.86f else 0.90f)
-    val blurPx = with(LocalDensity.current) { 24.dp.toPx() }
-    ExpandingChoiceDialog(sourceBounds = sourceBounds, onDismiss = onDismiss) { close, contentAlpha ->
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .drawPlainBackdrop(
-                    backdrop = pageBackdrop,
-                    shape = { sheetShape },
-                    effects = { blur(blurPx) },
-                    onDrawSurface = { drawRect(shellTint) },
-                )
-                .clip(sheetShape)
-                .glassEdge(sheetShape)
-                .padding(top = Gap.md, bottom = Gap.xs),
-        ) {
-            Text(
-                field.label,
-                fontSize = Type.title,
-                fontWeight = FontWeight.SemiBold,
-                color = ink.strong,
-                modifier = Modifier.graphicsLayer { alpha = contentAlpha }
-                    .padding(horizontal = Gap.md, vertical = Gap.xs),
-            )
-            Column(Modifier.fillMaxWidth().heightIn(max = 460.dp)
-                .graphicsLayer { alpha = contentAlpha }.verticalScroll(rememberScrollState())) {
-                field.groups.forEach { g ->
-                    Text(
-                        g.name,
-                        fontSize = Type.micro,
-                        color = ink.faint,
-                        modifier = Modifier.padding(start = Gap.md, end = Gap.md, top = Gap.sm, bottom = Gap.xxs),
-                    )
-                    g.options.forEach { o ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .then(if (o == cur) Modifier.safeGlassSurface(Radius.field, selected = true) else Modifier)
-                                .pressClick(shrink = false) { close { onPick(o) } }
-                                .padding(horizontal = Gap.md, vertical = Gap.sm),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = optionTail(g.name, o),
-                                fontSize = Type.body,
-                                color = if (o == cur) accent else ink.strong,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (o == cur) Text("✓", fontSize = Type.body, color = accent)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * 第二排那几颗丸子上不必把堆名再念一遍：「电 · 插座」在"电"这一堆底下只显示"插座"。
- *
- * 只管显示 —— 值仍是整条原文（提交要拿它去查那张 id 对照表）。两种脱法对应两族字典的写法：
- * 故障类型是「一级 · 二级」，地点是「楼栋 楼层」。脱完变空串（整条就等于堆名，比如没楼层的楼栋）
- * 就退回原文，免得摆一颗没有字的丸子。
- */
-private fun optionTail(group: String, opt: String): String =
-    opt.removePrefix("$group · ").removePrefix("$group ").ifBlank { opt }
-
 
 /**
  * 审批链的一环：左边一个圆点 + 一根连到下一环的竖线，右边"环节 · 谁 · 状态 · 时间"。
